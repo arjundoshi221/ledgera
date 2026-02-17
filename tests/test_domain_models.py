@@ -9,14 +9,13 @@ def test_account_creation():
     """Test account creation"""
     account = Account(
         name="Checking",
-        account_type=AccountType.ASSET,
-        currency="SGD"
+        type=AccountType.ASSET,
+        account_currency="SGD"
     )
-    
+
     assert account.name == "Checking"
-    assert account.account_type == AccountType.ASSET
-    assert account.currency == "SGD"
-    assert account.balance == Decimal(0)
+    assert account.type == AccountType.ASSET
+    assert account.account_currency == "SGD"
 
 
 def test_transaction_balanced(sample_transaction):
@@ -30,11 +29,11 @@ def test_transaction_unbalanced():
         amount=Decimal(100),
         base_amount=Decimal(100)
     )
-    
+
     posting2 = Posting(
         amount=Decimal(-50),
         base_amount=Decimal(-50)
     )
-    
+
     tx = Transaction(postings=[posting1, posting2])
     assert not tx.is_balanced()

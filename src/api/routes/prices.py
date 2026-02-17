@@ -1,17 +1,15 @@
 """Price/FX endpoints"""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from decimal import Decimal
+from datetime import datetime
 
 from src.data.database import get_session
 from src.services.price_service import PriceService, YahooFinancePriceProvider
 from src.api.schemas import PriceResponse
-from datetime import datetime
 
 router = APIRouter()
 
-# Initialize price service
 price_service = PriceService(YahooFinancePriceProvider())
 
 
@@ -22,9 +20,8 @@ def get_fx_rate(
     session: Session = Depends(get_session)
 ):
     """Get FX rate between two currencies"""
-    
     rate = price_service.get_fx_rate(base_ccy, quote_ccy)
-    
+
     return {
         "base_ccy": base_ccy,
         "quote_ccy": quote_ccy,
@@ -40,12 +37,11 @@ def get_stock_price(
     session: Session = Depends(get_session)
 ):
     """Get stock/ETF price"""
-    
     price = price_service.get_security_price(symbol)
-    
+
     if not price:
-        return {"error": f"Unable to fetch price for {symbol}"}
-    
+        raise HTTPException(status_code=404, detail=f"Unable to fetch price for {symbol}")
+
     return {
         "symbol": symbol,
         "price": price,

@@ -8,6 +8,32 @@ from typing import Optional, List
 from uuid import UUID, uuid4
 
 
+# === Auth & Tenancy ===
+
+@dataclass
+class User:
+    """Represents an app user"""
+    id: UUID = field(default_factory=uuid4)
+    email: str = ""
+    display_name: str = ""
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    is_active: bool = True
+    # hashed_password is stored in service layer, not here
+
+
+@dataclass
+class Workspace:
+    """Represents a user's workspace (ledger + settings)"""
+    id: UUID = field(default_factory=uuid4)
+    owner_user_id: UUID = field(default_factory=uuid4)
+    name: str = "Personal"
+    base_currency: str = "SGD"  # Reporting currency
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    updated_at: datetime = field(default_factory=datetime.utcnow)
+
+
+# === Accounting ===
+
 class AccountType(str, Enum):
     """Account type enumeration"""
     ASSET = "asset"
@@ -28,11 +54,12 @@ class TransactionStatus(str, Enum):
 class Account:
     """Represents a bank or investment account"""
     id: UUID = field(default_factory=uuid4)
+    workspace_id: UUID = field(default_factory=uuid4)
     name: str = ""
-    account_type: AccountType = AccountType.ASSET
-    currency: str = "SGD"  # ISO 4217 code
+    type: AccountType = AccountType.ASSET
+    account_currency: str = "SGD"  # Currency of postings (account native)
     institution: Optional[str] = None
-    balance: Decimal = Decimal(0)
+    is_active: bool = True
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
 
@@ -41,6 +68,7 @@ class Account:
 class Category:
     """Represents a transaction category"""
     id: UUID = field(default_factory=uuid4)
+    workspace_id: UUID = field(default_factory=uuid4)
     name: str = ""
     parent_id: Optional[UUID] = None
     created_at: datetime = field(default_factory=datetime.utcnow)
@@ -60,10 +88,10 @@ class Posting:
     id: UUID = field(default_factory=uuid4)
     transaction_id: UUID = field(default_factory=uuid4)
     account_id: UUID = field(default_factory=uuid4)
-    amount: Decimal = Decimal(0)  # Native currency amount
-    currency: str = "SGD"
-    base_amount: Decimal = Decimal(0)  # Converted to base currency
-    fx_rate: Decimal = Decimal(1)  # FX rate used for conversion
+    amount: Decimal = Decimal(0)  # In posting_currency (usually account currency)
+    posting_currency: str = "SGD"
+    fx_rate_to_base: Decimal = Decimal(1)  # Snapshot at booking time
+    base_amount: Decimal = Decimal(0)  # amount * fx_rate_to_base (pre-computed)
     created_at: datetime = field(default_factory=datetime.utcnow)
 
 
@@ -71,18 +99,20 @@ class Posting:
 class Transaction:
     """Financial transaction with double-entry postings"""
     id: UUID = field(default_factory=uuid4)
+    workspace_id: UUID = field(default_factory=uuid4)
     timestamp: datetime = field(default_factory=datetime.utcnow)
     payee: str = ""
     memo: str = ""
     status: TransactionStatus = TransactionStatus.UNRECONCILED
     source: str = ""  # e.g., "manual", "csv_import", "sync"
+    import_hash: Optional[str] = None  # SHA-256 for deduplication
     postings: List[Posting] = field(default_factory=list)
     tags: List[Tag] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
 
     def is_balanced(self) -> bool:
-        """Check if transaction balances (sum of postings == 0 in base currency)"""
+        """Check if transaction balances (sum of base_amounts == 0)"""
         total = sum(p.base_amount for p in self.postings)
         return abs(total) < Decimal("0.01")
 

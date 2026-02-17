@@ -32,8 +32,16 @@ pylint>=3.0.0
 jupyter>=1.0.0
 ipython>=8.16.0
 
-# Security and encryption (for future integration)
+# Security and encryption
 cryptography>=41.0.0
+
+# Authentication
+passlib[argon2]>=1.7.4
+PyJWT>=2.8.0
+argon2-cffi>=23.1.0
 
 # Type checking
 mypy>=1.6.0
+
+# Testing HTTP
+httpx>=0.25.0

@@ -7,7 +7,7 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import uuid4
 
-from domain.models import Transaction, Posting, TransactionStatus
+from src.domain.models import Transaction, Posting, TransactionStatus
 
 
 class CSVImporter:

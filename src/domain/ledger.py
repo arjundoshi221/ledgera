@@ -59,7 +59,7 @@ class Ledger:
                 if posting.account_id == account_id:
                     # Debit (increase) for assets/expenses, credit (decrease) for liabilities/income
                     account = self.accounts.get(account_id)
-                    if account and account.account_type in [AccountType.ASSET, AccountType.EXPENSE]:
+                    if account and account.type in [AccountType.ASSET, AccountType.EXPENSE]:
                         balance += posting.amount
                     else:
                         balance -= posting.amount

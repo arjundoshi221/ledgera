@@ -1,17 +1,29 @@
 """FastAPI application and routes"""
 
-from fastapi import FastAPI, Depends
+import os
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
 
-from src.data.database import get_session, init_db
+from src.data.database import init_db
 from .schemas import HealthResponse
-from .routes import accounts, transactions, projections, prices
+from .routes import accounts, transactions, projections, prices, auth, workspace, categories, analytics
+from .middleware import AuthMiddleware
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize database on startup"""
+    db_url = os.environ.get("DATABASE_URL", "sqlite:///./ledgera.db")
+    init_db(db_url)
+    yield
+
 
 app = FastAPI(
     title="Ledgera API",
     description="Dual-approach banking + projections + line-by-line accounting",
-    version="0.1.0"
+    version="0.1.0",
+    lifespan=lifespan
 )
 
 # CORS configuration
@@ -23,12 +35,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-@app.on_event("startup")
-async def startup():
-    """Initialize database on startup"""
-    db_url = "sqlite:///./ledgera.db"  # SQLite for MVP
-    init_db(db_url)
+# JWT authentication middleware
+app.add_middleware(AuthMiddleware)
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -38,9 +46,13 @@ async def health_check():
 
 
 # Include routers
+app.include_router(auth.router, prefix="/auth", tags=["auth"])
+app.include_router(workspace.router, prefix="/api/v1", tags=["workspace"])
 app.include_router(accounts.router, prefix="/api/v1/accounts", tags=["accounts"])
+app.include_router(categories.router, prefix="/api/v1/categories", tags=["categories"])
 app.include_router(transactions.router, prefix="/api/v1/transactions", tags=["transactions"])
 app.include_router(projections.router, prefix="/api/v1/projections", tags=["projections"])
+app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"])
 app.include_router(prices.router, prefix="/api/v1/prices", tags=["prices"])
 
 
