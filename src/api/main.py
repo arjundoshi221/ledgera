@@ -23,7 +23,8 @@ app = FastAPI(
     title="Ledgera API",
     description="Dual-approach banking + projections + line-by-line accounting",
     version="0.1.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    redirect_slashes=False
 )
 
 # CORS configuration

@@ -20,7 +20,7 @@ router = APIRouter()
 # Categories
 # =====================
 
-@router.post("/", response_model=CategoryResponse)
+@router.post("", response_model=CategoryResponse)
 def create_category(
     category: CategoryCreate,
     workspace_id: str = Depends(get_workspace_id),
@@ -41,7 +41,7 @@ def create_category(
     return db_category
 
 
-@router.get("/", response_model=list[CategoryResponse])
+@router.get("", response_model=list[CategoryResponse])
 def list_categories(
     workspace_id: str = Depends(get_workspace_id),
     category_type: str = None,

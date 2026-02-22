@@ -150,7 +150,7 @@ def _serialize_tx(tx: TransactionModel) -> dict:
 
 # ── Endpoints ──
 
-@router.get("/")
+@router.get("")
 def list_recurring(
     workspace_id: str = Depends(get_workspace_id),
     session: Session = Depends(get_session)
@@ -161,7 +161,7 @@ def list_recurring(
     return [_serialize_recurring(t) for t in templates]
 
 
-@router.post("/")
+@router.post("")
 def create_recurring(
     data: RecurringTransactionCreate,
     workspace_id: str = Depends(get_workspace_id),

@@ -16,7 +16,7 @@ from src.api.deps import get_workspace_id
 router = APIRouter()
 
 
-@router.get("/")
+@router.get("")
 def get_all_transactions(
     workspace_id: str = Depends(get_workspace_id),
     start_date: datetime = None,
@@ -65,7 +65,7 @@ def _serialize_tx(tx: TransactionModel) -> dict:
     }
 
 
-@router.post("/")
+@router.post("")
 def create_transaction(
     tx: TransactionCreate,
     workspace_id: str = Depends(get_workspace_id),

@@ -12,7 +12,7 @@ from src.api.deps import get_workspace_id
 router = APIRouter()
 
 
-@router.post("/", response_model=AccountResponse)
+@router.post("", response_model=AccountResponse)
 def create_account(
     account: AccountCreate,
     workspace_id: str = Depends(get_workspace_id),
@@ -68,7 +68,7 @@ def get_account(
     }
 
 
-@router.get("/")
+@router.get("")
 def list_accounts(
     workspace_id: str = Depends(get_workspace_id),
     session: Session = Depends(get_session)
