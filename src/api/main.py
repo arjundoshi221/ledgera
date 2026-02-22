@@ -39,6 +39,12 @@ app.add_middleware(
 app.add_middleware(AuthMiddleware)
 
 
+@app.get("/", response_model=HealthResponse)
+async def root():
+    """Root endpoint"""
+    return HealthResponse(status="ok")
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint"""
