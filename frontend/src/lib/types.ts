@@ -27,6 +27,7 @@ export interface SignupRequest {
   is_us_person: boolean
   tos_accepted: boolean
   privacy_accepted: boolean
+  base_currency?: string
 }
 
 export interface LoginRequest {
@@ -66,6 +67,7 @@ export interface CompleteProfileRequest {
   is_us_person: boolean
   tos_accepted: boolean
   privacy_accepted: boolean
+  base_currency?: string
 }
 
 export interface UserResponse {

@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { signup } from "@/lib/api"
 import { useToast } from "@/components/ui/use-toast"
 import { COUNTRIES, PHONE_CODES, searchCountries, getCountryName } from "@/lib/countries"
+import { CURRENCIES } from "@/lib/constants"
 
 function CountryMultiSelect({
   label,
@@ -124,6 +125,7 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
   const [addressPostalCode, setAddressPostalCode] = useState("")
   const [addressCountry, setAddressCountry] = useState("")
   const [taxIdNumber, setTaxIdNumber] = useState("")
+  const [baseCurrency, setBaseCurrency] = useState("SGD")
   const [isUsPerson, setIsUsPerson] = useState(false)
   const [tosAccepted, setTosAccepted] = useState(false)
   const [privacyAccepted, setPrivacyAccepted] = useState(false)
@@ -196,6 +198,7 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
         is_us_person: isUsPerson,
         tos_accepted: tosAccepted,
         privacy_accepted: privacyAccepted,
+        base_currency: baseCurrency,
       })
       toast({
         title: "Account created",
@@ -404,6 +407,28 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
           value={taxIdNumber}
           onChange={(e) => setTaxIdNumber(e.target.value)}
         />
+      </div>
+
+      {/* Base Currency */}
+      <div className="space-y-2">
+        <Label htmlFor="signup-base-currency">
+          Base Currency <span className="text-destructive">*</span>
+        </Label>
+        <Select value={baseCurrency} onValueChange={setBaseCurrency}>
+          <SelectTrigger id="signup-base-currency">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CURRENCIES.map((ccy) => (
+              <SelectItem key={ccy} value={ccy}>
+                {ccy}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Your workspace reporting currency. Can be changed later in settings.
+        </p>
       </div>
 
       {/* US Person */}

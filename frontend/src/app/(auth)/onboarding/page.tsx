@@ -12,6 +12,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { getMe, completeProfile } from "@/lib/api"
 import { isLoggedIn, isProfileComplete, setProfileComplete } from "@/lib/auth"
 import { COUNTRIES, PHONE_CODES, searchCountries, getCountryName } from "@/lib/countries"
+import { CURRENCIES } from "@/lib/constants"
 import type { UserResponse } from "@/lib/types"
 
 function CountryMultiSelect({
@@ -122,6 +123,7 @@ export default function OnboardingPage() {
   const [addressPostalCode, setAddressPostalCode] = useState("")
   const [addressCountry, setAddressCountry] = useState("")
   const [taxIdNumber, setTaxIdNumber] = useState("")
+  const [baseCurrency, setBaseCurrency] = useState("SGD")
   const [isUsPerson, setIsUsPerson] = useState(false)
   const [tosAccepted, setTosAccepted] = useState(false)
   const [privacyAccepted, setPrivacyAccepted] = useState(false)
@@ -208,6 +210,7 @@ export default function OnboardingPage() {
         is_us_person: isUsPerson,
         tos_accepted: tosAccepted,
         privacy_accepted: privacyAccepted,
+        base_currency: baseCurrency,
       })
       setProfileComplete()
       router.push("/dashboard")
@@ -330,6 +333,28 @@ export default function OnboardingPage() {
           <div className="space-y-2">
             <Label>Tax Identification Number (optional)</Label>
             <Input placeholder="TIN / SSN / Tax ID" value={taxIdNumber} onChange={(e) => setTaxIdNumber(e.target.value)} />
+          </div>
+
+          {/* Base Currency */}
+          <div className="space-y-2">
+            <Label>
+              Base Currency <span className="text-destructive">*</span>
+            </Label>
+            <Select value={baseCurrency} onValueChange={setBaseCurrency}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CURRENCIES.map((ccy) => (
+                  <SelectItem key={ccy} value={ccy}>
+                    {ccy}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Your workspace reporting currency. Can be changed later in settings.
+            </p>
           </div>
 
           <label className="flex items-center gap-2 cursor-pointer">

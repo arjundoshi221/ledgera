@@ -46,6 +46,7 @@ class SignupRequest(BaseModel):
     is_us_person: bool = False
     tos_accepted: bool
     privacy_accepted: bool
+    base_currency: str = "SGD"
 
 
 class LoginRequest(BaseModel):
@@ -76,6 +77,7 @@ class CompleteProfileRequest(BaseModel):
     is_us_person: bool = False
     tos_accepted: bool
     privacy_accepted: bool
+    base_currency: str = "SGD"
 
 
 class AuthResponse(BaseModel):
@@ -172,13 +174,13 @@ def _validate_password(password: str):
         )
 
 
-def _create_workspace_and_defaults(session: Session, user_id: str):
+def _create_workspace_and_defaults(session: Session, user_id: str, base_currency: str = "SGD"):
     """Create workspace + system resources (fund, category, external account) for a new user."""
     workspace_repo = WorkspaceRepository(session)
     workspace = WorkspaceModel(
         owner_user_id=user_id,
         name="Personal",
-        base_currency="SGD"
+        base_currency=base_currency
     )
     workspace = workspace_repo.create(workspace)
 
@@ -319,7 +321,7 @@ def signup(
     )
     user = user_repo.create(user)
 
-    workspace = _create_workspace_and_defaults(session, user.id)
+    workspace = _create_workspace_and_defaults(session, user.id, base_currency=req.base_currency)
     token = auth_service.create_access_token(user.id, workspace.id)
 
     return AuthResponse(
@@ -507,6 +509,9 @@ def complete_profile(
 
     workspace_repo = WorkspaceRepository(session)
     workspaces = workspace_repo.read_by_owner(user.id)
+    if workspaces and req.base_currency:
+        workspaces[0].base_currency = req.base_currency
+        workspace_repo.update(workspaces[0])
     workspace_id = str(workspaces[0].id) if workspaces else ""
 
     return _build_user_response(user, workspace_id)
