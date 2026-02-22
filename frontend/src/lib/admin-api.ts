@@ -143,6 +143,7 @@ export async function getAuditLogs(params: {
   action_prefix?: string
   actor_user_id?: string
   target_type?: string
+  target_id?: string
   days?: number
   offset?: number
   limit?: number
@@ -151,6 +152,7 @@ export async function getAuditLogs(params: {
   if (params.action_prefix) qs.set("action_prefix", params.action_prefix)
   if (params.actor_user_id) qs.set("actor_user_id", params.actor_user_id)
   if (params.target_type) qs.set("target_type", params.target_type)
+  if (params.target_id) qs.set("target_id", params.target_id)
   if (params.days) qs.set("days", String(params.days))
   if (params.offset) qs.set("offset", String(params.offset))
   if (params.limit) qs.set("limit", String(params.limit))
