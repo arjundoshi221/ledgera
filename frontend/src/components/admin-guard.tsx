@@ -2,17 +2,17 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { isLoggedIn, isProfileComplete } from "@/lib/auth"
+import { isLoggedIn, isAdmin } from "@/lib/auth"
 
-export function AuthGuard({ children }: { children: React.ReactNode }) {
+export function AdminGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [checked, setChecked] = useState(false)
 
   useEffect(() => {
     if (!isLoggedIn()) {
       router.replace("/login")
-    } else if (!isProfileComplete()) {
-      router.replace("/onboarding")
+    } else if (!isAdmin()) {
+      router.replace("/dashboard")
     } else {
       setChecked(true)
     }
@@ -21,7 +21,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   if (!checked) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Loading...</div>
+        <div className="animate-pulse text-muted-foreground">Verifying admin access...</div>
       </div>
     )
   }

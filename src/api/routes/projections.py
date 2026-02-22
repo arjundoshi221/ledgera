@@ -8,7 +8,7 @@ from decimal import Decimal
 from src.data.database import get_session
 from src.data.models import ScenarioModel
 from src.data.repositories import ScenarioRepository
-from src.domain.projections import ProjectionEngine, ProjectionAssumptions, CategoryBudget, OneTimeCost, FXMapping
+from src.domain.projections import ProjectionEngine, ProjectionAssumptions, CategoryBudget, SubcategoryBudget, OneTimeCost, FXMapping
 from src.api.schemas import (
     ProjectionAssumptions as ProjectionAssumptionsSchema,
     MonthlyProjectionResponse,
@@ -22,15 +22,29 @@ router = APIRouter()
 def _compute_monthly_expenses(assumptions: ProjectionAssumptionsSchema) -> Decimal:
     """Compute total monthly expenses from assumptions."""
     if assumptions.category_budgets:
-        return sum(Decimal(str(cb.monthly_amount)) for cb in assumptions.category_budgets)
+        total = Decimal(0)
+        for cb in assumptions.category_budgets:
+            if cb.subcategory_budgets:
+                total += sum(Decimal(str(sb.monthly_amount)) for sb in cb.subcategory_budgets)
+            else:
+                total += Decimal(str(cb.monthly_amount))
+        return total
     elif assumptions.monthly_expenses is not None:
         return Decimal(str(assumptions.monthly_expenses))
     return Decimal(0)
 
 
 def _serialize_assumptions(assumptions: ProjectionAssumptionsSchema) -> str:
-    """Serialize assumptions to JSON string."""
-    return json.dumps(assumptions.model_dump(), default=str)
+    """Serialize assumptions to JSON string.
+
+    Decimals are converted to float so that values remain numeric
+    when loaded back from JSON (avoiding string concatenation bugs).
+    """
+    def _default(obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return str(obj)
+    return json.dumps(assumptions.model_dump(), default=_default)
 
 
 @router.post("/forecast")
@@ -45,7 +59,15 @@ def create_forecast(
         CategoryBudget(
             category_id=cb.category_id,
             monthly_amount=cb.monthly_amount,
-            inflation_override=cb.inflation_override
+            inflation_override=cb.inflation_override,
+            subcategory_budgets=[
+                SubcategoryBudget(
+                    subcategory_id=sb.subcategory_id,
+                    monthly_amount=sb.monthly_amount,
+                    inflation_override=sb.inflation_override,
+                )
+                for sb in cb.subcategory_budgets
+            ]
         )
         for cb in assumptions.category_budgets
     ]

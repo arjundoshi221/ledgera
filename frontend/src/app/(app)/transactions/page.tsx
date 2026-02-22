@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,10 +11,10 @@ import { Separator } from "@/components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
-import { getAccounts, getTransactions, createTransaction, updateTransaction, deleteTransaction, getCategories, getSubcategories, getFunds } from "@/lib/api"
-import { TRANSACTION_STATUSES } from "@/lib/constants"
+import { getAccounts, getTransactions, createTransaction, createTransfer, updateTransaction, deleteTransaction, getCategories, getSubcategories, getFunds, getPrice, getPaymentMethods, getRecurringTransactions, createRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, getPendingInstances, confirmRecurring, skipRecurring } from "@/lib/api"
+import { TRANSACTION_STATUSES, RECURRING_FREQUENCIES } from "@/lib/constants"
 import { useToast } from "@/components/ui/use-toast"
-import type { Account, Transaction, Posting, Category, Subcategory, Fund } from "@/lib/types"
+import type { Account, Transaction, Posting, Category, Subcategory, Fund, PaymentMethod, RecurringTransaction, PendingInstance, RecurringFrequency } from "@/lib/types"
 
 function toLocalDatetime(d: Date): string {
   const pad = (n: number) => n.toString().padStart(2, "0")
@@ -31,6 +31,7 @@ export default function TransactionsPage() {
   const [categories, setCategories] = useState<Category[]>([])
   const [subcategories, setSubcategories] = useState<Subcategory[]>([])
   const [funds, setFunds] = useState<Fund[]>([])
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
 
   // Form state
   const [txType, setTxType] = useState<"income" | "expense" | "transfer">("expense")
@@ -41,6 +42,7 @@ export default function TransactionsPage() {
   const [categoryId, setCategoryId] = useState("")
   const [subcategoryId, setSubcategoryId] = useState("")
   const [fundId, setFundId] = useState("")
+  const [paymentMethodId, setPaymentMethodId] = useState("")
 
   // For income/expense (single account)
   const [accountId, setAccountId] = useState("")
@@ -52,6 +54,11 @@ export default function TransactionsPage() {
   const [toAccountId, setToAccountId] = useState("")
   const [transferAmount, setTransferAmount] = useState("")
   const [transferCurrency, setTransferCurrency] = useState("SGD")
+  const [sourceFundId, setSourceFundId] = useState("")
+  const [destFundId, setDestFundId] = useState("")
+  const [fxRate, setFxRate] = useState("1")
+  const [toCurrency, setToCurrency] = useState("")
+  const [transferFee, setTransferFee] = useState("")
 
   const [creating, setCreating] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -60,19 +67,99 @@ export default function TransactionsPage() {
   const [deletingTxId, setDeletingTxId] = useState<string | null>(null)
   const { toast } = useToast()
 
+  // Filter state
+  const [showFilters, setShowFilters] = useState(false)
+  const [filterDateFrom, setFilterDateFrom] = useState("")
+  const [filterDateTo, setFilterDateTo] = useState("")
+  const [filterCategoryId, setFilterCategoryId] = useState("")
+  const [filterType, setFilterType] = useState("")
+  const [filterStatus, setFilterStatus] = useState("")
+  const [filterPayee, setFilterPayee] = useState("")
+
+  const hasActiveFilters = !!(filterDateFrom || filterDateTo || filterCategoryId || filterType || filterStatus || filterPayee)
+
+  // Main tab
+  const [activeMainTab, setActiveMainTab] = useState<"transactions" | "recurring">("transactions")
+
+  // Recurring state
+  const [recurringTemplates, setRecurringTemplates] = useState<RecurringTransaction[]>([])
+  const [pendingInstances, setPendingInstances] = useState<PendingInstance[]>([])
+  const [showRecurringForm, setShowRecurringForm] = useState(false)
+  const [recName, setRecName] = useState("")
+  const [recTxType, setRecTxType] = useState<"income" | "expense" | "transfer">("expense")
+  const [recPayee, setRecPayee] = useState("")
+  const [recMemo, setRecMemo] = useState("")
+  const [recAmount, setRecAmount] = useState("")
+  const [recCurrency, setRecCurrency] = useState("SGD")
+  const [recCategoryId, setRecCategoryId] = useState("")
+  const [recSubcategoryId, setRecSubcategoryId] = useState("")
+  const [recFundId, setRecFundId] = useState("")
+  const [recPaymentMethodId, setRecPaymentMethodId] = useState("")
+  const [recAccountId, setRecAccountId] = useState("")
+  const [recFromAccountId, setRecFromAccountId] = useState("")
+  const [recToAccountId, setRecToAccountId] = useState("")
+  const [recFrequency, setRecFrequency] = useState<RecurringFrequency>("monthly")
+  const [recStartDate, setRecStartDate] = useState("")
+  const [recEndDate, setRecEndDate] = useState("")
+  const [recSourceFundId, setRecSourceFundId] = useState("")
+  const [recDestFundId, setRecDestFundId] = useState("")
+  const [creatingRecurring, setCreatingRecurring] = useState(false)
+  const [deletingRecId, setDeletingRecId] = useState<string | null>(null)
+
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter((tx) => {
+      if (filterDateFrom) {
+        const txDate = new Date(tx.timestamp).toISOString().slice(0, 10)
+        if (txDate < filterDateFrom) return false
+      }
+      if (filterDateTo) {
+        const txDate = new Date(tx.timestamp).toISOString().slice(0, 10)
+        if (txDate > filterDateTo) return false
+      }
+      if (filterCategoryId && tx.category_id !== filterCategoryId) return false
+      if (filterType) {
+        if (filterType === "transfer") {
+          if (tx.type !== "transfer") return false
+        } else {
+          if (tx.type === "transfer") return false
+          const realPosting = tx.postings?.find((p: Posting) => {
+            const acc = accounts.find((a) => a.id === p.account_id)
+            return acc && acc.name !== "External"
+          })
+          if (filterType === "income" && (!realPosting || Number(realPosting.amount) <= 0)) return false
+          if (filterType === "expense" && (!realPosting || Number(realPosting.amount) >= 0)) return false
+        }
+      }
+      if (filterStatus && tx.status !== filterStatus) return false
+      if (filterPayee && !tx.payee.toLowerCase().includes(filterPayee.toLowerCase())) return false
+      return true
+    })
+  }, [transactions, accounts, filterDateFrom, filterDateTo, filterCategoryId, filterType, filterStatus, filterPayee])
+
+  function clearAllFilters() {
+    setFilterDateFrom("")
+    setFilterDateTo("")
+    setFilterCategoryId("")
+    setFilterType("")
+    setFilterStatus("")
+    setFilterPayee("")
+  }
+
   useEffect(() => {
     async function load() {
       try {
-        const [accts, cats, subs, fnds] = await Promise.all([
+        const [accts, cats, subs, fnds, pms] = await Promise.all([
           getAccounts(),
           getCategories(),
           getSubcategories(),
           getFunds(),
+          getPaymentMethods(),
         ])
         setAccounts(accts)
         setCategories(cats)
         setSubcategories(subs)
         setFunds(fnds)
+        setPaymentMethods(pms)
       } catch {
         // ignore
       } finally {
@@ -102,11 +189,50 @@ export default function TransactionsPage() {
 
   // Filter subcategories by selected category
   const filteredSubcategories = subcategories.filter((s) => s.category_id === categoryId)
+  const recFilteredSubcategories = subcategories.filter((s) => s.category_id === recCategoryId)
 
   // Reset subcategory when category changes
   useEffect(() => {
     setSubcategoryId("")
   }, [categoryId])
+
+  // Reset recurring subcategory when recurring category changes
+  useEffect(() => {
+    setRecSubcategoryId("")
+  }, [recCategoryId])
+
+  // Auto-detect fund for an account (returns fund id if exactly one link, else "")
+  function autoDetectFund(accountId: string): string {
+    const linked = funds.filter((f) => f.linked_accounts?.some((la: any) => la.id === accountId))
+    return linked.length === 1 ? linked[0].id : ""
+  }
+
+  // Detect if transfer is cross-currency
+  const fromAccount = accounts.find((a) => a.id === fromAccountId)
+  const toAccount = accounts.find((a) => a.id === toAccountId)
+  const isCrossCurrency = fromAccount && toAccount && fromAccount.account_currency !== toAccount.account_currency
+
+  // Auto-fetch FX rate when cross-currency transfer is detected
+  const [fetchingRate, setFetchingRate] = useState(false)
+  useEffect(() => {
+    if (!isCrossCurrency || !fromAccount || !toAccount) return
+    let cancelled = false
+    setFetchingRate(true)
+    getPrice(fromAccount.account_currency, toAccount.account_currency)
+      .then((res) => {
+        if (!cancelled) {
+          setFxRate(Number(res.rate).toFixed(6))
+          setTransferCurrency(fromAccount.account_currency)
+        }
+      })
+      .catch(() => {
+        // Keep manual entry if fetch fails
+      })
+      .finally(() => {
+        if (!cancelled) setFetchingRate(false)
+      })
+    return () => { cancelled = true }
+  }, [fromAccountId, toAccountId, accounts.length])
 
   // Find External account
   const externalAccount = accounts.find((a) => a.name === "External")
@@ -126,17 +252,7 @@ export default function TransactionsPage() {
     let postings: Posting[] = []
 
     if (txType === "income") {
-      // Income: External (debit) → Account (credit)
-      if (!accountId || !externalAccount) {
-        toast({ variant: "destructive", title: "Select an account" })
-        return
-      }
-      postings = [
-        { account_id: externalAccount.id, amount: amt, currency, fx_rate: 1 },
-        { account_id: accountId, amount: -amt, currency, fx_rate: 1 },
-      ]
-    } else if (txType === "expense") {
-      // Expense: Account (debit) → External (credit)
+      // Income: Bank increases (debit +), External decreases (credit -)
       if (!accountId || !externalAccount) {
         toast({ variant: "destructive", title: "Select an account" })
         return
@@ -145,16 +261,50 @@ export default function TransactionsPage() {
         { account_id: accountId, amount: amt, currency, fx_rate: 1 },
         { account_id: externalAccount.id, amount: -amt, currency, fx_rate: 1 },
       ]
+    } else if (txType === "expense") {
+      // Expense: Bank decreases (credit -), External increases (debit +)
+      if (!accountId || !externalAccount) {
+        toast({ variant: "destructive", title: "Select an account" })
+        return
+      }
+      postings = [
+        { account_id: accountId, amount: -amt, currency, fx_rate: 1 },
+        { account_id: externalAccount.id, amount: amt, currency, fx_rate: 1 },
+      ]
     } else {
-      // Transfer: From (debit) → To (credit)
+      // Transfer: use dedicated transfer endpoint
       if (!fromAccountId || !toAccountId) {
         toast({ variant: "destructive", title: "Select both accounts" })
         return
       }
-      postings = [
-        { account_id: fromAccountId, amount: amt, currency: transferCurrency, fx_rate: 1 },
-        { account_id: toAccountId, amount: -amt, currency: transferCurrency, fx_rate: 1 },
-      ]
+      setCreating(true)
+      try {
+        const effectiveToCurrency = isCrossCurrency ? (toAccount?.account_currency || transferCurrency) : transferCurrency
+        await createTransfer({
+          timestamp: new Date(txTimestamp).toISOString(),
+          payee: payee || "Transfer",
+          memo,
+          from_account_id: fromAccountId,
+          to_account_id: toAccountId,
+          amount: amt,
+          from_currency: transferCurrency,
+          to_currency: isCrossCurrency ? effectiveToCurrency : undefined,
+          fx_rate: isCrossCurrency ? parseFloat(fxRate) || 1 : undefined,
+          source_fund_id: sourceFundId || undefined,
+          dest_fund_id: destFundId || undefined,
+          payment_method_id: paymentMethodId || undefined,
+          fee: parseFloat(transferFee) || undefined,
+        })
+        toast({ title: "Transfer created" })
+        setShowForm(false)
+        resetForm()
+        await loadAllTransactions()
+      } catch (err: any) {
+        toast({ variant: "destructive", title: "Failed", description: err.message })
+      } finally {
+        setCreating(false)
+      }
+      return
     }
 
     setCreating(true)
@@ -167,6 +317,7 @@ export default function TransactionsPage() {
         category_id: categoryId || undefined,
         subcategory_id: subcategoryId || undefined,
         fund_id: fundId || undefined,
+        payment_method_id: paymentMethodId || undefined,
         postings,
       })
       toast({ title: "Transaction created" })
@@ -188,6 +339,7 @@ export default function TransactionsPage() {
     setCategoryId("")
     setSubcategoryId("")
     setFundId("")
+    setPaymentMethodId("")
     setAccountId("")
     setAmount("")
     setCurrency("SGD")
@@ -195,6 +347,11 @@ export default function TransactionsPage() {
     setToAccountId("")
     setTransferAmount("")
     setTransferCurrency("SGD")
+    setSourceFundId("")
+    setDestFundId("")
+    setFxRate("1")
+    setToCurrency("")
+    setTransferFee("")
   }
 
   function handleEditClick(tx: Transaction) {
@@ -208,6 +365,7 @@ export default function TransactionsPage() {
     setCategoryId(tx.category_id || "")
     setSubcategoryId(tx.subcategory_id || "")
     setFundId(tx.fund_id || "")
+    setPaymentMethodId(tx.payment_method_id || "")
 
     // Determine transaction type and populate account/amount fields
     const externalPosting = tx.postings?.find(p => {
@@ -221,24 +379,24 @@ export default function TransactionsPage() {
 
     if (externalPosting && realPosting) {
       const amt = Math.abs(Number(realPosting.amount))
-      if (externalPosting.amount > 0) {
-        // Income: External (debit) → Account (credit)
+      if (Number(realPosting.amount) > 0) {
+        // Income: Bank posting is positive (debit)
         setTxType("income")
         setAccountId(realPosting.account_id)
         setAmount(amt.toString())
         setCurrency(realPosting.currency)
       } else {
-        // Expense: Account (debit) → External (credit)
+        // Expense: Bank posting is negative (credit)
         setTxType("expense")
         setAccountId(realPosting.account_id)
         setAmount(amt.toString())
         setCurrency(realPosting.currency)
       }
     } else if (tx.postings?.length === 2) {
-      // Transfer
+      // Transfer: From has negative amount, To has positive
       setTxType("transfer")
-      const fromPosting = tx.postings.find(p => Number(p.amount) > 0)
-      const toPosting = tx.postings.find(p => Number(p.amount) < 0)
+      const fromPosting = tx.postings.find(p => Number(p.amount) < 0)
+      const toPosting = tx.postings.find(p => Number(p.amount) > 0)
       if (fromPosting && toPosting) {
         setFromAccountId(fromPosting.account_id)
         setToAccountId(toPosting.account_id)
@@ -269,8 +427,8 @@ export default function TransactionsPage() {
         return
       }
       postings = [
-        { account_id: externalAccount.id, amount: amt, currency, fx_rate: 1 },
-        { account_id: accountId, amount: -amt, currency, fx_rate: 1 },
+        { account_id: accountId, amount: amt, currency, fx_rate: 1 },
+        { account_id: externalAccount.id, amount: -amt, currency, fx_rate: 1 },
       ]
     } else if (txType === "expense") {
       if (!accountId || !externalAccount) {
@@ -278,8 +436,8 @@ export default function TransactionsPage() {
         return
       }
       postings = [
-        { account_id: accountId, amount: amt, currency, fx_rate: 1 },
-        { account_id: externalAccount.id, amount: -amt, currency, fx_rate: 1 },
+        { account_id: accountId, amount: -amt, currency, fx_rate: 1 },
+        { account_id: externalAccount.id, amount: amt, currency, fx_rate: 1 },
       ]
     } else {
       if (!fromAccountId || !toAccountId) {
@@ -287,8 +445,8 @@ export default function TransactionsPage() {
         return
       }
       postings = [
-        { account_id: fromAccountId, amount: amt, currency: transferCurrency, fx_rate: 1 },
-        { account_id: toAccountId, amount: -amt, currency: transferCurrency, fx_rate: 1 },
+        { account_id: fromAccountId, amount: -amt, currency: transferCurrency, fx_rate: 1 },
+        { account_id: toAccountId, amount: amt, currency: transferCurrency, fx_rate: 1 },
       ]
     }
 
@@ -302,6 +460,7 @@ export default function TransactionsPage() {
         category_id: categoryId || undefined,
         subcategory_id: subcategoryId || undefined,
         fund_id: fundId || undefined,
+        payment_method_id: paymentMethodId || undefined,
         postings,
       })
       toast({ title: "Transaction updated" })
@@ -339,9 +498,139 @@ export default function TransactionsPage() {
     return fund ? `${fund.emoji || ""} ${fund.name}`.trim() : null
   }
 
+  function getPaymentMethodName(id: string | null) {
+    if (!id) return null
+    const pm = paymentMethods.find((p) => p.id === id)
+    return pm ? `${pm.icon || ""} ${pm.name}`.trim() : null
+  }
+
   function getAccountName(id: string) {
     const acc = accounts.find((a) => a.id === id)
     return acc?.name ?? id
+  }
+
+  // ── Recurring handlers ──
+
+  async function loadRecurringData() {
+    try {
+      const [templates, pending] = await Promise.all([
+        getRecurringTransactions(),
+        getPendingInstances(),
+      ])
+      setRecurringTemplates(templates)
+      setPendingInstances(pending)
+    } catch {
+      // ignore
+    }
+  }
+
+  useEffect(() => {
+    if (activeMainTab === "recurring" && accounts.length > 0) {
+      loadRecurringData()
+    }
+  }, [activeMainTab, accounts.length])
+
+  function resetRecurringForm() {
+    setRecName("")
+    setRecTxType("expense")
+    setRecPayee("")
+    setRecMemo("")
+    setRecAmount("")
+    setRecCurrency("SGD")
+    setRecCategoryId("")
+    setRecSubcategoryId("")
+    setRecFundId("")
+    setRecPaymentMethodId("")
+    setRecAccountId("")
+    setRecFromAccountId("")
+    setRecToAccountId("")
+    setRecFrequency("monthly")
+    setRecStartDate("")
+    setRecEndDate("")
+    setRecSourceFundId("")
+    setRecDestFundId("")
+  }
+
+  async function handleCreateRecurring(e: React.FormEvent) {
+    e.preventDefault()
+    const amt = parseFloat(recAmount) || 0
+    if (amt <= 0) {
+      toast({ variant: "destructive", title: "Enter a positive amount" })
+      return
+    }
+    setCreatingRecurring(true)
+    try {
+      await createRecurringTransaction({
+        name: recName,
+        transaction_type: recTxType,
+        payee: recPayee || undefined,
+        memo: recMemo || undefined,
+        amount: amt,
+        currency: recCurrency,
+        category_id: recCategoryId || undefined,
+        subcategory_id: recSubcategoryId || undefined,
+        fund_id: recFundId || undefined,
+        payment_method_id: recPaymentMethodId || undefined,
+        account_id: recAccountId || undefined,
+        from_account_id: recFromAccountId || undefined,
+        to_account_id: recToAccountId || undefined,
+        source_fund_id: recSourceFundId || undefined,
+        dest_fund_id: recDestFundId || undefined,
+        frequency: recFrequency,
+        start_date: recStartDate,
+        end_date: recEndDate || undefined,
+      })
+      toast({ title: "Recurring transaction created" })
+      setShowRecurringForm(false)
+      resetRecurringForm()
+      await loadRecurringData()
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Failed", description: err.message })
+    } finally {
+      setCreatingRecurring(false)
+    }
+  }
+
+  async function handleConfirmRecurring(inst: PendingInstance) {
+    try {
+      await confirmRecurring(inst.recurring_id, { occurrence_date: inst.occurrence_date })
+      toast({ title: `Confirmed: ${inst.name}` })
+      await loadRecurringData()
+      await loadAllTransactions()
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Failed to confirm", description: err.message })
+    }
+  }
+
+  async function handleSkipRecurring(inst: PendingInstance) {
+    try {
+      await skipRecurring(inst.recurring_id, { occurrence_date: inst.occurrence_date })
+      toast({ title: `Skipped: ${inst.name}` })
+      await loadRecurringData()
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Failed to skip", description: err.message })
+    }
+  }
+
+  async function toggleRecurringActive(t: RecurringTransaction) {
+    try {
+      await updateRecurringTransaction(t.id, { is_active: !t.is_active })
+      toast({ title: t.is_active ? "Paused" : "Resumed" })
+      await loadRecurringData()
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Failed", description: err.message })
+    }
+  }
+
+  async function handleDeleteRecurring(id: string) {
+    try {
+      await deleteRecurringTransaction(id)
+      toast({ title: "Recurring transaction deleted" })
+      setDeletingRecId(null)
+      await loadRecurringData()
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Failed to delete", description: err.message })
+    }
   }
 
   if (loading) {
@@ -367,13 +656,35 @@ export default function TransactionsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Transactions</h1>
-        <Button onClick={() => {
-          setShowForm(!showForm)
-          if (!showForm) setTxTimestamp(toLocalDatetime(new Date()))
-        }}>
-          {showForm ? "Cancel" : "+ New Transaction"}
-        </Button>
+        {activeMainTab === "transactions" ? (
+          <Button onClick={() => {
+            setShowForm(!showForm)
+            if (!showForm) setTxTimestamp(toLocalDatetime(new Date()))
+          }}>
+            {showForm ? "Cancel" : "+ New Transaction"}
+          </Button>
+        ) : (
+          <Button onClick={() => {
+            setShowRecurringForm(!showRecurringForm)
+            if (!showRecurringForm) setRecStartDate(new Date().toISOString().slice(0, 10))
+          }}>
+            {showRecurringForm ? "Cancel" : "+ New Recurring"}
+          </Button>
+        )}
       </div>
+
+      <Tabs value={activeMainTab} onValueChange={(v) => setActiveMainTab(v as "transactions" | "recurring")}>
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="transactions">Transactions</TabsTrigger>
+          <TabsTrigger value="recurring">
+            Recurring
+            {pendingInstances.length > 0 && (
+              <Badge variant="destructive" className="ml-2 text-xs">{pendingInstances.length}</Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="transactions" className="space-y-6">
 
       {/* New transaction form */}
       {showForm && (
@@ -422,9 +733,9 @@ export default function TransactionsPage() {
                 </div>
               </div>
 
-              {/* Category, Subcategory, Fund - only for income/expense */}
+              {/* Category, Subcategory, Fund, Payment Method - only for income/expense */}
               {txType !== "transfer" && (
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-4 gap-4">
                   <div className="space-y-2">
                     <Label>Category</Label>
                     <Select value={categoryId} onValueChange={setCategoryId}>
@@ -474,6 +785,25 @@ export default function TransactionsPage() {
                       </SelectContent>
                     </Select>
                   </div>
+                  <div className="space-y-2">
+                    <Label>Payment Method</Label>
+                    <Select value={paymentMethodId} onValueChange={(v) => {
+                      setPaymentMethodId(v)
+                      const pm = paymentMethods.find(p => p.id === v)
+                      if (pm?.linked_account_id && !accountId) {
+                        setAccountId(pm.linked_account_id)
+                      }
+                    }}>
+                      <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                      <SelectContent>
+                        {paymentMethods.filter(p => p.is_active).map((pm) => (
+                          <SelectItem key={pm.id} value={pm.id}>
+                            {pm.icon} {pm.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               )}
 
@@ -519,7 +849,12 @@ export default function TransactionsPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>From Account</Label>
-                      <Select value={fromAccountId} onValueChange={setFromAccountId}>
+                      <Select value={fromAccountId} onValueChange={(v) => {
+                        setFromAccountId(v)
+                        setSourceFundId(autoDetectFund(v))
+                        const acc = accounts.find((a) => a.id === v)
+                        if (acc) setTransferCurrency(acc.account_currency)
+                      }}>
                         <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
                         <SelectContent>
                           {regularAccounts.map((a) => (
@@ -530,7 +865,12 @@ export default function TransactionsPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>To Account</Label>
-                      <Select value={toAccountId} onValueChange={setToAccountId}>
+                      <Select value={toAccountId} onValueChange={(v) => {
+                        setToAccountId(v)
+                        setDestFundId(autoDetectFund(v))
+                        const acc = accounts.find((a) => a.id === v)
+                        if (acc) setToCurrency(acc.account_currency)
+                      }}>
                         <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
                         <SelectContent>
                           {regularAccounts.map((a) => (
@@ -540,9 +880,49 @@ export default function TransactionsPage() {
                       </Select>
                     </div>
                   </div>
+                  {/* Fund selection */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>Amount</Label>
+                      <Label>Source Fund</Label>
+                      <Select value={sourceFundId} onValueChange={setSourceFundId}>
+                        <SelectTrigger><SelectValue placeholder="Auto-detected" /></SelectTrigger>
+                        <SelectContent>
+                          {funds.map((f) => (
+                            <SelectItem key={f.id} value={f.id}>{f.emoji} {f.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Destination Fund</Label>
+                      <Select value={destFundId} onValueChange={setDestFundId}>
+                        <SelectTrigger><SelectValue placeholder="Auto-detected" /></SelectTrigger>
+                        <SelectContent>
+                          {funds.map((f) => (
+                            <SelectItem key={f.id} value={f.id}>{f.emoji} {f.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  {/* Payment Method */}
+                  <div className="space-y-2">
+                    <Label>Payment Method</Label>
+                    <Select value={paymentMethodId} onValueChange={setPaymentMethodId}>
+                      <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                      <SelectContent>
+                        {paymentMethods.filter(p => p.is_active).map((pm) => (
+                          <SelectItem key={pm.id} value={pm.id}>
+                            {pm.icon} {pm.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {/* Amount + Currency + FX */}
+                  <div className={`grid gap-4 ${isCrossCurrency ? "grid-cols-4" : "grid-cols-2"}`}>
+                    <div className="space-y-2">
+                      <Label>Amount Sent</Label>
                       <Input
                         type="number"
                         step="0.01"
@@ -556,7 +936,46 @@ export default function TransactionsPage() {
                       <Label>Currency</Label>
                       <Input value={transferCurrency} onChange={(e) => setTransferCurrency(e.target.value)} />
                     </div>
+                    {isCrossCurrency && (
+                      <>
+                        <div className="space-y-2">
+                          <Label>
+                            FX Rate ({fromAccount?.account_currency}&rarr;{toAccount?.account_currency})
+                            {fetchingRate && <span className="text-xs text-muted-foreground ml-1">fetching...</span>}
+                          </Label>
+                          <Input
+                            type="number"
+                            step="0.000001"
+                            placeholder="1.0"
+                            value={fxRate}
+                            onChange={(e) => setFxRate(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Amount Received ({toAccount?.account_currency})</Label>
+                          <Input
+                            disabled
+                            value={((parseFloat(transferAmount) || 0) * (parseFloat(fxRate) || 1)).toFixed(2)}
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
+                  {/* Transfer fee (optional, shown for cross-currency) */}
+                  {isCrossCurrency && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Transfer/FX Fee ({transferCurrency})</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00 (optional)"
+                          value={transferFee}
+                          onChange={(e) => setTransferFee(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -614,9 +1033,9 @@ export default function TransactionsPage() {
               </div>
             </div>
 
-            {/* Category, Subcategory, Fund - only for income/expense */}
+            {/* Category, Subcategory, Fund, Payment Method - only for income/expense */}
             {txType !== "transfer" && (
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-4 gap-4">
                 <div className="space-y-2">
                   <Label>Category</Label>
                   <Select value={categoryId} onValueChange={setCategoryId}>
@@ -666,6 +1085,42 @@ export default function TransactionsPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-2">
+                  <Label>Payment Method</Label>
+                  <Select value={paymentMethodId} onValueChange={(v) => {
+                    setPaymentMethodId(v)
+                    const pm = paymentMethods.find(p => p.id === v)
+                    if (pm?.linked_account_id && !accountId) {
+                      setAccountId(pm.linked_account_id)
+                    }
+                  }}>
+                    <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                    <SelectContent>
+                      {paymentMethods.filter(p => p.is_active).map((pm) => (
+                        <SelectItem key={pm.id} value={pm.id}>
+                          {pm.icon} {pm.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+
+            {/* Payment Method for transfers */}
+            {txType === "transfer" && (
+              <div className="space-y-2">
+                <Label>Payment Method</Label>
+                <Select value={paymentMethodId} onValueChange={setPaymentMethodId}>
+                  <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                  <SelectContent>
+                    {paymentMethods.filter(p => p.is_active).map((pm) => (
+                      <SelectItem key={pm.id} value={pm.id}>
+                        {pm.icon} {pm.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
 
@@ -759,12 +1214,128 @@ export default function TransactionsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Filters */}
+      <Card>
+        <CardContent className="py-3 px-4">
+          <div className="flex items-center justify-between">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              {showFilters ? "Hide Filters" : "Show Filters"}
+              {hasActiveFilters && (
+                <Badge variant="secondary" className="ml-2">
+                  {filteredTransactions.length} / {transactions.length}
+                </Badge>
+              )}
+            </Button>
+            {hasActiveFilters && (
+              <Button variant="outline" size="sm" onClick={clearAllFilters}>
+                Clear All Filters
+              </Button>
+            )}
+          </div>
+
+          {showFilters && (
+            <div className="mt-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">From Date</Label>
+                <Input
+                  type="date"
+                  value={filterDateFrom}
+                  onChange={(e) => setFilterDateFrom(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">To Date</Label>
+                <Input
+                  type="date"
+                  value={filterDateTo}
+                  onChange={(e) => setFilterDateTo(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Category</Label>
+                <Select
+                  value={filterCategoryId || "__all__"}
+                  onValueChange={(v) => setFilterCategoryId(v === "__all__" ? "" : v)}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="All categories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All categories</SelectItem>
+                    {categories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.emoji} {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Type</Label>
+                <Select
+                  value={filterType || "__all__"}
+                  onValueChange={(v) => setFilterType(v === "__all__" ? "" : v)}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="All types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All types</SelectItem>
+                    <SelectItem value="income">Income</SelectItem>
+                    <SelectItem value="expense">Expense</SelectItem>
+                    <SelectItem value="transfer">Transfer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Status</Label>
+                <Select
+                  value={filterStatus || "__all__"}
+                  onValueChange={(v) => setFilterStatus(v === "__all__" ? "" : v)}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="All statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All statuses</SelectItem>
+                    {TRANSACTION_STATUSES.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Payee</Label>
+                <Input
+                  type="text"
+                  placeholder="Search payee..."
+                  value={filterPayee}
+                  onChange={(e) => setFilterPayee(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Transaction list */}
       <Card>
         <CardContent className="p-0">
-          {transactions.length === 0 ? (
+          {filteredTransactions.length === 0 ? (
             <div className="py-12 text-center text-muted-foreground">
-              No transactions for this account.
+              {hasActiveFilters ? "No transactions match the current filters." : "No transactions yet."}
             </div>
           ) : (
             <Table>
@@ -774,6 +1345,7 @@ export default function TransactionsPage() {
                   <TableHead>Payee</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Fund</TableHead>
+                  <TableHead>Payment</TableHead>
                   <TableHead>Memo</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Account</TableHead>
@@ -782,30 +1354,49 @@ export default function TransactionsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {transactions.map((tx) => {
-                  // Find the non-External posting to show the real account
-                  const realPosting = tx.postings?.find((p) => {
-                    const acc = accounts.find((a) => a.id === p.account_id)
-                    return acc && acc.name !== "External"
-                  })
-                  const amt = realPosting ? Number(realPosting.amount) : 0
-                  const accountName = realPosting ? getAccountName(realPosting.account_id) : "-"
+                {filteredTransactions.map((tx) => {
+                  const isTransfer = tx.type === "transfer"
+                  let amt = 0
+                  let accountDisplay = "-"
+
+                  if (isTransfer) {
+                    const fromPosting = tx.postings?.find((p) => Number(p.amount) < 0)
+                    const toPosting = tx.postings?.find((p) => Number(p.amount) > 0)
+                    amt = toPosting ? Number(toPosting.amount) : 0
+                    const fromName = fromPosting ? getAccountName(fromPosting.account_id) : "?"
+                    const toName = toPosting ? getAccountName(toPosting.account_id) : "?"
+                    accountDisplay = `${fromName} → ${toName}`
+                  } else {
+                    const realPosting = tx.postings?.find((p) => {
+                      const acc = accounts.find((a) => a.id === p.account_id)
+                      return acc && acc.name !== "External"
+                    })
+                    amt = realPosting ? Number(realPosting.amount) : 0
+                    accountDisplay = realPosting ? getAccountName(realPosting.account_id) : "-"
+                  }
+
+                  const fundDisplay = isTransfer
+                    ? [getFundName(tx.source_fund_id), getFundName(tx.dest_fund_id)].filter(Boolean).join(" → ") || "-"
+                    : getFundName(tx.fund_id) || "-"
 
                   return (
                     <TableRow key={tx.id}>
                       <TableCell className="text-sm">{new Date(tx.timestamp).toLocaleDateString()}</TableCell>
                       <TableCell className="font-medium">{tx.payee}</TableCell>
                       <TableCell className="text-sm">
-                        {getCategoryName(tx.category_id) || <span className="text-muted-foreground">-</span>}
+                        {isTransfer ? <Badge variant="outline">Transfer</Badge> : (getCategoryName(tx.category_id) || <span className="text-muted-foreground">-</span>)}
                       </TableCell>
                       <TableCell className="text-sm">
-                        {getFundName(tx.fund_id) || <span className="text-muted-foreground">-</span>}
+                        {fundDisplay === "-" ? <span className="text-muted-foreground">-</span> : fundDisplay}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {getPaymentMethodName(tx.payment_method_id) || <span className="text-muted-foreground">-</span>}
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">{tx.memo}</TableCell>
                       <TableCell><Badge variant="secondary">{tx.status}</Badge></TableCell>
-                      <TableCell className="text-sm">{accountName}</TableCell>
-                      <TableCell className={`text-right font-mono ${amt < 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                        {amt < 0 ? "+" : "-"}{Math.abs(amt).toFixed(2)}
+                      <TableCell className="text-sm">{accountDisplay}</TableCell>
+                      <TableCell className={`text-right font-mono ${isTransfer ? "text-blue-600 dark:text-blue-400" : amt > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                        {isTransfer ? "" : amt > 0 ? "+" : ""}{amt.toFixed(2)}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -844,6 +1435,410 @@ export default function TransactionsPage() {
           )}
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="recurring" className="space-y-6">
+          {/* New Recurring Form */}
+          {showRecurringForm && (
+            <Card>
+              <CardHeader>
+                <CardTitle>New Recurring Transaction</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleCreateRecurring} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Name</Label>
+                      <Input value={recName} onChange={(e) => setRecName(e.target.value)} placeholder="e.g. Monthly Rent" required />
+                    </div>
+                    <div>
+                      <Label>Frequency</Label>
+                      <Select value={recFrequency} onValueChange={(v) => setRecFrequency(v as RecurringFrequency)}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {RECURRING_FREQUENCIES.map((f) => (
+                            <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Start Date</Label>
+                      <Input type="date" value={recStartDate} onChange={(e) => setRecStartDate(e.target.value)} required />
+                    </div>
+                    <div>
+                      <Label>End Date (optional)</Label>
+                      <Input type="date" value={recEndDate} onChange={(e) => setRecEndDate(e.target.value)} />
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <Tabs value={recTxType} onValueChange={(v) => setRecTxType(v as "income" | "expense" | "transfer")}>
+                    <TabsList className="grid w-full grid-cols-3">
+                      <TabsTrigger value="income">Income</TabsTrigger>
+                      <TabsTrigger value="expense">Expense</TabsTrigger>
+                      <TabsTrigger value="transfer">Transfer</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="income" className="space-y-4 pt-4">
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <Label>Account</Label>
+                          <Select value={recAccountId} onValueChange={setRecAccountId}>
+                            <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
+                            <SelectContent>
+                              {regularAccounts.map((a) => (
+                                <SelectItem key={a.id} value={a.id}>{a.name} ({a.account_currency})</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>Amount</Label>
+                          <Input type="number" step="0.01" min="0" value={recAmount} onChange={(e) => setRecAmount(e.target.value)} placeholder="0.00" required />
+                        </div>
+                        <div>
+                          <Label>Payee</Label>
+                          <Input value={recPayee} onChange={(e) => setRecPayee(e.target.value)} placeholder="e.g. Employer" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-4 gap-4">
+                        <div>
+                          <Label>Category</Label>
+                          <Select value={recCategoryId} onValueChange={setRecCategoryId}>
+                            <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                            <SelectContent>
+                              {categories.filter((c) => c.type === "income").map((c) => (
+                                <SelectItem key={c.id} value={c.id}>{c.emoji} {c.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>Subcategory</Label>
+                          <Select value={recSubcategoryId} onValueChange={setRecSubcategoryId} disabled={!recCategoryId}>
+                            <SelectTrigger><SelectValue placeholder={recCategoryId ? "Optional" : "Select category first"} /></SelectTrigger>
+                            <SelectContent>
+                              {recFilteredSubcategories.length === 0 ? (
+                                <SelectItem value="_none" disabled>No subcategories</SelectItem>
+                              ) : (
+                                recFilteredSubcategories.map((s) => (
+                                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>Fund</Label>
+                          <Select value={recFundId} onValueChange={setRecFundId}>
+                            <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                            <SelectContent>
+                              {funds.filter((f) => f.is_active).map((f) => (
+                                <SelectItem key={f.id} value={f.id}>{f.emoji} {f.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>Payment Method</Label>
+                          <Select value={recPaymentMethodId} onValueChange={setRecPaymentMethodId}>
+                            <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                            <SelectContent>
+                              {paymentMethods.filter((pm) => pm.is_active).map((pm) => (
+                                <SelectItem key={pm.id} value={pm.id}>{pm.icon} {pm.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="expense" className="space-y-4 pt-4">
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <Label>Account</Label>
+                          <Select value={recAccountId} onValueChange={setRecAccountId}>
+                            <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
+                            <SelectContent>
+                              {regularAccounts.map((a) => (
+                                <SelectItem key={a.id} value={a.id}>{a.name} ({a.account_currency})</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>Amount</Label>
+                          <Input type="number" step="0.01" min="0" value={recAmount} onChange={(e) => setRecAmount(e.target.value)} placeholder="0.00" required />
+                        </div>
+                        <div>
+                          <Label>Payee</Label>
+                          <Input value={recPayee} onChange={(e) => setRecPayee(e.target.value)} placeholder="e.g. Landlord" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <Label>Category</Label>
+                          <Select value={recCategoryId} onValueChange={setRecCategoryId}>
+                            <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                            <SelectContent>
+                              {categories.filter((c) => c.type === "expense").map((c) => (
+                                <SelectItem key={c.id} value={c.id}>{c.emoji} {c.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>Subcategory</Label>
+                          <Select value={recSubcategoryId} onValueChange={setRecSubcategoryId} disabled={!recCategoryId}>
+                            <SelectTrigger><SelectValue placeholder={recCategoryId ? "Optional" : "Select category first"} /></SelectTrigger>
+                            <SelectContent>
+                              {recFilteredSubcategories.length === 0 ? (
+                                <SelectItem value="_none" disabled>No subcategories</SelectItem>
+                              ) : (
+                                recFilteredSubcategories.map((s) => (
+                                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>Fund</Label>
+                          <Select value={recFundId} onValueChange={setRecFundId}>
+                            <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                            <SelectContent>
+                              {funds.filter((f) => f.is_active).map((f) => (
+                                <SelectItem key={f.id} value={f.id}>{f.emoji} {f.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>Payment Method</Label>
+                          <Select value={recPaymentMethodId} onValueChange={setRecPaymentMethodId}>
+                            <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                            <SelectContent>
+                              {paymentMethods.filter((pm) => pm.is_active).map((pm) => (
+                                <SelectItem key={pm.id} value={pm.id}>{pm.icon} {pm.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>Memo</Label>
+                          <Input value={recMemo} onChange={(e) => setRecMemo(e.target.value)} placeholder="Optional" />
+                        </div>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="transfer" className="space-y-4 pt-4">
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <Label>From Account</Label>
+                          <Select value={recFromAccountId} onValueChange={setRecFromAccountId}>
+                            <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
+                            <SelectContent>
+                              {regularAccounts.map((a) => (
+                                <SelectItem key={a.id} value={a.id}>{a.name} ({a.account_currency})</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>To Account</Label>
+                          <Select value={recToAccountId} onValueChange={setRecToAccountId}>
+                            <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
+                            <SelectContent>
+                              {regularAccounts.map((a) => (
+                                <SelectItem key={a.id} value={a.id}>{a.name} ({a.account_currency})</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>Amount</Label>
+                          <Input type="number" step="0.01" min="0" value={recAmount} onChange={(e) => setRecAmount(e.target.value)} placeholder="0.00" required />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <Label>Source Fund</Label>
+                          <Select value={recSourceFundId} onValueChange={setRecSourceFundId}>
+                            <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                            <SelectContent>
+                              {funds.filter((f) => f.is_active).map((f) => (
+                                <SelectItem key={f.id} value={f.id}>{f.emoji} {f.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>Destination Fund</Label>
+                          <Select value={recDestFundId} onValueChange={setRecDestFundId}>
+                            <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                            <SelectContent>
+                              {funds.filter((f) => f.is_active).map((f) => (
+                                <SelectItem key={f.id} value={f.id}>{f.emoji} {f.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>Payment Method</Label>
+                          <Select value={recPaymentMethodId} onValueChange={setRecPaymentMethodId}>
+                            <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                            <SelectContent>
+                              {paymentMethods.filter((pm) => pm.is_active).map((pm) => (
+                                <SelectItem key={pm.id} value={pm.id}>{pm.icon} {pm.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+
+                  <Button type="submit" className="w-full" disabled={creatingRecurring}>
+                    {creatingRecurring ? "Creating..." : "Create Recurring Transaction"}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Pending Instances */}
+          {pendingInstances.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Action Required ({pendingInstances.length})</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Due Date</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Payee</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pendingInstances.map((inst, idx) => (
+                      <TableRow key={`${inst.recurring_id}-${inst.occurrence_date}-${idx}`}>
+                        <TableCell className="text-sm">{new Date(inst.occurrence_date + "T00:00:00").toLocaleDateString()}</TableCell>
+                        <TableCell className="font-medium">{inst.name}</TableCell>
+                        <TableCell>
+                          <Badge variant={inst.transaction_type === "income" ? "default" : inst.transaction_type === "expense" ? "destructive" : "outline"}>
+                            {inst.transaction_type}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{inst.payee || "-"}</TableCell>
+                        <TableCell className="text-right font-mono">{inst.amount.toFixed(2)} {inst.currency}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button size="sm" onClick={() => handleConfirmRecurring(inst)}>Confirm</Button>
+                            <Button size="sm" variant="outline" onClick={() => handleSkipRecurring(inst)}>Skip</Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Recurring Templates */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Recurring Templates</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {recurringTemplates.length === 0 ? (
+                <div className="py-12 text-center text-muted-foreground">
+                  No recurring transactions yet. Create one to automate repeating transactions.
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Frequency</TableHead>
+                      <TableHead>Payee</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead>Next Due</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {recurringTemplates.map((t) => (
+                      <TableRow key={t.id}>
+                        <TableCell className="font-medium">{t.name}</TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">{t.transaction_type}</Badge>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {RECURRING_FREQUENCIES.find((f) => f.value === t.frequency)?.label || t.frequency}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{t.payee || "-"}</TableCell>
+                        <TableCell className="text-right font-mono">{t.amount.toFixed(2)} {t.currency}</TableCell>
+                        <TableCell className="text-sm">
+                          {t.is_active ? new Date(t.next_occurrence + "T00:00:00").toLocaleDateString() : "-"}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={t.is_active ? "default" : "secondary"}>
+                            {t.is_active ? "Active" : "Paused"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button variant="ghost" size="sm" onClick={() => toggleRecurringActive(t)}>
+                              {t.is_active ? "Pause" : "Resume"}
+                            </Button>
+                            <Dialog
+                              open={deletingRecId === t.id}
+                              onOpenChange={(open) => !open && setDeletingRecId(null)}
+                            >
+                              <DialogTrigger asChild>
+                                <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setDeletingRecId(t.id)}>
+                                  Delete
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Delete Recurring Transaction?</DialogTitle>
+                                </DialogHeader>
+                                <p className="text-sm text-muted-foreground">
+                                  Delete &quot;{t.name}&quot;? This cannot be undone.
+                                </p>
+                                <DialogFooter>
+                                  <Button variant="outline" onClick={() => setDeletingRecId(null)}>Cancel</Button>
+                                  <Button variant="destructive" onClick={() => handleDeleteRecurring(t.id)}>Delete</Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

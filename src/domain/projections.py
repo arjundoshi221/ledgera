@@ -8,11 +8,20 @@ from dateutil.relativedelta import relativedelta
 
 
 @dataclass
+class SubcategoryBudget:
+    """Budget allocation for a subcategory within a category"""
+    subcategory_id: str
+    monthly_amount: Decimal
+    inflation_override: Optional[Decimal] = None
+
+
+@dataclass
 class CategoryBudget:
     """Budget allocation for a category"""
     category_id: str  # References existing Category in database
     monthly_amount: Decimal
     inflation_override: Optional[Decimal] = None  # Per-category inflation (overrides global)
+    subcategory_budgets: List['SubcategoryBudget'] = field(default_factory=list)
 
 
 @dataclass
@@ -247,13 +256,31 @@ class ProjectionEngine:
             # Category-based expenses (preferred method)
             for category_budget in self.assumptions.category_budgets:
                 # Use per-category inflation if specified, otherwise global
-                inflation_rate = category_budget.inflation_override or self.assumptions.expense_inflation_rate
-                inflation_rate_float = float(inflation_rate)
-                inflation_factor = Decimal(str((1 + inflation_rate_float) ** (month_index / 12)))
+                cat_inflation_rate = category_budget.inflation_override or self.assumptions.expense_inflation_rate
 
-                category_expense = category_budget.monthly_amount * inflation_factor
-                expense_breakdown[category_budget.category_id] = category_expense
-                expenses += category_expense
+                if category_budget.subcategory_budgets:
+                    # Subcategory-level breakdown
+                    category_total = Decimal(0)
+                    for sub_budget in category_budget.subcategory_budgets:
+                        # Subcategory inflation: sub override > category override > global
+                        sub_inflation = sub_budget.inflation_override or cat_inflation_rate
+                        inflation_rate_float = float(sub_inflation)
+                        inflation_factor = Decimal(str((1 + inflation_rate_float) ** (month_index / 12)))
+
+                        sub_expense = sub_budget.monthly_amount * inflation_factor
+                        composite_key = f"{category_budget.category_id}:{sub_budget.subcategory_id}"
+                        expense_breakdown[composite_key] = sub_expense
+                        category_total += sub_expense
+
+                    expense_breakdown[category_budget.category_id] = category_total
+                    expenses += category_total
+                else:
+                    # Category-level only (existing behavior)
+                    inflation_rate_float = float(cat_inflation_rate)
+                    inflation_factor = Decimal(str((1 + inflation_rate_float) ** (month_index / 12)))
+                    category_expense = category_budget.monthly_amount * inflation_factor
+                    expense_breakdown[category_budget.category_id] = category_expense
+                    expenses += category_expense
         elif self.assumptions.monthly_expenses is not None:
             # Legacy flat expenses (backward compatibility)
             inflation_rate_float = float(self.assumptions.expense_inflation_rate)

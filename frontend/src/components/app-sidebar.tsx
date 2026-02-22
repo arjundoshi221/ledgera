@@ -3,16 +3,18 @@
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { clearAuth } from "@/lib/auth"
+import { clearAuth, isAdmin } from "@/lib/auth"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboardIcon },
+  { href: "/portfolio", label: "Portfolio", icon: BriefcaseIcon },
   { href: "/accounts", label: "Accounts", icon: WalletIcon },
   { href: "/transactions", label: "Transactions", icon: ArrowLeftRightIcon },
-  { href: "/expense-split", label: "Expense Split", icon: PieChartIcon },
+  { href: "/expense-split", label: "Monthly Dashboard", icon: PieChartIcon },
   { href: "/income-allocation", label: "Income Allocation", icon: ColumnsIcon },
+  { href: "/fund-tracker", label: "Fund Tracker", icon: BarChart3Icon },
   { href: "/projections", label: "Projections", icon: TrendingUpIcon },
   { href: "/settings", label: "Settings", icon: SettingsIcon },
 ]
@@ -54,7 +56,16 @@ export function AppSidebar() {
         })}
       </nav>
       <Separator />
-      <div className="p-3">
+      <div className="space-y-1 p-3">
+        {isAdmin() && (
+          <Link
+            href="/admin"
+            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors text-red-600 hover:bg-sidebar-accent hover:text-red-700"
+          >
+            <ShieldIcon className="h-4 w-4" />
+            Admin Panel
+          </Link>
+        )}
         <Button
           variant="ghost"
           className="w-full justify-start gap-3 text-sidebar-foreground/70"
@@ -145,6 +156,34 @@ function ColumnsIcon({ className }: { className?: string }) {
       <path d="M12 3v18" />
       <path d="M3 9h6v6H3z" />
       <path d="M15 9h6v6h-6z" />
+    </svg>
+  )
+}
+
+function BarChart3Icon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M3 3v18h18" />
+      <path d="M18 17V9" />
+      <path d="M13 17V5" />
+      <path d="M8 17v-3" />
+    </svg>
+  )
+}
+
+function BriefcaseIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+      <rect width="20" height="14" x="2" y="6" rx="2" />
+    </svg>
+  )
+}
+
+function ShieldIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
     </svg>
   )
 }

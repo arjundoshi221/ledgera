@@ -47,4 +47,26 @@ class AuthMiddleware(BaseHTTPMiddleware):
         request.state.user_id = str(user_id)
         request.state.workspace_id = str(workspace_id)
 
+        # Block disabled users from accessing any endpoint
+        try:
+            from src.data.database import get_session as _get_session
+            from src.data.models import UserModel
+            gen = _get_session()
+            db = next(gen)
+            disabled = db.query(UserModel.id).filter(
+                UserModel.id == str(user_id),
+                UserModel.is_disabled == True  # noqa: E712
+            ).first()
+            try:
+                gen.close()
+            except StopIteration:
+                pass
+            if disabled:
+                return JSONResponse(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    content={"detail": "Account is disabled. Contact support."},
+                )
+        except Exception:
+            pass  # Don't block requests if check fails
+
         return await call_next(request)

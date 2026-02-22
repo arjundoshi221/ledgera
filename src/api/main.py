@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.data.database import init_db
 from .schemas import HealthResponse
-from .routes import accounts, transactions, projections, prices, auth, workspace, categories, analytics
+from .routes import accounts, transactions, projections, prices, auth, workspace, categories, analytics, payments, recurring, admin
 from .middleware import AuthMiddleware
 
 
@@ -54,8 +54,12 @@ app.include_router(transactions.router, prefix="/api/v1/transactions", tags=["tr
 app.include_router(projections.router, prefix="/api/v1/projections", tags=["projections"])
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"])
 app.include_router(prices.router, prefix="/api/v1/prices", tags=["prices"])
+app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"])
+app.include_router(recurring.router, prefix="/api/v1/recurring", tags=["recurring"])
+app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)

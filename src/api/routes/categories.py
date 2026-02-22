@@ -199,6 +199,30 @@ def delete_subcategory(
 # Funds
 # =====================
 
+def _build_fund_response(fund: FundModel) -> dict:
+    """Build a FundResponse dict with linked accounts and allocation %."""
+    return {
+        "id": fund.id,
+        "name": fund.name,
+        "emoji": fund.emoji,
+        "description": fund.description,
+        "allocation_percentage": fund.allocation_percentage,
+        "is_active": fund.is_active,
+        "is_system": fund.is_system,
+        "created_at": fund.created_at,
+        "linked_accounts": [
+            {
+                "id": link.account.id,
+                "name": link.account.name,
+                "institution": link.account.institution,
+                "account_currency": link.account.account_currency,
+                "allocation_percentage": link.allocation_percentage,
+            }
+            for link in (fund.account_links or [])
+        ],
+    }
+
+
 @router.post("/funds", response_model=FundResponse)
 def create_fund(
     fund: FundCreate,
@@ -213,11 +237,21 @@ def create_fund(
         description=fund.description,
         allocation_percentage=fund.allocation_percentage
     )
-    
+
     repo = FundRepository(session)
     repo.create(db_fund)
-    
-    return db_fund
+
+    # Prefer account_allocations over legacy account_ids
+    allocations = fund.account_allocations or [
+        {"account_id": aid, "allocation_percentage": 100} for aid in fund.account_ids
+    ]
+    if allocations:
+        try:
+            repo.set_account_links(db_fund, [a.dict() if hasattr(a, 'dict') else a for a in allocations], workspace_id)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    return _build_fund_response(db_fund)
 
 
 @router.get("/funds", response_model=list[FundResponse])
@@ -228,8 +262,8 @@ def list_funds(
     """List all active funds in the current workspace"""
     repo = FundRepository(session)
     funds = repo.read_by_workspace(workspace_id)
-    
-    return funds
+
+    return [_build_fund_response(f) for f in funds]
 
 
 @router.get("/funds/{fund_id}", response_model=FundResponse)
@@ -241,11 +275,11 @@ def get_fund(
     """Get fund by ID"""
     repo = FundRepository(session)
     fund = repo.read(fund_id)
-    
+
     if not fund or fund.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Fund not found")
-    
-    return fund
+
+    return _build_fund_response(fund)
 
 
 @router.put("/funds/{fund_id}", response_model=FundResponse)
@@ -258,17 +292,26 @@ def update_fund(
     """Update fund"""
     repo = FundRepository(session)
     fund = repo.read(fund_id)
-    
+
     if not fund or fund.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Fund not found")
-    
+
     fund.name = fund_data.name
     fund.emoji = fund_data.emoji
     fund.description = fund_data.description
     fund.allocation_percentage = fund_data.allocation_percentage
-    
+
+    # Prefer account_allocations over legacy account_ids
+    allocations = fund_data.account_allocations or [
+        {"account_id": aid, "allocation_percentage": 100} for aid in fund_data.account_ids
+    ]
+    try:
+        repo.set_account_links(fund, [a.dict() if hasattr(a, 'dict') else a for a in allocations], workspace_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     repo.update(fund)
-    return fund
+    return _build_fund_response(fund)
 
 
 @router.delete("/funds/{fund_id}")
@@ -283,6 +326,9 @@ def delete_fund(
 
     if not fund or fund.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Fund not found")
+
+    if fund.is_system:
+        raise HTTPException(status_code=400, detail="System funds cannot be deleted")
 
     repo.delete(fund_id)
     return {"message": "Fund deleted"}
@@ -343,6 +389,9 @@ def delete_category(
 
     if not category or category.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Category not found")
+
+    if category.is_system:
+        raise HTTPException(status_code=400, detail="System categories cannot be deleted")
 
     repo.delete(category_id)
     return {"message": "Category deleted"}

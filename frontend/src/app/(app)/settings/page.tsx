@@ -8,9 +8,11 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Separator } from "@/components/ui/separator"
+import { getCountryName } from "@/lib/countries"
 import { useToast } from "@/components/ui/use-toast"
 import {
   getWorkspace,
@@ -31,11 +33,19 @@ import {
   createFund,
   updateFund,
   deleteFund,
+  getCards,
+  createCard,
+  updateCard,
+  deleteCard,
+  getPaymentMethods,
+  createPaymentMethod,
+  updatePaymentMethod,
+  deletePaymentMethod,
 } from "@/lib/api"
 import { clearAuth } from "@/lib/auth"
 import { useRouter } from "next/navigation"
-import { CURRENCIES, ACCOUNT_TYPES } from "@/lib/constants"
-import type { Workspace, UserResponse, Account, AccountType, Category, Subcategory, Fund } from "@/lib/types"
+import { CURRENCIES, ACCOUNT_TYPES, CARD_TYPES, CARD_NETWORKS } from "@/lib/constants"
+import type { Workspace, UserResponse, Account, AccountType, Category, Subcategory, Fund, Card as CardType, PaymentMethod } from "@/lib/types"
 
 export default function SettingsPage() {
   const { toast } = useToast()
@@ -83,18 +93,43 @@ export default function SettingsPage() {
   const [fundName, setFundName] = useState("")
   const [fundEmoji, setFundEmoji] = useState("")
   const [fundAllocation, setFundAllocation] = useState("0")
+  const [fundAccountAllocations, setFundAccountAllocations] = useState<{ account_id: string; allocation_percentage: number }[]>([])
   const [deletingFundId, setDeletingFundId] = useState<string | null>(null)
+
+  // Cards
+  const [cards, setCards] = useState<CardType[]>([])
+  const [cardDialogOpen, setCardDialogOpen] = useState(false)
+  const [editingCard, setEditingCard] = useState<CardType | null>(null)
+  const [cardName, setCardName] = useState("")
+  const [cardType, setCardType] = useState<"credit" | "debit">("debit")
+  const [cardNetwork, setCardNetwork] = useState("")
+  const [cardCustomNetwork, setCardCustomNetwork] = useState("")
+  const [cardLastFour, setCardLastFour] = useState("")
+  const [cardAccountId, setCardAccountId] = useState("")
+  const [deletingCardId, setDeletingCardId] = useState<string | null>(null)
+
+  // Payment Methods
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
+  const [pmDialogOpen, setPmDialogOpen] = useState(false)
+  const [editingPm, setEditingPm] = useState<PaymentMethod | null>(null)
+  const [pmName, setPmName] = useState("")
+  const [pmIcon, setPmIcon] = useState("")
+  const [pmMethodType, setPmMethodType] = useState<"digital_wallet" | "custom">("custom")
+  const [pmLinkedAccountId, setPmLinkedAccountId] = useState("")
+  const [deletingPmId, setDeletingPmId] = useState<string | null>(null)
 
   async function loadData(isInitial = false) {
     try {
       if (isInitial) setLoading(true)
-      const [ws, me, accts, cats, subs, fnds] = await Promise.all([
+      const [ws, me, accts, cats, subs, fnds, crds, pms] = await Promise.all([
         getWorkspace(),
         getMe(),
         getAccounts(),
         getCategories(),
         getSubcategories(),
         getFunds(),
+        getCards(),
+        getPaymentMethods(),
       ])
       setWorkspace(ws)
       setUser(me)
@@ -104,6 +139,8 @@ export default function SettingsPage() {
       setCategories(cats)
       setSubcategories(subs)
       setFunds(fnds)
+      setCards(crds)
+      setPaymentMethods(pms)
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to load settings", description: err.message })
     } finally {
@@ -272,6 +309,7 @@ export default function SettingsPage() {
     setFundName("")
     setFundEmoji("")
     setFundAllocation("0")
+    setFundAccountAllocations([])
     setFundDialogOpen(true)
   }
 
@@ -280,6 +318,12 @@ export default function SettingsPage() {
     setFundName(fund.name)
     setFundEmoji(fund.emoji || "")
     setFundAllocation(String(fund.allocation_percentage))
+    setFundAccountAllocations(
+      (fund.linked_accounts || []).map(a => ({
+        account_id: a.id,
+        allocation_percentage: Number(a.allocation_percentage) || 100,
+      }))
+    )
     setFundDialogOpen(true)
   }
 
@@ -290,6 +334,7 @@ export default function SettingsPage() {
         name: fundName,
         emoji: fundEmoji,
         allocation_percentage: parseFloat(fundAllocation) || 0,
+        account_allocations: fundAccountAllocations,
       }
       if (editingFund) {
         await updateFund(editingFund.id, data)
@@ -310,6 +355,126 @@ export default function SettingsPage() {
       await deleteFund(id)
       toast({ title: "Fund deleted" })
       setDeletingFundId(null)
+      loadData()
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Failed to delete", description: err.message })
+    }
+  }
+
+  // ── Cards ──
+
+  function openCreateCard() {
+    setEditingCard(null)
+    setCardName("")
+    setCardType("debit")
+    setCardNetwork("")
+    setCardCustomNetwork("")
+    setCardLastFour("")
+    setCardAccountId("")
+    setCardDialogOpen(true)
+  }
+
+  function openEditCard(card: CardType) {
+    setEditingCard(card)
+    setCardName(card.card_name)
+    setCardType(card.card_type)
+    const knownNetwork = CARD_NETWORKS.some(n => n.value === card.card_network)
+    if (card.card_network && !knownNetwork) {
+      setCardNetwork("other")
+      setCardCustomNetwork(card.card_network)
+    } else {
+      setCardNetwork(card.card_network || "")
+      setCardCustomNetwork("")
+    }
+    setCardLastFour(card.last_four || "")
+    setCardAccountId(card.account_id)
+    setCardDialogOpen(true)
+  }
+
+  async function handleSaveCard(e: React.FormEvent) {
+    e.preventDefault()
+    try {
+      const resolvedNetwork = cardNetwork === "other" ? cardCustomNetwork.trim() : cardNetwork
+      const data = {
+        account_id: cardAccountId,
+        card_name: cardName,
+        card_type: cardType,
+        card_network: resolvedNetwork || undefined,
+        last_four: cardLastFour || undefined,
+      }
+      if (editingCard) {
+        await updateCard(editingCard.id, data)
+        toast({ title: "Card updated" })
+      } else {
+        await createCard(data)
+        toast({ title: "Card created" })
+      }
+      setCardDialogOpen(false)
+      loadData()
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Failed", description: err.message })
+    }
+  }
+
+  async function handleDeleteCard(id: string) {
+    try {
+      await deleteCard(id)
+      toast({ title: "Card deleted" })
+      setDeletingCardId(null)
+      loadData()
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Failed to delete", description: err.message })
+    }
+  }
+
+  // ── Payment Methods ──
+
+  function openCreatePm() {
+    setEditingPm(null)
+    setPmName("")
+    setPmIcon("")
+    setPmMethodType("custom")
+    setPmLinkedAccountId("")
+    setPmDialogOpen(true)
+  }
+
+  function openEditPm(pm: PaymentMethod) {
+    setEditingPm(pm)
+    setPmName(pm.name)
+    setPmIcon(pm.icon || "")
+    setPmMethodType(pm.method_type as "digital_wallet" | "custom")
+    setPmLinkedAccountId(pm.linked_account_id || "")
+    setPmDialogOpen(true)
+  }
+
+  async function handleSavePm(e: React.FormEvent) {
+    e.preventDefault()
+    try {
+      const data = {
+        name: pmName,
+        method_type: pmMethodType,
+        icon: pmIcon || undefined,
+        linked_account_id: pmLinkedAccountId || undefined,
+      }
+      if (editingPm) {
+        await updatePaymentMethod(editingPm.id, data)
+        toast({ title: "Payment method updated" })
+      } else {
+        await createPaymentMethod(data)
+        toast({ title: "Payment method created" })
+      }
+      setPmDialogOpen(false)
+      loadData()
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Failed", description: err.message })
+    }
+  }
+
+  async function handleDeletePm(id: string) {
+    try {
+      await deletePaymentMethod(id)
+      toast({ title: "Payment method deleted" })
+      setDeletingPmId(null)
       loadData()
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to delete", description: err.message })
@@ -356,28 +521,32 @@ export default function SettingsPage() {
                         <Button variant="ghost" size="sm" onClick={() => openEditCategory(cat)}>
                           Edit
                         </Button>
-                        <Dialog
-                          open={deletingCategoryId === cat.id}
-                          onOpenChange={(open) => !open && setDeletingCategoryId(null)}
-                        >
-                          <DialogTrigger asChild>
-                            <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setDeletingCategoryId(cat.id)}>
-                              Delete
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>Delete Category?</DialogTitle>
-                            </DialogHeader>
-                            <p className="text-sm text-muted-foreground">
-                              Delete &quot;{cat.name}&quot; and all its subcategories? This cannot be undone.
-                            </p>
-                            <DialogFooter>
-                              <Button variant="outline" onClick={() => setDeletingCategoryId(null)}>Cancel</Button>
-                              <Button variant="destructive" onClick={() => handleDeleteCategory(cat.id)}>Delete</Button>
-                            </DialogFooter>
-                          </DialogContent>
-                        </Dialog>
+                        {cat.is_system ? (
+                          <Badge variant="outline" className="text-xs text-muted-foreground">System</Badge>
+                        ) : (
+                          <Dialog
+                            open={deletingCategoryId === cat.id}
+                            onOpenChange={(open) => !open && setDeletingCategoryId(null)}
+                          >
+                            <DialogTrigger asChild>
+                              <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setDeletingCategoryId(cat.id)}>
+                                Delete
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Delete Category?</DialogTitle>
+                              </DialogHeader>
+                              <p className="text-sm text-muted-foreground">
+                                Delete &quot;{cat.name}&quot; and all its subcategories? This cannot be undone.
+                              </p>
+                              <DialogFooter>
+                                <Button variant="outline" onClick={() => setDeletingCategoryId(null)}>Cancel</Button>
+                                <Button variant="destructive" onClick={() => handleDeleteCategory(cat.id)}>Delete</Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
+                        )}
                       </div>
                     </div>
                     <div className="space-y-1">
@@ -443,6 +612,8 @@ export default function SettingsPage() {
         <TabsList>
           <TabsTrigger value="workspace">Workspace</TabsTrigger>
           <TabsTrigger value="accounts">Accounts</TabsTrigger>
+          <TabsTrigger value="cards">Cards</TabsTrigger>
+          <TabsTrigger value="payment-methods">Payment Methods</TabsTrigger>
           <TabsTrigger value="categories">Categories</TabsTrigger>
           <TabsTrigger value="funds">Funds</TabsTrigger>
         </TabsList>
@@ -497,8 +668,114 @@ export default function SettingsPage() {
                     </div>
                     <Separator />
                     <div>
-                      <Label className="text-xs text-muted-foreground">Display Name</Label>
-                      <p className="text-sm font-medium">{user.display_name || "Not set"}</p>
+                      <Label className="text-xs text-muted-foreground">Name</Label>
+                      <p className="text-sm font-medium">
+                        {user.first_name || user.last_name
+                          ? `${user.first_name} ${user.last_name}`.trim()
+                          : "Not set"}
+                      </p>
+                    </div>
+                    <Separator />
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Date of Birth</Label>
+                      <p className="text-sm font-medium">{user.date_of_birth || "Not set"}</p>
+                    </div>
+                    <Separator />
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Phone</Label>
+                      <p className="text-sm font-medium">
+                        {user.phone_country_code && user.phone_number
+                          ? `${user.phone_country_code} ${user.phone_number}`
+                          : "Not set"}
+                      </p>
+                    </div>
+                    <Separator />
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Address</Label>
+                      <p className="text-sm font-medium">
+                        {user.address_line1
+                          ? [
+                              user.address_line1,
+                              user.address_line2,
+                              [user.address_city, user.address_state].filter(Boolean).join(", "),
+                              user.address_postal_code,
+                              user.address_country ? getCountryName(user.address_country) : null,
+                            ].filter(Boolean).join(", ")
+                          : "Not set"}
+                      </p>
+                    </div>
+                    <Separator />
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Nationalities</Label>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {user.nationalities && user.nationalities.length > 0
+                          ? user.nationalities.map((code) => (
+                              <Badge key={code} variant="secondary" className="text-xs">
+                                {getCountryName(code)}
+                              </Badge>
+                            ))
+                          : <p className="text-sm text-muted-foreground">Not set</p>
+                        }
+                      </div>
+                    </div>
+                    <Separator />
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Tax Residencies</Label>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {user.tax_residencies && user.tax_residencies.length > 0
+                          ? user.tax_residencies.map((code) => (
+                              <Badge key={code} variant="secondary" className="text-xs">
+                                {getCountryName(code)}
+                              </Badge>
+                            ))
+                          : <p className="text-sm text-muted-foreground">Not set</p>
+                        }
+                      </div>
+                    </div>
+                    <Separator />
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Countries of Interest</Label>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {user.countries_of_interest && user.countries_of_interest.length > 0
+                          ? user.countries_of_interest.map((code) => (
+                              <Badge key={code} variant="secondary" className="text-xs">
+                                {getCountryName(code)}
+                              </Badge>
+                            ))
+                          : <p className="text-sm text-muted-foreground">None</p>
+                        }
+                      </div>
+                    </div>
+                    <Separator />
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Tax ID Number</Label>
+                      <p className="text-sm font-medium">
+                        {user.tax_id_number
+                          ? `${"*".repeat(Math.max(0, user.tax_id_number.length - 4))}${user.tax_id_number.slice(-4)}`
+                          : "Not set"}
+                      </p>
+                    </div>
+                    <Separator />
+                    <div>
+                      <Label className="text-xs text-muted-foreground">US Person (FATCA)</Label>
+                      <p className="text-sm font-medium">{user.is_us_person ? "Yes" : "No"}</p>
+                    </div>
+                    <Separator />
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Terms of Service</Label>
+                      <p className="text-sm font-medium">
+                        {user.tos_accepted_at
+                          ? `Accepted on ${new Date(user.tos_accepted_at).toLocaleDateString()} (v${user.tos_version || "1.0"})`
+                          : "Not accepted"}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Privacy Policy</Label>
+                      <p className="text-sm font-medium">
+                        {user.privacy_accepted_at
+                          ? `Accepted on ${new Date(user.privacy_accepted_at).toLocaleDateString()}`
+                          : "Not accepted"}
+                      </p>
                     </div>
                     <Separator />
                     <Button variant="destructive" onClick={handleLogout} className="w-full">
@@ -583,6 +860,159 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
+        {/* Cards Tab */}
+        <TabsContent value="cards">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Credit & Debit Cards</CardTitle>
+                <CardDescription>Manage cards linked to your accounts</CardDescription>
+              </div>
+              <Button onClick={openCreateCard}>+ Add Card</Button>
+            </CardHeader>
+            <CardContent>
+              {cards.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Card Name</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Network</TableHead>
+                      <TableHead>Last 4</TableHead>
+                      <TableHead>Linked Account</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {cards.map((card) => {
+                      const linkedAcc = accounts.find((a) => a.id === card.account_id)
+                      return (
+                        <TableRow key={card.id}>
+                          <TableCell className="font-medium">{card.card_name}</TableCell>
+                          <TableCell>
+                            <Badge variant={card.card_type === "credit" ? "default" : "secondary"}>
+                              {card.card_type}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {card.card_network || "\u2014"}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {card.last_four ? `****${card.last_four}` : "\u2014"}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {linkedAcc ? linkedAcc.name : "\u2014"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button variant="ghost" size="sm" onClick={() => openEditCard(card)}>
+                                Edit
+                              </Button>
+                              <Dialog
+                                open={deletingCardId === card.id}
+                                onOpenChange={(open) => !open && setDeletingCardId(null)}
+                              >
+                                <DialogTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setDeletingCardId(card.id)}>
+                                    Delete
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>Delete Card?</DialogTitle>
+                                  </DialogHeader>
+                                  <p className="text-sm text-muted-foreground">
+                                    Delete &quot;{card.card_name}&quot;? Its associated payment method will also be removed.
+                                  </p>
+                                  <DialogFooter>
+                                    <Button variant="outline" onClick={() => setDeletingCardId(null)}>Cancel</Button>
+                                    <Button variant="destructive" onClick={() => handleDeleteCard(card.id)}>Delete</Button>
+                                  </DialogFooter>
+                                </DialogContent>
+                              </Dialog>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              ) : (
+                <p className="text-muted-foreground text-center py-8">No cards yet. Add one to get started!</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Payment Methods Tab */}
+        <TabsContent value="payment-methods">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Payment Methods</CardTitle>
+                <CardDescription>Manage how you pay for transactions</CardDescription>
+              </div>
+              <Button onClick={openCreatePm}>+ Add Method</Button>
+            </CardHeader>
+            <CardContent>
+              {paymentMethods.filter(pm => pm.is_active).length > 0 ? (
+                <div className="space-y-3">
+                  {paymentMethods.filter(pm => pm.is_active).map((pm) => {
+                    const linkedAcc = pm.linked_account_id ? accounts.find(a => a.id === pm.linked_account_id) : null
+                    return (
+                      <div key={pm.id} className="flex items-center justify-between border rounded-lg p-4">
+                        <div className="flex items-center gap-3">
+                          <span className="text-xl">{pm.icon || "\U0001f4b0"}</span>
+                          <div>
+                            <p className="font-medium">{pm.name}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Badge variant="outline" className="text-xs">{pm.method_type.replace("_", " ")}</Badge>
+                              {pm.is_system && <Badge variant="secondary" className="text-xs">System</Badge>}
+                              {pm.card_id && <Badge variant="secondary" className="text-xs">Card</Badge>}
+                              {linkedAcc && (
+                                <span className="text-xs text-muted-foreground">{linkedAcc.name}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {!pm.is_system && !pm.card_id && (
+                            <>
+                              <Button variant="ghost" size="sm" onClick={() => openEditPm(pm)}>Edit</Button>
+                              <Dialog
+                                open={deletingPmId === pm.id}
+                                onOpenChange={(open) => !open && setDeletingPmId(null)}
+                              >
+                                <DialogTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setDeletingPmId(pm.id)}>
+                                    Delete
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>Delete Payment Method?</DialogTitle>
+                                  </DialogHeader>
+                                  <p className="text-sm text-muted-foreground">Delete &quot;{pm.name}&quot;?</p>
+                                  <DialogFooter>
+                                    <Button variant="outline" onClick={() => setDeletingPmId(null)}>Cancel</Button>
+                                    <Button variant="destructive" onClick={() => handleDeletePm(pm.id)}>Delete</Button>
+                                  </DialogFooter>
+                                </DialogContent>
+                              </Dialog>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-center py-8">No payment methods yet.</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* Categories Tab */}
         <TabsContent value="categories">
           <div className="space-y-6">
@@ -615,6 +1045,18 @@ export default function SettingsPage() {
                       {fund.description && (
                         <p className="text-sm text-muted-foreground mb-3">{fund.description}</p>
                       )}
+                      {fund.linked_accounts && fund.linked_accounts.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-3">
+                          {fund.linked_accounts.map(acc => (
+                            <Badge key={acc.id} variant="outline" className="text-xs">
+                              {acc.name}
+                              {fund.linked_accounts.length > 1 && (
+                                <span className="ml-1 text-muted-foreground">({acc.allocation_percentage}%)</span>
+                              )}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
                       <div className="flex items-center justify-between mt-3">
                         <p className="text-xs text-muted-foreground">
                           Created {new Date(fund.created_at).toLocaleDateString()}
@@ -623,26 +1065,30 @@ export default function SettingsPage() {
                           <Button variant="ghost" size="sm" onClick={() => openEditFund(fund)}>
                             Edit
                           </Button>
-                          <Dialog
-                            open={deletingFundId === fund.id}
-                            onOpenChange={(open) => !open && setDeletingFundId(null)}
-                          >
-                            <DialogTrigger asChild>
-                              <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setDeletingFundId(fund.id)}>
-                                Delete
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Delete Fund?</DialogTitle>
-                              </DialogHeader>
-                              <p className="text-sm text-muted-foreground">Delete &quot;{fund.name}&quot;? This cannot be undone.</p>
-                              <DialogFooter>
-                                <Button variant="outline" onClick={() => setDeletingFundId(null)}>Cancel</Button>
-                                <Button variant="destructive" onClick={() => handleDeleteFund(fund.id)}>Delete</Button>
-                              </DialogFooter>
-                            </DialogContent>
-                          </Dialog>
+                          {fund.is_system ? (
+                            <Badge variant="outline" className="text-xs text-muted-foreground">System</Badge>
+                          ) : (
+                            <Dialog
+                              open={deletingFundId === fund.id}
+                              onOpenChange={(open) => !open && setDeletingFundId(null)}
+                            >
+                              <DialogTrigger asChild>
+                                <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setDeletingFundId(fund.id)}>
+                                  Delete
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Delete Fund?</DialogTitle>
+                                </DialogHeader>
+                                <p className="text-sm text-muted-foreground">Delete &quot;{fund.name}&quot;? This cannot be undone.</p>
+                                <DialogFooter>
+                                  <Button variant="outline" onClick={() => setDeletingFundId(null)}>Cancel</Button>
+                                  <Button variant="destructive" onClick={() => handleDeleteFund(fund.id)}>Delete</Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -754,6 +1200,127 @@ export default function SettingsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Card create/edit dialog */}
+      <Dialog open={cardDialogOpen} onOpenChange={setCardDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingCard ? "Edit Card" : "Add Card"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveCard} className="space-y-4">
+            <div>
+              <Label>Card Name</Label>
+              <Input value={cardName} onChange={(e) => setCardName(e.target.value)} placeholder="e.g. DBS Visa Debit" required />
+            </div>
+            <div>
+              <Label>Card Type</Label>
+              <Select value={cardType} onValueChange={(v) => setCardType(v as "credit" | "debit")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CARD_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Card Network (optional)</Label>
+              <Select value={cardNetwork} onValueChange={(v) => { setCardNetwork(v); if (v !== "other") setCardCustomNetwork("") }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select network" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CARD_NETWORKS.map((n) => (
+                    <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {cardNetwork === "other" && (
+                <Input
+                  className="mt-2"
+                  value={cardCustomNetwork}
+                  onChange={(e) => setCardCustomNetwork(e.target.value)}
+                  placeholder="Enter card network name"
+                />
+              )}
+            </div>
+            <div>
+              <Label>Last 4 Digits (optional)</Label>
+              <Input value={cardLastFour} onChange={(e) => setCardLastFour(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="1234" maxLength={4} />
+            </div>
+            <div>
+              <Label>Linked Account</Label>
+              <Select value={cardAccountId} onValueChange={setCardAccountId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.filter(a => a.name !== "External").map((acc) => (
+                    <SelectItem key={acc.id} value={acc.id}>
+                      {acc.name} ({acc.account_currency})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button type="submit" className="w-full">
+              {editingCard ? "Save Changes" : "Add Card"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment Method create/edit dialog */}
+      <Dialog open={pmDialogOpen} onOpenChange={setPmDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingPm ? "Edit Payment Method" : "Add Payment Method"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSavePm} className="space-y-4">
+            <div>
+              <Label>Name</Label>
+              <Input value={pmName} onChange={(e) => setPmName(e.target.value)} placeholder="e.g. PayNow, UPI" required />
+            </div>
+            <div>
+              <Label>Icon (optional emoji)</Label>
+              <Input value={pmIcon} onChange={(e) => setPmIcon(e.target.value)} placeholder="e.g. \U0001f4f1" maxLength={2} />
+            </div>
+            <div>
+              <Label>Type</Label>
+              <Select value={pmMethodType} onValueChange={(v) => setPmMethodType(v as "digital_wallet" | "custom")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="digital_wallet">Digital Wallet</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Linked Account (optional)</Label>
+              <Select value={pmLinkedAccountId} onValueChange={setPmLinkedAccountId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="None" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {accounts.filter(a => a.name !== "External").map((acc) => (
+                    <SelectItem key={acc.id} value={acc.id}>
+                      {acc.name} ({acc.account_currency})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button type="submit" className="w-full">
+              {editingPm ? "Save Changes" : "Add Payment Method"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {/* Fund create/edit dialog */}
       <Dialog open={fundDialogOpen} onOpenChange={setFundDialogOpen}>
         <DialogContent>
@@ -772,6 +1339,96 @@ export default function SettingsPage() {
             <div>
               <Label>Default Allocation %</Label>
               <Input type="number" value={fundAllocation} onChange={(e) => setFundAllocation(e.target.value)} placeholder="80" min="0" max="100" step="0.1" />
+            </div>
+            <div>
+              <Label>Linked Accounts</Label>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" type="button" className="w-full justify-start font-normal">
+                    {fundAccountAllocations.length === 0
+                      ? "Select accounts..."
+                      : `${fundAccountAllocations.length} account${fundAccountAllocations.length > 1 ? "s" : ""} selected`}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-[300px]">
+                  <DropdownMenuLabel>Accounts</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {accounts
+                    .filter(a => a.name !== "External")
+                    .map(acc => {
+                      const isChecked = fundAccountAllocations.some(a => a.account_id === acc.id)
+                      return (
+                        <DropdownMenuCheckboxItem
+                          key={acc.id}
+                          checked={isChecked}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setFundAccountAllocations(prev => [...prev, { account_id: acc.id, allocation_percentage: 100 }])
+                            } else {
+                              setFundAccountAllocations(prev => prev.filter(a => a.account_id !== acc.id))
+                            }
+                          }}
+                        >
+                          {acc.name}
+                          <span className="ml-auto text-xs text-muted-foreground">
+                            {acc.institution || acc.account_currency}
+                          </span>
+                        </DropdownMenuCheckboxItem>
+                      )
+                    })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              {fundAccountAllocations.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {fundAccountAllocations.map(alloc => {
+                    const acc = accounts.find(a => a.id === alloc.account_id)
+                    return acc ? (
+                      <Badge key={alloc.account_id} variant="secondary" className="text-xs">
+                        {acc.name}
+                        <button
+                          type="button"
+                          className="ml-1 hover:text-destructive"
+                          onClick={() => setFundAccountAllocations(prev => prev.filter(a => a.account_id !== alloc.account_id))}
+                        >
+                          x
+                        </button>
+                      </Badge>
+                    ) : null
+                  })}
+                </div>
+              )}
+              {fundAccountAllocations.length > 1 && (
+                <div className="space-y-2 mt-3">
+                  <Label className="text-xs text-muted-foreground">
+                    Allocation Split (must sum to 100%)
+                  </Label>
+                  {fundAccountAllocations.map((alloc, idx) => {
+                    const acc = accounts.find(a => a.id === alloc.account_id)
+                    return (
+                      <div key={alloc.account_id} className="flex items-center gap-2">
+                        <span className="text-sm flex-1 truncate">{acc?.name || "Unknown"}</span>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="100"
+                          value={alloc.allocation_percentage}
+                          onChange={(e) => {
+                            const updated = [...fundAccountAllocations]
+                            updated[idx] = { ...updated[idx], allocation_percentage: parseFloat(e.target.value) || 0 }
+                            setFundAccountAllocations(updated)
+                          }}
+                          className="w-20 text-right"
+                        />
+                        <span className="text-sm text-muted-foreground">%</span>
+                      </div>
+                    )
+                  })}
+                  <p className="text-xs text-muted-foreground">
+                    Total: {fundAccountAllocations.reduce((s, a) => s + Number(a.allocation_percentage), 0).toFixed(1)}%
+                  </p>
+                </div>
+              )}
             </div>
             <Button type="submit" className="w-full">
               {editingFund ? "Save Changes" : "Create Fund"}

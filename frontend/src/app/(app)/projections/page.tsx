@@ -8,25 +8,32 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import {
   runProjection,
   getCategories,
+  getSubcategories,
   getFunds,
+  getAccounts,
   getScenarios,
   getScenario,
   saveScenario,
   updateScenario,
   activateScenario,
   deleteScenario,
+  createRecurringTransaction,
 } from "@/lib/api"
 import { useToast } from "@/components/ui/use-toast"
 import type {
   ProjectionAssumptions,
   Category,
+  Subcategory,
   Fund,
+  Account,
   CategoryBudget,
   OneTimeCost,
   ScenarioListItem,
+  CreateRecurringTransactionRequest,
 } from "@/lib/types"
 import { CategoryBudgetEditor } from "./_components/category-budget-editor"
 import { OneTimeCostEditor } from "./_components/one-time-cost-editor"
@@ -59,6 +66,7 @@ export default function ProjectionsPage() {
 
   // Reference data
   const [expenseCategories, setExpenseCategories] = useState<Category[]>([])
+  const [expenseSubcategories, setExpenseSubcategories] = useState<Subcategory[]>([])
   const [funds, setFunds] = useState<Fund[]>([])
   const [loadingRef, setLoadingRef] = useState(true)
 
@@ -74,18 +82,33 @@ export default function ProjectionsPage() {
   const [showSaveDialog, setShowSaveDialog] = useState(false)
   const [saving, setSaving] = useState(false)
 
+  // Recurring transaction creation from projections
+  const [projAccounts, setProjAccounts] = useState<Account[]>([])
+  const [recurringDialogOpen, setRecurringDialogOpen] = useState(false)
+  const [recurringPrefill, setRecurringPrefill] = useState<Partial<CreateRecurringTransactionRequest> | null>(null)
+  const [recurringAccountId, setRecurringAccountId] = useState("")
+  const [recurringFundId, setRecurringFundId] = useState("")
+  const [recurringSubcategoryId, setRecurringSubcategoryId] = useState("")
+  const [recurringStartDate, setRecurringStartDate] = useState("")
+  const [recurringEndDate, setRecurringEndDate] = useState("")
+  const [creatingRecurring, setCreatingRecurring] = useState(false)
+
   // Load categories, funds & scenarios on mount
   useEffect(() => {
     async function loadRefData() {
       try {
-        const [cats, fnds, scns] = await Promise.all([
+        const [cats, fnds, scns, accts, subs] = await Promise.all([
           getCategories("expense"),
           getFunds(),
           getScenarios(),
+          getAccounts(),
+          getSubcategories(),
         ])
         setExpenseCategories(cats)
+        setExpenseSubcategories(subs.filter((s: Subcategory) => cats.some((c: Category) => c.id === s.category_id)))
         setFunds(fnds)
         setScenarios(scns)
+        setProjAccounts(accts.filter((a: Account) => a.name !== "External"))
 
         if (fnds.length > 0) {
           const weights: Record<string, number> = {}
@@ -155,15 +178,32 @@ export default function ProjectionsPage() {
 
       if (a.category_budgets && a.category_budgets.length > 0) {
         setUseCategoryBudgets(true)
-        setCategoryBudgets(a.category_budgets)
+        // Ensure numeric values (old scenarios may have Decimal-as-string in JSON)
+        setCategoryBudgets(a.category_budgets.map((b: any) => ({
+          ...b,
+          monthly_amount: Number(b.monthly_amount) || 0,
+          inflation_override: b.inflation_override != null ? Number(b.inflation_override) : undefined,
+          subcategory_budgets: (b.subcategory_budgets || []).map((sb: any) => ({
+            subcategory_id: sb.subcategory_id,
+            monthly_amount: Number(sb.monthly_amount) || 0,
+            inflation_override: sb.inflation_override != null ? Number(sb.inflation_override) : undefined,
+          })),
+        })))
         setExpenses("3000")
       } else {
         setUseCategoryBudgets(false)
-        setExpenses(String(a.monthly_expenses ?? "3000"))
+        setExpenses(String(Number(a.monthly_expenses) || 3000))
       }
 
-      if (a.one_time_costs) setOneTimeCosts(a.one_time_costs)
-      else setOneTimeCosts([])
+      if (a.one_time_costs) {
+        setOneTimeCosts(a.one_time_costs.map((c: any) => ({
+          ...c,
+          amount: Number(c.amount) || 0,
+          month_index: Number(c.month_index) || 0,
+        })))
+      } else {
+        setOneTimeCosts([])
+      }
 
       if (a.allocation_weights) {
         setFundWeights(Object.fromEntries(
@@ -268,6 +308,75 @@ export default function ProjectionsPage() {
     if (currentScenarioId) setIsDirty(true)
   }
 
+  // Open recurring creation dialog pre-filled from a projection item
+  function openRecurringFromIncome(name: string, amount: string, frequency: "monthly" | "yearly") {
+    const parsed = parseFloat(amount) || 0
+    if (parsed <= 0) {
+      toast({ variant: "destructive", title: "Enter an amount first" })
+      return
+    }
+    setRecurringPrefill({
+      name,
+      transaction_type: "income",
+      amount: parsed,
+      currency: "SGD",
+      frequency,
+    })
+    setRecurringAccountId("")
+    setRecurringFundId("")
+    setRecurringSubcategoryId("")
+    setRecurringStartDate(new Date().toISOString().slice(0, 10))
+    setRecurringEndDate("")
+    setRecurringDialogOpen(true)
+  }
+
+  function openRecurringFromExpense(data: { name: string; amount: number; category_id: string; subcategory_id?: string }) {
+    setRecurringPrefill({
+      name: data.name,
+      transaction_type: "expense",
+      amount: data.amount,
+      currency: "SGD",
+      frequency: "monthly",
+      category_id: data.category_id,
+      subcategory_id: data.subcategory_id,
+    })
+    setRecurringAccountId("")
+    setRecurringFundId("")
+    setRecurringSubcategoryId(data.subcategory_id || "")
+    setRecurringStartDate(new Date().toISOString().slice(0, 10))
+    setRecurringEndDate("")
+    setRecurringDialogOpen(true)
+  }
+
+  async function handleCreateFromProjection() {
+    if (!recurringPrefill || !recurringAccountId) return
+    setCreatingRecurring(true)
+    try {
+      await createRecurringTransaction({
+        name: recurringPrefill.name!,
+        transaction_type: recurringPrefill.transaction_type!,
+        amount: recurringPrefill.amount!,
+        currency: recurringPrefill.currency || "SGD",
+        frequency: recurringPrefill.frequency!,
+        account_id: recurringAccountId,
+        category_id: recurringPrefill.category_id,
+        subcategory_id: recurringSubcategoryId && recurringSubcategoryId !== "none"
+          ? recurringSubcategoryId
+          : recurringPrefill.subcategory_id || undefined,
+        fund_id: recurringFundId && recurringFundId !== "none" ? recurringFundId : undefined,
+        start_date: recurringStartDate,
+        end_date: recurringEndDate || undefined,
+      } as CreateRecurringTransactionRequest)
+      toast({ title: `Created recurring "${recurringPrefill.name}"` })
+      setRecurringDialogOpen(false)
+      setRecurringPrefill(null)
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Failed to create recurring", description: err.message })
+    } finally {
+      setCreatingRecurring(false)
+    }
+  }
+
   const currentScenarioName = scenarios.find((s) => s.id === currentScenarioId)?.name
 
   return (
@@ -366,15 +475,51 @@ export default function ProjectionsPage() {
               {/* -- Income -- */}
               <div className="space-y-1">
                 <Label className="text-xs">Monthly Salary</Label>
-                <Input type="number" step="0.01" value={salary} onChange={(e) => { setSalary(e.target.value); markDirty() }} />
+                <div className="flex gap-1">
+                  <Input type="number" step="0.01" value={salary} onChange={(e) => { setSalary(e.target.value); markDirty() }} />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 w-9 p-0 shrink-0 text-muted-foreground hover:text-foreground"
+                    title="Create as recurring"
+                    onClick={() => openRecurringFromIncome("Monthly Salary", salary, "monthly")}
+                  >
+                    &#x21BB;
+                  </Button>
+                </div>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Annual Bonus</Label>
-                <Input type="number" step="0.01" value={bonus} onChange={(e) => { setBonus(e.target.value); markDirty() }} />
+                <div className="flex gap-1">
+                  <Input type="number" step="0.01" value={bonus} onChange={(e) => { setBonus(e.target.value); markDirty() }} />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 w-9 p-0 shrink-0 text-muted-foreground hover:text-foreground"
+                    title="Create as recurring"
+                    onClick={() => openRecurringFromIncome("Annual Bonus", bonus, "yearly")}
+                  >
+                    &#x21BB;
+                  </Button>
+                </div>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Other Income (monthly)</Label>
-                <Input type="number" step="0.01" value={otherIncome} onChange={(e) => { setOtherIncome(e.target.value); markDirty() }} />
+                <div className="flex gap-1">
+                  <Input type="number" step="0.01" value={otherIncome} onChange={(e) => { setOtherIncome(e.target.value); markDirty() }} />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 w-9 p-0 shrink-0 text-muted-foreground hover:text-foreground"
+                    title="Create as recurring"
+                    onClick={() => openRecurringFromIncome("Other Income", otherIncome, "monthly")}
+                  >
+                    &#x21BB;
+                  </Button>
+                </div>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Tax Rate</Label>
@@ -400,9 +545,11 @@ export default function ProjectionsPage() {
               {useCategoryBudgets && expenseCategories.length > 0 ? (
                 <CategoryBudgetEditor
                   categories={expenseCategories}
+                  subcategories={expenseSubcategories}
                   budgets={categoryBudgets}
                   onChange={(b) => { setCategoryBudgets(b); markDirty() }}
                   inflationRate={inflation}
+                  onCreateRecurring={openRecurringFromExpense}
                 />
               ) : (
                 <div className="space-y-1">
@@ -504,6 +651,113 @@ export default function ProjectionsPage() {
         defaultName={currentScenarioName ?? ""}
         isUpdate={!!currentScenarioId}
       />
+
+      {/* Create Recurring from Projection Dialog */}
+      <Dialog open={recurringDialogOpen} onOpenChange={setRecurringDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Recurring Transaction</DialogTitle>
+          </DialogHeader>
+          {recurringPrefill && (
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Name</Label>
+                <Input value={recurringPrefill.name ?? ""} readOnly className="bg-muted" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Type</Label>
+                  <Input value={recurringPrefill.transaction_type ?? ""} readOnly className="bg-muted capitalize" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Frequency</Label>
+                  <Input value={recurringPrefill.frequency ?? ""} readOnly className="bg-muted capitalize" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Amount</Label>
+                  <Input value={recurringPrefill.amount?.toLocaleString() ?? ""} readOnly className="bg-muted" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Currency</Label>
+                  <Input value={recurringPrefill.currency ?? "SGD"} readOnly className="bg-muted" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Account *</Label>
+                  <Select value={recurringAccountId} onValueChange={setRecurringAccountId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select account..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {projAccounts.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name} {a.institution ? `(${a.institution})` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Fund</Label>
+                  <Select value={recurringFundId} onValueChange={setRecurringFundId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="None" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {funds.map((f) => (
+                        <SelectItem key={f.id} value={f.id}>
+                          {f.emoji ? `${f.emoji} ` : ""}{f.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {(() => {
+                const dialogSubs = expenseSubcategories.filter(
+                  (s) => s.category_id === recurringPrefill?.category_id
+                )
+                return dialogSubs.length > 0 ? (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Subcategory</Label>
+                    <Select value={recurringSubcategoryId} onValueChange={setRecurringSubcategoryId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Optional" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {dialogSubs.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null
+              })()}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Start Date</Label>
+                  <Input type="date" value={recurringStartDate} onChange={(e) => setRecurringStartDate(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">End Date (optional)</Label>
+                  <Input type="date" value={recurringEndDate} onChange={(e) => setRecurringEndDate(e.target.value)} />
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRecurringDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreateFromProjection} disabled={creatingRecurring || !recurringAccountId}>
+              {creatingRecurring ? "Creating..." : "Create Recurring"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

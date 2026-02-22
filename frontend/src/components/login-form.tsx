@@ -21,8 +21,13 @@ export function LoginForm() {
     setLoading(true)
     try {
       const res = await login({ email, password })
-      setAuth(res.access_token, res.user_id, res.workspace_id)
-      router.push("/dashboard")
+      setAuth(res.access_token, res.user_id, res.workspace_id, res.profile_completed, res.is_admin)
+
+      if (res.profile_completed) {
+        router.push("/dashboard")
+      } else {
+        router.push("/onboarding")
+      }
     } catch (err: any) {
       toast({
         variant: "destructive",

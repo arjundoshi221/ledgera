@@ -103,38 +103,24 @@ class CSVImporter:
         account_id = self.default_account_id
         counter_account_id = expense_account_id or str(uuid4())
         
-        # Debit/credit based on sign
-        if amount < 0:
-            # Expense: debit expense account, credit bank account
-            posting1_amount = abs(amount)
-            posting1_account = counter_account_id
-            
-            posting2_amount = abs(amount)
-            posting2_account = account_id
-            
-            posting1_debit = True
-        else:
-            # Income: debit bank account, credit income account
-            posting1_amount = amount
-            posting1_account = account_id
-            
-            posting2_amount = amount
-            posting2_account = counter_account_id
-            
-            posting1_debit = False
-        
+        # Double-entry: bank amount matches CSV sign, counter-party gets opposite
+        # Income (+): bank = +amount, counter = -amount
+        # Expense (-): bank = -amount (negative CSV value), counter = +amount
+        bank_amount = Decimal(str(amount))
+        counter_amount = Decimal(str(-amount))
+
         posting1 = Posting(
-            account_id=posting1_account,
-            amount=Decimal(str(posting1_amount)),
+            account_id=account_id,
+            amount=bank_amount,
             currency=self.default_currency,
-            base_amount=Decimal(str(posting1_amount))
+            base_amount=bank_amount
         )
-        
+
         posting2 = Posting(
-            account_id=posting2_account,
-            amount=Decimal(str(posting2_amount * -1 if posting1_debit else posting2_amount)),
+            account_id=counter_account_id,
+            amount=counter_amount,
             currency=self.default_currency,
-            base_amount=Decimal(str(posting2_amount * -1 if posting1_debit else posting2_amount))
+            base_amount=counter_amount
         )
         
         return Transaction(

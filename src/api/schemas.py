@@ -54,7 +54,26 @@ class TransactionCreate(BaseModel):
     category_id: Optional[str] = None
     subcategory_id: Optional[str] = None
     fund_id: Optional[str] = None
+    payment_method_id: Optional[str] = None
     postings: List[PostingSchema]
+
+
+class TransferCreate(BaseModel):
+    """Create a transfer transaction between two accounts"""
+    timestamp: datetime
+    payee: str = "Transfer"
+    memo: Optional[str] = None
+    from_account_id: str
+    to_account_id: str
+    amount: Decimal               # Amount leaving from_account (in from_currency)
+    from_currency: str = "SGD"
+    to_currency: Optional[str] = None    # Defaults to from_currency if None
+    fx_rate: Decimal = Decimal(1)        # received = amount * fx_rate
+    source_fund_id: Optional[str] = None
+    dest_fund_id: Optional[str] = None
+    payment_method_id: Optional[str] = None
+    fee: Decimal = Decimal(0)            # Optional FX/transfer fee (in from_currency)
+    fee_category_id: Optional[str] = None  # Category for the fee expense
 
 
 class TransactionResponse(BaseModel):
@@ -65,13 +84,24 @@ class TransactionResponse(BaseModel):
     memo: Optional[str] = None
     status: str
     source: str
+    type: Optional[str] = None
     category_id: Optional[str] = None
     subcategory_id: Optional[str] = None
     fund_id: Optional[str] = None
+    source_fund_id: Optional[str] = None
+    dest_fund_id: Optional[str] = None
+    payment_method_id: Optional[str] = None
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class SubcategoryBudgetSchema(BaseModel):
+    """Budget allocation for a subcategory within a category"""
+    subcategory_id: str
+    monthly_amount: Decimal
+    inflation_override: Optional[Decimal] = None
 
 
 class CategoryBudgetSchema(BaseModel):
@@ -79,6 +109,7 @@ class CategoryBudgetSchema(BaseModel):
     category_id: str
     monthly_amount: Decimal
     inflation_override: Optional[Decimal] = None
+    subcategory_budgets: List[SubcategoryBudgetSchema] = []
 
 
 class OneTimeCostSchema(BaseModel):
@@ -213,6 +244,7 @@ class CategoryResponse(BaseModel):
     emoji: Optional[str] = None
     type: str
     description: Optional[str] = None
+    is_system: bool = False
     created_at: datetime
 
     class Config:
@@ -238,12 +270,29 @@ class SubcategoryResponse(BaseModel):
         from_attributes = True
 
 
+class FundAccountAllocation(BaseModel):
+    """Per-account allocation within a fund"""
+    account_id: str
+    allocation_percentage: Decimal = Decimal(100)
+
+
 class FundCreate(BaseModel):
     """Create fund request"""
     name: str
     emoji: Optional[str] = None
     description: Optional[str] = None
     allocation_percentage: Decimal = Decimal(0)
+    account_ids: List[str] = []  # Legacy: defaults to 100% each
+    account_allocations: List[FundAccountAllocation] = []  # Preferred: explicit %
+
+
+class LinkedAccountSummary(BaseModel):
+    """Minimal account info for fund response"""
+    id: str
+    name: str
+    institution: Optional[str] = None
+    account_currency: str
+    allocation_percentage: Decimal = Decimal(100)
 
 
 class FundResponse(BaseModel):
@@ -254,7 +303,9 @@ class FundResponse(BaseModel):
     description: Optional[str] = None
     allocation_percentage: Decimal
     is_active: bool
+    is_system: bool = False
     created_at: datetime
+    linked_accounts: List[LinkedAccountSummary] = []
 
     class Config:
         from_attributes = True
@@ -277,6 +328,267 @@ class FundAllocationOverrideResponse(BaseModel):
     allocation_percentage: Decimal
     created_at: datetime
     updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ─── Fund Tracker schemas ───
+
+class FundChargeDetail(BaseModel):
+    """One category's charges within a fund month"""
+    category_name: str
+    category_emoji: str = ""
+    amount: float
+
+
+class FundMonthlyLedgerRow(BaseModel):
+    """One month's data for a fund in the ledger view"""
+    year: int
+    month: int
+    opening_balance: float
+    contribution: float
+    actual_credits: float = 0
+    actual_debits: float = 0
+    charge_details: List[FundChargeDetail] = []
+    fund_income: float
+    closing_balance: float
+
+
+class FundLedgerResponse(BaseModel):
+    """Fund ledger view: per-fund monthly time series"""
+    fund_id: str
+    fund_name: str
+    emoji: str
+    linked_accounts: List[LinkedAccountSummary]
+    months: List[FundMonthlyLedgerRow]
+    total_contributions: float
+    total_fund_income: float
+    current_balance: float
+
+
+class AccountTrackerRow(BaseModel):
+    """One account's tracker data"""
+    account_id: str
+    account_name: str
+    institution: Optional[str] = None
+    account_currency: str
+    starting_balance: float
+    expected_contributions: float
+    actual_balance: float
+    difference: float
+    prev_month_balance: float = 0
+    current_month_expected: float = 0
+    current_month_difference: float = 0
+    # Native currency fields (mark-to-market)
+    native_balance: float = 0
+    current_fx_rate: float = 1.0
+    market_value_base: float = 0
+    cost_basis_base: float = 0
+    unrealized_fx_gain: float = 0
+
+
+class TransferSuggestion(BaseModel):
+    """A suggested transfer to reconcile expected vs actual"""
+    from_account_name: str = ""
+    from_account_id: str = ""
+    from_currency: str = "SGD"
+    to_account_name: str
+    to_account_id: str
+    to_currency: str = "SGD"
+    amount: float
+    currency: str  # base currency amount (kept for backward compat)
+    source_fund_id: Optional[str] = None
+    dest_fund_id: Optional[str] = None
+
+
+class WCOptimization(BaseModel):
+    """Suggestion when WC balance exceeds 10% of allocated fixed cost"""
+    wc_balance: float
+    threshold: float
+    surplus: float
+
+
+class FundTrackerSummary(BaseModel):
+    """Key metrics for the dashboard view"""
+    total_expected: float
+    total_actual: float
+    total_difference: float
+    ytd_contributions: float
+    ytd_fund_income: float
+    ytd_wc_surplus: float = 0
+    unallocated_remainder: float = 0
+    transfer_suggestions: List[TransferSuggestion] = []
+    wc_optimization: Optional[WCOptimization] = None
+
+
+class FundTrackerResponse(BaseModel):
+    """Full fund & account tracker response"""
+    fund_ledgers: List[FundLedgerResponse]
+    account_summaries: List[AccountTrackerRow]
+    summary: FundTrackerSummary
+
+
+# ─── Net Worth / Portfolio schemas ───
+
+class AccountNetWorthRow(BaseModel):
+    """One account in the net worth view"""
+    account_id: str
+    account_name: str
+    institution: Optional[str] = None
+    account_currency: str
+    account_type: str
+    native_balance: float
+    fx_rate_to_base: float
+    base_value: float
+    cost_basis: float
+    unrealized_fx_gain: float
+
+
+class CurrencyBreakdown(BaseModel):
+    """Currency allocation in the portfolio"""
+    currency: str
+    total_native: float
+    base_equivalent: float
+    percentage: float
+
+
+class NetWorthHistoryPoint(BaseModel):
+    """Net worth at a point in time"""
+    year: int
+    month: int
+    net_worth: float
+    assets: float
+    liabilities: float
+
+
+class NetWorthResponse(BaseModel):
+    """Full net worth / portfolio response"""
+    base_currency: str
+    total_net_worth: float
+    total_assets: float
+    total_liabilities: float
+    total_unrealized_fx_gain: float
+    accounts: List[AccountNetWorthRow]
+    currency_breakdown: List[CurrencyBreakdown]
+    history: List[NetWorthHistoryPoint]
+    fx_rates_used: Dict[str, float] = {}
+
+
+# ─── Recurring Transactions schemas ───
+
+class RecurringTransactionCreate(BaseModel):
+    """Create a recurring transaction template"""
+    name: str
+    transaction_type: str  # "income", "expense", "transfer"
+    payee: Optional[str] = None
+    memo: Optional[str] = None
+    amount: Decimal
+    currency: str = "SGD"
+    category_id: Optional[str] = None
+    subcategory_id: Optional[str] = None
+    fund_id: Optional[str] = None
+    payment_method_id: Optional[str] = None
+    account_id: Optional[str] = None
+    from_account_id: Optional[str] = None
+    to_account_id: Optional[str] = None
+    from_currency: Optional[str] = None
+    to_currency: Optional[str] = None
+    fx_rate: Optional[Decimal] = None
+    source_fund_id: Optional[str] = None
+    dest_fund_id: Optional[str] = None
+    transfer_fee: Optional[Decimal] = Decimal(0)
+    fee_category_id: Optional[str] = None
+    frequency: str  # daily, weekly, bi_weekly, monthly, quarterly, yearly
+    start_date: str  # ISO date string "YYYY-MM-DD"
+    end_date: Optional[str] = None
+
+
+class RecurringTransactionUpdate(BaseModel):
+    """Update a recurring transaction template"""
+    name: Optional[str] = None
+    payee: Optional[str] = None
+    memo: Optional[str] = None
+    amount: Optional[Decimal] = None
+    currency: Optional[str] = None
+    category_id: Optional[str] = None
+    subcategory_id: Optional[str] = None
+    fund_id: Optional[str] = None
+    payment_method_id: Optional[str] = None
+    account_id: Optional[str] = None
+    from_account_id: Optional[str] = None
+    to_account_id: Optional[str] = None
+    from_currency: Optional[str] = None
+    to_currency: Optional[str] = None
+    fx_rate: Optional[Decimal] = None
+    source_fund_id: Optional[str] = None
+    dest_fund_id: Optional[str] = None
+    transfer_fee: Optional[Decimal] = None
+    fee_category_id: Optional[str] = None
+    frequency: Optional[str] = None
+    end_date: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class ConfirmRecurringRequest(BaseModel):
+    """Confirm a pending recurring instance"""
+    occurrence_date: str  # ISO date of the instance being confirmed
+    amount_override: Optional[Decimal] = None
+    payee_override: Optional[str] = None
+    memo_override: Optional[str] = None
+
+
+class SkipRecurringRequest(BaseModel):
+    """Skip a pending recurring instance"""
+    occurrence_date: str  # ISO date of the instance being skipped
+
+
+# ─── Cards & Payment Methods schemas ───
+
+class CardCreate(BaseModel):
+    """Create card request"""
+    account_id: str
+    card_name: str
+    card_type: str  # "credit" or "debit"
+    card_network: Optional[str] = None
+    last_four: Optional[str] = None
+
+
+class CardResponse(BaseModel):
+    """Card response"""
+    id: str
+    account_id: str
+    card_name: str
+    card_type: str
+    card_network: Optional[str] = None
+    last_four: Optional[str] = None
+    is_active: bool
+    payment_method_id: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PaymentMethodCreate(BaseModel):
+    """Create payment method request"""
+    name: str
+    method_type: str  # "digital_wallet" or "custom"
+    icon: Optional[str] = None
+    linked_account_id: Optional[str] = None
+
+
+class PaymentMethodResponse(BaseModel):
+    """Payment method response"""
+    id: str
+    name: str
+    method_type: str
+    icon: Optional[str] = None
+    card_id: Optional[str] = None
+    linked_account_id: Optional[str] = None
+    is_system: bool
+    is_active: bool
+    created_at: datetime
 
     class Config:
         from_attributes = True

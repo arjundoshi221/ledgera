@@ -19,8 +19,8 @@ def get_fx_rate(
     quote_ccy: str,
     session: Session = Depends(get_session)
 ):
-    """Get FX rate between two currencies"""
-    rate = price_service.get_fx_rate(base_ccy, quote_ccy)
+    """Get FX rate between two currencies (cached in DB)"""
+    rate = price_service.get_fx_rate(base_ccy, quote_ccy, session=session)
 
     return {
         "base_ccy": base_ccy,

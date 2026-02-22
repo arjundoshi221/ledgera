@@ -2,17 +2,24 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, or_
 from datetime import datetime
 from decimal import Decimal
-from typing import List, Optional
+from typing import Dict, List, Optional
 from calendar import monthrange
 from pydantic import BaseModel
 
 from src.data.database import get_session
-from src.data.models import TransactionModel, CategoryModel, SubcategoryModel, FundModel, PostingModel
+from src.data.models import TransactionModel, CategoryModel, SubcategoryModel, FundModel, FundAccountLinkModel, PostingModel, AccountModel, ScenarioModel, WorkspaceModel
 from src.api.deps import get_workspace_id
-from src.api.schemas import FundAllocationOverrideCreate
+from src.api.schemas import (
+    FundAllocationOverrideCreate,
+    FundMonthlyLedgerRow, FundLedgerResponse, AccountTrackerRow,
+    FundTrackerSummary, FundTrackerResponse, LinkedAccountSummary,
+    TransferSuggestion, FundChargeDetail, WCOptimization,
+    AccountNetWorthRow, CurrencyBreakdown, NetWorthHistoryPoint, NetWorthResponse,
+)
+import json
 
 router = APIRouter()
 
@@ -78,6 +85,7 @@ class FundMeta(BaseModel):
     fund_id: str
     fund_name: str
     emoji: str
+    linked_account_names: List[str] = []
 
 
 class IncomeAllocationResponse(BaseModel):
@@ -296,7 +304,12 @@ def get_income_allocation(
         ).order_by(FundModel.created_at).all()
 
         funds_meta = [
-            FundMeta(fund_id=f.id, fund_name=f.name, emoji=f.emoji or "")
+            FundMeta(
+                fund_id=f.id,
+                fund_name=f.name,
+                emoji=f.emoji or "",
+                linked_account_names=[acc.name for acc in getattr(f, 'accounts', []) or []]
+            )
             for f in funds
         ]
 
@@ -366,13 +379,18 @@ def get_income_allocation(
                         ))
                         continue
 
-                    override_key = (f.id, y, m)
-                    if override_key in override_map:
-                        pct = override_map[override_key]
+                    # If savings remainder is negative, non-WC funds get 0
+                    if savings_remainder < 0:
+                        allocated = Decimal(0)
+                        override_key = (f.id, y, m)
+                        pct = override_map.get(override_key, Decimal(str(f.allocation_percentage)))
                     else:
-                        pct = Decimal(str(f.allocation_percentage))
-
-                    allocated = savings_remainder * pct / 100
+                        override_key = (f.id, y, m)
+                        if override_key in override_map:
+                            pct = override_map[override_key]
+                        else:
+                            pct = Decimal(str(f.allocation_percentage))
+                        allocated = savings_remainder * pct / 100
                     total_allocated += allocated
                     fund_allocs.append(FundAllocationDetail(
                         fund_id=f.id,
@@ -533,8 +551,8 @@ def create_or_update_override(
 
 @router.get("/fund-allocation-overrides")
 def list_overrides(
-    year: int = None,
-    month: int = None,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
     workspace_id: str = Depends(get_workspace_id),
     session: Session = Depends(get_session)
 ):
@@ -573,3 +591,1039 @@ def delete_override(
     override_repo.delete_by_fund_and_period(workspace_id, fund_id, year, month)
 
     return {"message": "Override deleted"}
+
+
+# ─── Fund Tracker helpers ───
+
+def _get_fund_income_for_month(session: Session, workspace_id: str, fund_id: str, year: int, month: int) -> Decimal:
+    """Sum of income-category transaction postings tagged to a specific fund for a given month."""
+    start, end = _get_month_range(year, month)
+    result = session.query(
+        func.sum(PostingModel.base_amount)
+    ).join(
+        TransactionModel, PostingModel.transaction_id == TransactionModel.id
+    ).join(
+        CategoryModel, TransactionModel.category_id == CategoryModel.id
+    ).filter(
+        TransactionModel.workspace_id == workspace_id,
+        TransactionModel.fund_id == fund_id,
+        TransactionModel.category_id.isnot(None),
+        TransactionModel.timestamp >= start,
+        TransactionModel.timestamp <= end,
+        CategoryModel.type == 'income',
+        PostingModel.base_amount > 0
+    ).scalar()
+    return Decimal(str(result)) if result else Decimal(0)
+
+
+def _compute_fund_contribution(
+    fund: FundModel,
+    savings_remainder: Decimal,
+    allocated_fixed_cost: Decimal,
+    override_map: dict,
+    year: int,
+    month: int,
+) -> Decimal:
+    """Compute a single fund's contribution for one month (shared logic)."""
+    if fund.name == "Working Capital":
+        return allocated_fixed_cost
+
+    # If savings remainder is negative, only Working Capital absorbs the deficit
+    if savings_remainder < 0:
+        return Decimal(0)
+
+    override_key = (fund.id, year, month)
+    if override_key in override_map:
+        pct = override_map[override_key]
+    else:
+        pct = Decimal(str(fund.allocation_percentage))
+
+    return savings_remainder * pct / 100
+
+
+# ─── Fund Tracker endpoint ───
+
+@router.get("/fund-tracker", response_model=FundTrackerResponse)
+def get_fund_tracker(
+    years: int = Query(default=1, ge=1, le=5),
+    workspace_id: str = Depends(get_workspace_id),
+    session: Session = Depends(get_session)
+):
+    """
+    Get fund & account tracker data with monthly ledger per fund
+    and account-level expected vs actual balances.
+    """
+    try:
+        from src.data.repositories import ScenarioRepository, FundAllocationOverrideRepository
+        from sqlalchemy.orm import joinedload
+
+        # Load all active funds with account links
+        funds = session.query(FundModel).options(
+            joinedload(FundModel.account_links).joinedload(FundAccountLinkModel.account)
+        ).filter(
+            FundModel.workspace_id == workspace_id,
+            FundModel.is_active == True
+        ).order_by(FundModel.created_at).all()
+
+        # Load all accounts for the workspace (exclude External bookkeeping account)
+        all_accounts = session.query(AccountModel).filter(
+            AccountModel.workspace_id == workspace_id,
+            AccountModel.is_active == True,
+            AccountModel.name != "External"
+        ).all()
+
+        # Get External account id for filtering postings
+        external_acc = session.query(AccountModel).filter(
+            AccountModel.workspace_id == workspace_id,
+            AccountModel.name == "External"
+        ).first()
+        external_account_id = external_acc.id if external_acc else None
+
+        # Budget benchmark from active scenario
+        scenario_repo = ScenarioRepository(session)
+        active_scenario = scenario_repo.read_active(workspace_id)
+        budget_benchmark = Decimal(str(active_scenario.monthly_expenses_total)) if active_scenario else Decimal(0)
+
+        # Load overrides
+        override_repo = FundAllocationOverrideRepository(session)
+        all_overrides = override_repo.read_by_workspace(workspace_id)
+        override_map = {
+            (o.fund_id, o.year, o.month): Decimal(str(o.allocation_percentage))
+            for o in all_overrides
+        }
+
+        # Time range
+        now = datetime.utcnow()
+        current_year = now.year
+        start_year = current_year - years + 1
+
+        # Build month list
+        months_list = []
+        for y in range(start_year, current_year + 1):
+            end_month = now.month if y == current_year else 12
+            for m in range(1, end_month + 1):
+                months_list.append((y, m))
+
+        # ── Per-fund ledger ──
+        fund_ledgers = []
+        # Track cumulative contributions per fund for account summaries
+        fund_total_contributions = {}  # fund_id -> Decimal
+        fund_current_month_contribution = {}  # fund_id -> Decimal (current month only)
+
+        for f in funds:
+            fund_months = []
+            running_balance = Decimal(0)
+            total_contributions = Decimal(0)
+            total_fund_income = Decimal(0)
+
+            # Opening balance = sum of linked account starting_balances * allocation %
+            for link in f.account_links:
+                acct_start = Decimal(str(link.account.starting_balance or 0))
+                alloc_pct = Decimal(str(link.allocation_percentage if link.allocation_percentage is not None else 100))
+                running_balance += acct_start * alloc_pct / 100
+
+            for y, m in months_list:
+                opening = running_balance
+
+                # Expected contribution from income allocation
+                prev_y, prev_m = _prev_month(y, m)
+                net_income = _get_income_for_month(session, workspace_id, prev_y, prev_m)
+                allocated_fixed_cost = budget_benchmark
+                savings_remainder = net_income - allocated_fixed_cost
+
+                contribution = _compute_fund_contribution(
+                    f, savings_remainder, allocated_fixed_cost, override_map, y, m
+                )
+
+                # Capture current month's contribution for account-level analysis
+                if y == now.year and m == now.month:
+                    fund_current_month_contribution[f.id] = contribution
+
+                # Actual credits & debits: transfer-aware
+                # Non-transfers use fund_id; transfers use source/dest_fund_id
+                start, end = _get_month_range(y, m)
+                common_filters = [
+                    TransactionModel.workspace_id == workspace_id,
+                    TransactionModel.timestamp >= start,
+                    TransactionModel.timestamp <= end,
+                ]
+                ext_filter = [PostingModel.account_id != external_account_id] if external_account_id else []
+
+                # Non-transfer transactions tagged to this fund
+                non_transfer_filter = and_(
+                    *common_filters,
+                    or_(TransactionModel.type.is_(None), TransactionModel.type != "transfer"),
+                    TransactionModel.fund_id == f.id,
+                )
+                # Transfer transactions where this fund is destination (credit side)
+                transfer_dest_filter = and_(
+                    *common_filters,
+                    TransactionModel.type == "transfer",
+                    TransactionModel.dest_fund_id == f.id,
+                    PostingModel.base_amount > 0,
+                )
+                # Transfer transactions where this fund is source (debit side)
+                transfer_source_filter = and_(
+                    *common_filters,
+                    TransactionModel.type == "transfer",
+                    TransactionModel.source_fund_id == f.id,
+                    PostingModel.base_amount < 0,
+                )
+
+                # Credits: positive postings from non-transfers + transfer dest
+                credits_non_tf = session.query(
+                    func.sum(PostingModel.base_amount)
+                ).join(
+                    TransactionModel, PostingModel.transaction_id == TransactionModel.id
+                ).filter(non_transfer_filter, *ext_filter, PostingModel.base_amount > 0).scalar() or 0
+
+                credits_tf = session.query(
+                    func.sum(PostingModel.base_amount)
+                ).join(
+                    TransactionModel, PostingModel.transaction_id == TransactionModel.id
+                ).filter(transfer_dest_filter, *ext_filter).scalar() or 0
+
+                actual_credits = Decimal(str(credits_non_tf)) + Decimal(str(credits_tf))
+                transfer_credits = Decimal(str(credits_tf))
+
+                # Debits: negative postings from non-transfers + transfer source
+                debits_non_tf = session.query(
+                    func.sum(PostingModel.base_amount)
+                ).join(
+                    TransactionModel, PostingModel.transaction_id == TransactionModel.id
+                ).filter(non_transfer_filter, *ext_filter, PostingModel.base_amount < 0).scalar() or 0
+
+                debits_tf = session.query(
+                    func.sum(PostingModel.base_amount)
+                ).join(
+                    TransactionModel, PostingModel.transaction_id == TransactionModel.id
+                ).filter(transfer_source_filter, *ext_filter).scalar() or 0
+
+                actual_debits = abs(Decimal(str(debits_non_tf)) + Decimal(str(debits_tf)))
+
+                # Category breakdown for debits (charges) — non-transfer only
+                # (transfers have no category; they show separately)
+                charge_base_filters = [
+                    TransactionModel.workspace_id == workspace_id,
+                    TransactionModel.fund_id == f.id,
+                    or_(TransactionModel.type.is_(None), TransactionModel.type != "transfer"),
+                    TransactionModel.timestamp >= start,
+                    TransactionModel.timestamp <= end,
+                ]
+                charge_q = session.query(
+                    CategoryModel.name,
+                    CategoryModel.emoji,
+                    func.sum(PostingModel.base_amount).label("total"),
+                ).join(
+                    TransactionModel, PostingModel.transaction_id == TransactionModel.id
+                ).outerjoin(
+                    CategoryModel, TransactionModel.category_id == CategoryModel.id
+                ).filter(*charge_base_filters, *ext_filter, PostingModel.base_amount < 0
+                ).group_by(CategoryModel.name, CategoryModel.emoji)
+
+                charge_details = [
+                    FundChargeDetail(
+                        category_name=name or "Uncategorized",
+                        category_emoji=emoji or "",
+                        amount=abs(float(total)),
+                    )
+                    for name, emoji, total in charge_q.all() if total
+                ]
+
+                # Add transfer outflows as a separate charge detail if any
+                if debits_tf and abs(Decimal(str(debits_tf))) > Decimal("0.01"):
+                    charge_details.append(FundChargeDetail(
+                        category_name="Transfer Out",
+                        category_emoji="",
+                        amount=abs(float(debits_tf)),
+                    ))
+
+                # Fund income (dividends, interest etc. tagged to this fund)
+                # WC receives ALL income first; the budget allocation IS the contribution.
+                # Salary should NOT be counted as additional fund_income — that double-counts.
+                if f.name == "Working Capital":
+                    fund_income = Decimal(0)
+                else:
+                    fund_income = _get_fund_income_for_month(session, workspace_id, f.id, y, m)
+
+                closing = opening + contribution + fund_income + transfer_credits - actual_debits
+                running_balance = closing
+                total_contributions += contribution
+                total_fund_income += fund_income
+
+                fund_months.append(FundMonthlyLedgerRow(
+                    year=y,
+                    month=m,
+                    opening_balance=float(opening),
+                    contribution=float(contribution),
+                    actual_credits=float(actual_credits),
+                    actual_debits=float(actual_debits),
+                    charge_details=charge_details,
+                    fund_income=float(fund_income),
+                    closing_balance=float(closing),
+                ))
+
+            fund_total_contributions[f.id] = total_contributions
+
+            # Build linked accounts for response
+            linked_accounts = [
+                LinkedAccountSummary(
+                    id=link.account.id,
+                    name=link.account.name,
+                    institution=link.account.institution,
+                    account_currency=link.account.account_currency,
+                    allocation_percentage=link.allocation_percentage,
+                )
+                for link in f.account_links
+            ]
+
+            fund_ledgers.append(FundLedgerResponse(
+                fund_id=f.id,
+                fund_name=f.name,
+                emoji=f.emoji or "",
+                linked_accounts=linked_accounts,
+                months=fund_months,
+                total_contributions=float(total_contributions),
+                total_fund_income=float(total_fund_income),
+                current_balance=float(running_balance),
+            ))
+
+        # ── Account summaries ──
+        # Batch queries: 2 grouped queries instead of 2 per account
+        prev_y, prev_m = _prev_month(now.year, now.month)
+        _, prev_month_end = _get_month_range(prev_y, prev_m)
+
+        # All-time posting sums grouped by account (single query) — base currency
+        alltime_sums = dict(
+            session.query(
+                PostingModel.account_id,
+                func.sum(PostingModel.base_amount),
+            ).group_by(PostingModel.account_id).all()
+        )
+
+        # All-time native amount sums grouped by account (single query)
+        alltime_native_sums = dict(
+            session.query(
+                PostingModel.account_id,
+                func.sum(PostingModel.amount),
+            ).group_by(PostingModel.account_id).all()
+        )
+
+        # Previous month posting sums grouped by account (single query)
+        prev_month_sums = dict(
+            session.query(
+                PostingModel.account_id,
+                func.sum(PostingModel.base_amount),
+            ).join(
+                TransactionModel, PostingModel.transaction_id == TransactionModel.id
+            ).filter(
+                TransactionModel.timestamp <= prev_month_end,
+            ).group_by(PostingModel.account_id).all()
+        )
+
+        # Get workspace base_currency for FX lookups
+        workspace = session.query(WorkspaceModel).filter(
+            WorkspaceModel.id == workspace_id
+        ).first()
+        base_currency = workspace.base_currency if workspace else "SGD"
+
+        # Fetch current FX rates for all unique account currencies
+        from src.services.price_service import PriceService
+        price_service = PriceService()
+        unique_currencies = {acc.account_currency for acc in all_accounts if acc.account_currency != base_currency}
+        fx_rates = {}
+        for ccy in unique_currencies:
+            fx_rates[ccy] = price_service.get_fx_rate(ccy, base_currency, session=session)
+
+        account_summaries = []
+        for acc in all_accounts:
+            starting = Decimal(str(acc.starting_balance or 0))
+
+            # Expected contributions (cumulative, all-time): for each fund linked
+            # to this account, sum fund contributions * (account's allocation % / 100)
+            expected_contributions = Decimal(0)
+            for link in acc.fund_links:
+                fund_contrib = fund_total_contributions.get(link.fund_id, Decimal(0))
+                alloc_pct = Decimal(str(link.allocation_percentage if link.allocation_percentage is not None else 100))
+                expected_contributions += fund_contrib * alloc_pct / 100
+
+            # Actual balance in base currency: starting_balance + sum of all base_amount postings
+            actual_postings = alltime_sums.get(acc.id)
+            actual_balance = starting + (Decimal(str(actual_postings)) if actual_postings else Decimal(0))
+
+            difference = actual_balance - (starting + expected_contributions)
+
+            # Previous month's actual closing balance (from batch query)
+            prev_postings = prev_month_sums.get(acc.id)
+            prev_month_balance = starting + (Decimal(str(prev_postings)) if prev_postings else Decimal(0))
+
+            # Current month's expected contribution from all linked funds
+            current_month_expected = Decimal(0)
+            for link in acc.fund_links:
+                fund_cm_contrib = fund_current_month_contribution.get(link.fund_id, Decimal(0))
+                alloc_pct = Decimal(str(link.allocation_percentage if link.allocation_percentage is not None else 100))
+                current_month_expected += fund_cm_contrib * alloc_pct / 100
+
+            current_month_difference = actual_balance - (prev_month_balance + current_month_expected)
+
+            # Native currency balance: starting_balance + sum of native amounts
+            native_postings = alltime_native_sums.get(acc.id)
+            native_balance = starting + (Decimal(str(native_postings)) if native_postings else Decimal(0))
+
+            # Mark-to-market
+            ccy = acc.account_currency
+            current_fx_rate = fx_rates.get(ccy, Decimal(1)) if ccy != base_currency else Decimal(1)
+            market_value_base = native_balance * current_fx_rate
+            cost_basis_base = actual_balance  # sum of base_amount = historical cost basis
+            unrealized_fx_gain = market_value_base - cost_basis_base
+
+            account_summaries.append(AccountTrackerRow(
+                account_id=acc.id,
+                account_name=acc.name,
+                institution=acc.institution,
+                account_currency=acc.account_currency,
+                starting_balance=float(starting),
+                expected_contributions=float(expected_contributions),
+                actual_balance=float(actual_balance),
+                difference=float(difference),
+                prev_month_balance=float(prev_month_balance),
+                current_month_expected=float(current_month_expected),
+                current_month_difference=float(current_month_difference),
+                native_balance=float(native_balance),
+                current_fx_rate=float(current_fx_rate),
+                market_value_base=float(market_value_base),
+                cost_basis_base=float(cost_basis_base),
+                unrealized_fx_gain=float(unrealized_fx_gain),
+            ))
+
+        # ── Summary ──
+        total_expected = sum(fl.current_balance for fl in fund_ledgers)
+        total_actual = sum(a.actual_balance for a in account_summaries)
+
+        # YTD = current year only
+        ytd_contributions = Decimal(0)
+        ytd_fund_income = Decimal(0)
+        for fl in fund_ledgers:
+            for row in fl.months:
+                if row.year == current_year:
+                    ytd_contributions += Decimal(str(row.contribution))
+                    ytd_fund_income += Decimal(str(row.fund_income))
+
+        # ── WC surplus: budget allocated - actual expenses (YTD) ──
+        ytd_wc_surplus = Decimal(0)
+        for y, m in months_list:
+            if y == current_year:
+                actual_expenses = _get_expenses_for_month(session, workspace_id, y, m)
+                ytd_wc_surplus += budget_benchmark - actual_expenses
+
+        # ── Unallocated remainder: savings not assigned to any fund ──
+        # For each month, compute: savings_remainder - sum(non-WC fund contributions)
+        unallocated_remainder = Decimal(0)
+        for y, m in months_list:
+            if y == current_year:
+                prev_y, prev_m = _prev_month(y, m)
+                net_income = _get_income_for_month(session, workspace_id, prev_y, prev_m)
+                savings_rem = net_income - budget_benchmark
+                month_allocated = Decimal(0)
+                for f in funds:
+                    if f.name == "Working Capital":
+                        continue
+                    month_allocated += _compute_fund_contribution(
+                        f, savings_rem, budget_benchmark, override_map, y, m
+                    )
+                unallocated_remainder += savings_rem - month_allocated
+
+        # ── Transfer suggestions ──
+        # Exclude accounts linked to Working Capital (income arrives there naturally)
+        wc_account_ids = set()
+        wc_primary_account_id = ""
+        wc_primary_account_name = ""
+        wc_primary_account_currency = "SGD"
+        wc_fund_id = None
+        for f in funds:
+            if f.name == "Working Capital":
+                wc_account_ids = {link.account_id for link in f.account_links}
+                wc_fund_id = f.id
+                if f.account_links:
+                    wc_primary_account_id = f.account_links[0].account_id
+                    wc_primary_account_name = f.account_links[0].account.name
+                    wc_primary_account_currency = f.account_links[0].account.account_currency
+                break
+
+        # Build account -> fund lookup for suggestions
+        account_fund_map = {}  # account_id -> fund_id
+        for f in funds:
+            for link in f.account_links:
+                if link.account_id not in account_fund_map:
+                    account_fund_map[link.account_id] = f.id
+
+        transfer_suggestions = []
+        for a in account_summaries:
+            if a.account_id in wc_account_ids:
+                continue
+            if a.expected_contributions > 0 and a.difference < -0.01:
+                transfer_suggestions.append(TransferSuggestion(
+                    from_account_name=wc_primary_account_name,
+                    from_account_id=wc_primary_account_id,
+                    from_currency=wc_primary_account_currency,
+                    to_account_name=a.account_name,
+                    to_account_id=a.account_id,
+                    to_currency=a.account_currency,
+                    amount=round(abs(a.difference), 2),
+                    currency=a.account_currency,
+                    source_fund_id=wc_fund_id,
+                    dest_fund_id=account_fund_map.get(a.account_id),
+                ))
+
+        # ── WC optimization: if WC balance > 10% above budget benchmark ──
+        wc_optimization = None
+        for fl in fund_ledgers:
+            if fl.fund_name == "Working Capital":
+                threshold = float(budget_benchmark) * 1.10
+                if fl.current_balance > threshold:
+                    wc_optimization = WCOptimization(
+                        wc_balance=fl.current_balance,
+                        threshold=round(threshold, 2),
+                        surplus=round(fl.current_balance - float(budget_benchmark), 2),
+                    )
+                break
+
+        summary = FundTrackerSummary(
+            total_expected=total_expected,
+            total_actual=total_actual,
+            total_difference=total_actual - total_expected,
+            ytd_contributions=float(ytd_contributions),
+            ytd_fund_income=float(ytd_fund_income),
+            ytd_wc_surplus=float(ytd_wc_surplus),
+            unallocated_remainder=float(unallocated_remainder),
+            transfer_suggestions=transfer_suggestions,
+            wc_optimization=wc_optimization,
+        )
+
+        return FundTrackerResponse(
+            fund_ledgers=fund_ledgers,
+            account_summaries=account_summaries,
+            summary=summary,
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ─── Net Worth / Portfolio endpoint ───
+
+@router.get("/net-worth", response_model=NetWorthResponse)
+def get_net_worth(
+    years: int = Query(default=1, ge=1, le=5),
+    workspace_id: str = Depends(get_workspace_id),
+    session: Session = Depends(get_session)
+):
+    """
+    Get portfolio / net worth view with mark-to-market FX valuations
+    and historical net worth progression.
+    """
+    try:
+        from src.services.price_service import PriceService
+        from datetime import date
+
+        price_service = PriceService()
+
+        # Load workspace
+        workspace = session.query(WorkspaceModel).filter(
+            WorkspaceModel.id == workspace_id
+        ).first()
+        if not workspace:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+        base_currency = workspace.base_currency
+
+        # Load all accounts (exclude External)
+        all_accounts = session.query(AccountModel).filter(
+            AccountModel.workspace_id == workspace_id,
+            AccountModel.is_active == True,
+            AccountModel.name != "External"
+        ).all()
+
+        # Batch queries: native amounts and base amounts per account
+        alltime_native_sums = dict(
+            session.query(
+                PostingModel.account_id,
+                func.sum(PostingModel.amount),
+            ).group_by(PostingModel.account_id).all()
+        )
+
+        alltime_base_sums = dict(
+            session.query(
+                PostingModel.account_id,
+                func.sum(PostingModel.base_amount),
+            ).group_by(PostingModel.account_id).all()
+        )
+
+        # Get unique foreign currencies
+        unique_currencies = {acc.account_currency for acc in all_accounts if acc.account_currency != base_currency}
+
+        # Fetch current FX rates
+        fx_rates = {}
+        for ccy in unique_currencies:
+            fx_rates[ccy] = price_service.get_fx_rate(ccy, base_currency, session=session)
+
+        # Build per-account rows
+        account_rows = []
+        total_assets = Decimal(0)
+        total_liabilities = Decimal(0)
+        total_unrealized_fx_gain = Decimal(0)
+        currency_totals = {}  # ccy -> {native: Decimal, base: Decimal}
+
+        for acc in all_accounts:
+            starting = Decimal(str(acc.starting_balance or 0))
+
+            # Native balance
+            native_postings = alltime_native_sums.get(acc.id)
+            native_balance = starting + (Decimal(str(native_postings)) if native_postings else Decimal(0))
+
+            # Cost basis (historical base amounts)
+            base_postings = alltime_base_sums.get(acc.id)
+            cost_basis = starting + (Decimal(str(base_postings)) if base_postings else Decimal(0))
+
+            # Mark-to-market
+            ccy = acc.account_currency
+            fx_rate = fx_rates.get(ccy, Decimal(1)) if ccy != base_currency else Decimal(1)
+            base_value = native_balance * fx_rate
+            unrealized_fx_gain = base_value - cost_basis
+
+            # Sign: liabilities are typically negative or we negate them
+            sign = Decimal(1) if acc.type == "asset" else Decimal(-1)
+            signed_base_value = base_value * sign
+
+            if acc.type == "asset":
+                total_assets += base_value
+            else:
+                total_liabilities += abs(base_value)
+
+            total_unrealized_fx_gain += unrealized_fx_gain
+
+            # Currency breakdown tracking
+            if ccy not in currency_totals:
+                currency_totals[ccy] = {"native": Decimal(0), "base": Decimal(0)}
+            currency_totals[ccy]["native"] += native_balance
+            currency_totals[ccy]["base"] += base_value
+
+            account_rows.append(AccountNetWorthRow(
+                account_id=acc.id,
+                account_name=acc.name,
+                institution=acc.institution,
+                account_currency=ccy,
+                account_type=acc.type,
+                native_balance=float(native_balance),
+                fx_rate_to_base=float(fx_rate),
+                base_value=float(base_value),
+                cost_basis=float(cost_basis),
+                unrealized_fx_gain=float(unrealized_fx_gain),
+            ))
+
+        total_net_worth = total_assets - total_liabilities
+
+        # Currency breakdown
+        currency_breakdown = []
+        for ccy, totals in sorted(currency_totals.items()):
+            pct = (totals["base"] / total_net_worth * 100) if total_net_worth != 0 else Decimal(0)
+            currency_breakdown.append(CurrencyBreakdown(
+                currency=ccy,
+                total_native=float(totals["native"]),
+                base_equivalent=float(totals["base"]),
+                percentage=float(pct),
+            ))
+
+        # FX rates used (for display)
+        fx_rates_used = {f"{ccy}/{base_currency}": float(rate) for ccy, rate in fx_rates.items()}
+
+        # ── Historical net worth ──
+        now = datetime.utcnow()
+        current_year = now.year
+        start_year = current_year - years + 1
+
+        # Build month list
+        history_months = []
+        for y in range(start_year, current_year + 1):
+            for m in range(1, 13):
+                if y == current_year and m > now.month:
+                    break
+                history_months.append((y, m))
+
+        # Backfill historical FX rates for foreign currencies
+        if unique_currencies and history_months:
+            hist_start = date(history_months[0][0], history_months[0][1], 1)
+            hist_end = date(now.year, now.month, now.day)
+            for ccy in unique_currencies:
+                price_service.get_historical_rates(
+                    ccy, base_currency, hist_start, hist_end, session=session
+                )
+
+        # Compute historical net worth per month
+        history = []
+        for y, m in history_months:
+            _, last_day = monthrange(y, m)
+            month_end = datetime(y, m, last_day, 23, 59, 59)
+
+            # Native balances at month-end per account
+            month_native_sums = dict(
+                session.query(
+                    PostingModel.account_id,
+                    func.sum(PostingModel.amount),
+                ).join(
+                    TransactionModel, PostingModel.transaction_id == TransactionModel.id
+                ).filter(
+                    TransactionModel.timestamp <= month_end,
+                ).group_by(PostingModel.account_id).all()
+            )
+
+            month_assets = Decimal(0)
+            month_liabilities = Decimal(0)
+
+            for acc in all_accounts:
+                starting = Decimal(str(acc.starting_balance or 0))
+                native_p = month_native_sums.get(acc.id)
+                native_bal = starting + (Decimal(str(native_p)) if native_p else Decimal(0))
+
+                ccy = acc.account_currency
+                if ccy == base_currency:
+                    rate = Decimal(1)
+                else:
+                    rate = price_service.get_rate_at_date(
+                        ccy, base_currency, date(y, m, last_day), session=session
+                    )
+
+                base_val = native_bal * rate
+
+                if acc.type == "asset":
+                    month_assets += base_val
+                else:
+                    month_liabilities += abs(base_val)
+
+            history.append(NetWorthHistoryPoint(
+                year=y,
+                month=m,
+                net_worth=float(month_assets - month_liabilities),
+                assets=float(month_assets),
+                liabilities=float(month_liabilities),
+            ))
+
+        return NetWorthResponse(
+            base_currency=base_currency,
+            total_net_worth=float(total_net_worth),
+            total_assets=float(total_assets),
+            total_liabilities=float(total_liabilities),
+            total_unrealized_fx_gain=float(total_unrealized_fx_gain),
+            accounts=account_rows,
+            currency_breakdown=currency_breakdown,
+            history=history,
+            fx_rates_used=fx_rates_used,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ─── Monthly Dashboard schemas ───
+
+class FundCategoryAnalysis(BaseModel):
+    """Category-level spending and budget for one fund"""
+    category_id: Optional[str] = None
+    category_name: str
+    category_emoji: str = ""
+    amount_spent: float
+    budget_allocated: float = 0
+
+
+class FundDashboardAnalysis(BaseModel):
+    """One fund's complete analysis for the monthly dashboard"""
+    fund_id: str
+    fund_name: str
+    fund_emoji: str = ""
+    is_working_capital: bool = False
+    total_spent: float
+    total_budget: float
+    fund_balance: float = 0
+    categories: List[FundCategoryAnalysis]
+
+
+class FundExtractionItem(BaseModel):
+    """One fund's share of the month's fund extraction"""
+    fund_id: str
+    fund_name: str
+    fund_emoji: str = ""
+    percentage: float
+    amount: float
+
+
+class MonthlyDashboardResponse(BaseModel):
+    """Full monthly dashboard response"""
+    year: int
+    month: int
+    currency: str = "SGD"
+    fund_analyses: List[FundDashboardAnalysis]
+    fund_extraction: List[FundExtractionItem]
+
+
+# ─── Monthly Dashboard endpoint ───
+
+@router.get("/monthly-dashboard", response_model=MonthlyDashboardResponse)
+def get_monthly_dashboard(
+    year: int,
+    month: int,
+    workspace_id: str = Depends(get_workspace_id),
+    session: Session = Depends(get_session),
+):
+    """
+    Get monthly dashboard data: per-fund spending vs budget by category,
+    plus fund extraction (allocation split) for the month.
+    """
+    try:
+        from src.data.repositories import ScenarioRepository, FundAllocationOverrideRepository
+        from sqlalchemy.orm import joinedload
+
+        # ── Load funds with account links (needed for balance computation) ──
+        funds = session.query(FundModel).options(
+            joinedload(FundModel.account_links).joinedload(FundAccountLinkModel.account)
+        ).filter(
+            FundModel.workspace_id == workspace_id,
+            FundModel.is_active == True,
+        ).order_by(FundModel.created_at).all()
+
+        # ── Active scenario for budget benchmarks ──
+        scenario_repo = ScenarioRepository(session)
+        active_scenario = scenario_repo.read_active(workspace_id)
+        budget_benchmark = Decimal(str(active_scenario.monthly_expenses_total)) if active_scenario else Decimal(0)
+
+        # Parse category budgets from scenario assumptions
+        category_budgets_map: Dict[str, Decimal] = {}
+        if active_scenario and active_scenario.assumptions_json:
+            assumptions = json.loads(active_scenario.assumptions_json)
+            for cb in assumptions.get("category_budgets", []):
+                cat_id = cb.get("category_id")
+                amount = cb.get("monthly_amount", 0)
+                if cat_id:
+                    category_budgets_map[cat_id] = Decimal(str(amount))
+
+        # ── Overrides for fund allocation ──
+        override_repo = FundAllocationOverrideRepository(session)
+        all_overrides = override_repo.read_by_workspace(workspace_id)
+        override_map = {
+            (o.fund_id, o.year, o.month): Decimal(str(o.allocation_percentage))
+            for o in all_overrides
+        }
+
+        # ── Precompute monthly incomes for all months Jan..selected month ──
+        # (avoids redundant queries per fund)
+        monthly_incomes: Dict[int, Decimal] = {}
+        for m in range(1, month + 1):
+            prev_y, prev_m = _prev_month(year, m)
+            monthly_incomes[m] = _get_income_for_month(session, workspace_id, prev_y, prev_m)
+
+        allocated_fixed_cost = budget_benchmark
+        # Current month's values (for category spending query)
+        cur_net_income = monthly_incomes[month]
+        cur_savings_remainder = cur_net_income - allocated_fixed_cost
+
+        # ── External account id for filtering ──
+        external_acc = session.query(AccountModel).filter(
+            AccountModel.workspace_id == workspace_id,
+            AccountModel.name == "External",
+        ).first()
+        external_account_id = external_acc.id if external_acc else None
+
+        start, end = _get_month_range(year, month)
+
+        # ── Workspace currency ──
+        from src.data.models import WorkspaceModel
+        ws = session.query(WorkspaceModel).filter(WorkspaceModel.id == workspace_id).first()
+        currency = ws.base_currency if ws else "SGD"
+
+        # ── Per-fund analysis ──
+        fund_analyses = []
+
+        for f in funds:
+            is_wc = f.name == "Working Capital"
+
+            # Fund's expected contribution for selected month
+            contribution = _compute_fund_contribution(
+                f, cur_savings_remainder, allocated_fixed_cost, override_map, year, month,
+            )
+
+            # ── Compute fund's opening balance for the selected month ──
+            # Same logic as fund tracker ledger: start + contributions + fund_income - debits
+            fund_balance = Decimal(0)
+            # Opening balance from linked accounts
+            for link in f.account_links:
+                acct_start = Decimal(str(link.account.starting_balance or 0))
+                alloc_pct = Decimal(str(link.allocation_percentage if link.allocation_percentage is not None else 100))
+                fund_balance += acct_start * alloc_pct / 100
+            # Accumulate contributions, fund income, and debits for all prior months
+            for m in range(1, month):
+                m_income = monthly_incomes[m]
+                m_savings = m_income - allocated_fixed_cost
+                m_contrib = _compute_fund_contribution(
+                    f, m_savings, allocated_fixed_cost, override_map, year, m,
+                )
+                fund_balance += m_contrib
+                # Fund income (non-WC only)
+                if not is_wc:
+                    fund_balance += _get_fund_income_for_month(session, workspace_id, f.id, year, m)
+                # Subtract actual debits for prior months (transfer-aware)
+                m_start, m_end = _get_month_range(year, m)
+                ext_filt = [PostingModel.account_id != external_account_id] if external_account_id else []
+                # Non-transfer debits
+                prior_debits_nt = session.query(
+                    func.sum(PostingModel.base_amount),
+                ).join(
+                    TransactionModel, PostingModel.transaction_id == TransactionModel.id,
+                ).filter(
+                    TransactionModel.workspace_id == workspace_id,
+                    or_(TransactionModel.type.is_(None), TransactionModel.type != "transfer"),
+                    TransactionModel.fund_id == f.id,
+                    TransactionModel.timestamp >= m_start,
+                    TransactionModel.timestamp <= m_end,
+                    PostingModel.base_amount < 0,
+                    *ext_filt,
+                ).scalar() or Decimal(0)
+                # Transfer source debits
+                prior_debits_tf = session.query(
+                    func.sum(PostingModel.base_amount),
+                ).join(
+                    TransactionModel, PostingModel.transaction_id == TransactionModel.id,
+                ).filter(
+                    TransactionModel.workspace_id == workspace_id,
+                    TransactionModel.type == "transfer",
+                    TransactionModel.source_fund_id == f.id,
+                    TransactionModel.timestamp >= m_start,
+                    TransactionModel.timestamp <= m_end,
+                    PostingModel.base_amount < 0,
+                    *ext_filt,
+                ).scalar() or Decimal(0)
+                # Transfer dest credits
+                prior_credits_tf = session.query(
+                    func.sum(PostingModel.base_amount),
+                ).join(
+                    TransactionModel, PostingModel.transaction_id == TransactionModel.id,
+                ).filter(
+                    TransactionModel.workspace_id == workspace_id,
+                    TransactionModel.type == "transfer",
+                    TransactionModel.dest_fund_id == f.id,
+                    TransactionModel.timestamp >= m_start,
+                    TransactionModel.timestamp <= m_end,
+                    PostingModel.base_amount > 0,
+                    *ext_filt,
+                ).scalar() or Decimal(0)
+                fund_balance += prior_debits_nt + prior_debits_tf  # negative values subtract
+                fund_balance += prior_credits_tf  # positive value adds
+
+            # Query expense transactions tagged to this fund, grouped by category
+            # Exclude transfers (they have no category and are tracked separately)
+            base_filters = [
+                TransactionModel.workspace_id == workspace_id,
+                TransactionModel.fund_id == f.id,
+                or_(TransactionModel.type.is_(None), TransactionModel.type != "transfer"),
+                TransactionModel.timestamp >= start,
+                TransactionModel.timestamp <= end,
+            ]
+            ext_filter = [PostingModel.account_id != external_account_id] if external_account_id else []
+
+            spend_q = session.query(
+                TransactionModel.category_id,
+                CategoryModel.name,
+                CategoryModel.emoji,
+                func.sum(PostingModel.base_amount).label("total"),
+            ).join(
+                PostingModel, TransactionModel.id == PostingModel.transaction_id,
+            ).outerjoin(
+                CategoryModel, TransactionModel.category_id == CategoryModel.id,
+            ).filter(
+                *base_filters,
+                *ext_filter,
+                PostingModel.base_amount < 0,
+            ).group_by(
+                TransactionModel.category_id,
+                CategoryModel.name,
+                CategoryModel.emoji,
+            )
+
+            spend_rows = spend_q.all()
+
+            # Build category spending map
+            cat_spend: Dict[str, tuple] = {}
+            total_spent = Decimal(0)
+            for cat_id, cat_name, cat_emoji, total in spend_rows:
+                if total:
+                    amt = abs(Decimal(str(total)))
+                    total_spent += amt
+                    key = cat_id or "__uncategorized__"
+                    cat_spend[key] = (cat_name or "Uncategorized", cat_emoji or "", amt)
+
+            # Build category list for this fund
+            categories = []
+
+            if is_wc:
+                # For WC: only include categories that have actual spending
+                # Show budget alongside for categories that have both
+                for cat_id, (cat_name, cat_emoji, spent) in cat_spend.items():
+                    budget_amt = category_budgets_map.get(
+                        cat_id if cat_id != "__uncategorized__" else "", Decimal(0)
+                    )
+                    categories.append(FundCategoryAnalysis(
+                        category_id=cat_id if cat_id != "__uncategorized__" else None,
+                        category_name=cat_name,
+                        category_emoji=cat_emoji,
+                        amount_spent=float(spent),
+                        budget_allocated=float(budget_amt),
+                    ))
+                total_budget = float(allocated_fixed_cost)
+            else:
+                # For non-WC: show category breakdown of spending, no per-category budget
+                for cat_id, (cat_name, cat_emoji, spent) in cat_spend.items():
+                    categories.append(FundCategoryAnalysis(
+                        category_id=cat_id if cat_id != "__uncategorized__" else None,
+                        category_name=cat_name,
+                        category_emoji=cat_emoji,
+                        amount_spent=float(spent),
+                        budget_allocated=0,
+                    ))
+                total_budget = float(contribution)
+
+            # Sort categories by amount_spent desc, then budget desc
+            categories.sort(key=lambda c: (c.amount_spent, c.budget_allocated), reverse=True)
+
+            fund_analyses.append(FundDashboardAnalysis(
+                fund_id=f.id,
+                fund_name=f.name,
+                fund_emoji=f.emoji or "",
+                is_working_capital=is_wc,
+                total_spent=float(total_spent),
+                total_budget=total_budget,
+                fund_balance=float(fund_balance),
+                categories=categories,
+            ))
+
+        # ── Fund Extraction: actual debits per fund (non-external postings) ──
+        grand_total_spent = sum(fa.total_spent for fa in fund_analyses)
+        fund_extraction_items = []
+        for fa in fund_analyses:
+            pct = (fa.total_spent / grand_total_spent * 100) if grand_total_spent > 0 else 0
+            fund_extraction_items.append(FundExtractionItem(
+                fund_id=fa.fund_id,
+                fund_name=fa.fund_name,
+                fund_emoji=fa.fund_emoji,
+                percentage=round(pct, 1),
+                amount=round(fa.total_spent, 2),
+            ))
+
+        return MonthlyDashboardResponse(
+            year=year,
+            month=month,
+            currency=currency,
+            fund_analyses=fund_analyses,
+            fund_extraction=fund_extraction_items,
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

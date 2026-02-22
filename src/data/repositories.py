@@ -4,11 +4,12 @@ from abc import ABC, abstractmethod
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from .models import (
     UserModel, WorkspaceModel, AccountModel, TransactionModel, PostingModel,
-    CategoryModel, SubcategoryModel, FundModel, FundAllocationOverrideModel, TagModel, PriceModel, ScenarioModel
+    CategoryModel, SubcategoryModel, FundModel, FundAccountLinkModel, FundAllocationOverrideModel, TagModel, PriceModel, ScenarioModel,
+    CardModel, PaymentMethodModel, RecurringTransactionModel
 )
 
 
@@ -231,6 +232,40 @@ class PriceRepository(BaseRepository):
             PriceModel.quote_ccy == quote_ccy
         ).order_by(PriceModel.timestamp.desc()).first()
 
+    def read_latest_rate_within(
+        self,
+        base_ccy: str,
+        quote_ccy: str,
+        max_age_hours: int = 24
+    ) -> Optional[PriceModel]:
+        """Get latest FX rate only if it's within max_age_hours of now"""
+        from datetime import timedelta
+        cutoff = datetime.utcnow() - timedelta(hours=max_age_hours)
+        return self.session.query(PriceModel).filter(
+            PriceModel.base_ccy == base_ccy,
+            PriceModel.quote_ccy == quote_ccy,
+            PriceModel.timestamp >= cutoff,
+        ).order_by(PriceModel.timestamp.desc()).first()
+
+    def read_rate_at_date(
+        self,
+        base_ccy: str,
+        quote_ccy: str,
+        target_date: datetime
+    ) -> Optional[PriceModel]:
+        """Get closest rate on or before target_date"""
+        return self.session.query(PriceModel).filter(
+            PriceModel.base_ccy == base_ccy,
+            PriceModel.quote_ccy == quote_ccy,
+            PriceModel.timestamp <= target_date,
+        ).order_by(PriceModel.timestamp.desc()).first()
+
+    def bulk_create(self, prices: List[PriceModel]) -> None:
+        """Batch insert price records"""
+        for p in prices:
+            self.session.add(p)
+        self.session.commit()
+
     def update(self, price: PriceModel) -> PriceModel:
         self.session.commit()
         return price
@@ -340,7 +375,9 @@ class FundRepository(BaseRepository):
         return self.session.query(FundModel).filter(FundModel.id == str(fund_id)).first()
 
     def read_by_workspace(self, workspace_id: str) -> List[FundModel]:
-        return self.session.query(FundModel).filter(
+        return self.session.query(FundModel).options(
+            joinedload(FundModel.account_links).joinedload(FundAccountLinkModel.account)
+        ).filter(
             FundModel.workspace_id == workspace_id,
             FundModel.is_active == True
         ).all()
@@ -360,6 +397,69 @@ class FundRepository(BaseRepository):
         if fund:
             self.session.delete(fund)
             self.session.commit()
+
+    def set_account_links(self, fund: FundModel, account_allocations: List[dict], workspace_id: str) -> FundModel:
+        """Replace all account links for a fund with the given allocations.
+
+        account_allocations: [{"account_id": "...", "allocation_percentage": 60}, ...]
+        Also accepts legacy format: list of plain account_id strings (defaults to 100% each).
+        """
+        # Clear existing links
+        self.session.query(FundAccountLinkModel).filter(
+            FundAccountLinkModel.fund_id == fund.id
+        ).delete()
+        self.session.flush()
+
+        if not account_allocations:
+            self.session.commit()
+            return fund
+
+        # Normalize: support both dict-style and plain string IDs
+        normalized = []
+        for item in account_allocations:
+            if isinstance(item, str):
+                normalized.append({"account_id": item, "allocation_percentage": 100})
+            elif isinstance(item, dict):
+                normalized.append({
+                    "account_id": item["account_id"],
+                    "allocation_percentage": item.get("allocation_percentage", 100),
+                })
+            else:
+                normalized.append({
+                    "account_id": getattr(item, "account_id", str(item)),
+                    "allocation_percentage": getattr(item, "allocation_percentage", 100),
+                })
+
+        # Validate accounts exist in workspace
+        account_ids = [a["account_id"] for a in normalized]
+        accounts = self.session.query(AccountModel).filter(
+            AccountModel.id.in_(account_ids),
+            AccountModel.workspace_id == workspace_id
+        ).all()
+
+        found_ids = {a.id for a in accounts}
+        missing = set(account_ids) - found_ids
+        if missing:
+            raise ValueError(f"Accounts not found in workspace: {missing}")
+
+        # If single account, force 100%
+        if len(normalized) == 1:
+            normalized[0]["allocation_percentage"] = 100
+
+        # Create new links
+        for alloc in normalized:
+            link = FundAccountLinkModel(
+                fund_id=fund.id,
+                account_id=alloc["account_id"],
+                allocation_percentage=alloc["allocation_percentage"],
+            )
+            self.session.add(link)
+
+        self.session.commit()
+
+        # Refresh to load new links
+        self.session.refresh(fund)
+        return fund
 
 
 class FundAllocationOverrideRepository(BaseRepository):
@@ -431,4 +531,124 @@ class FundAllocationOverrideRepository(BaseRepository):
         override = self.read_by_fund_and_period(workspace_id, fund_id, year, month)
         if override:
             self.session.delete(override)
+            self.session.commit()
+
+
+class CardRepository(BaseRepository):
+    """Repository for Card entities"""
+
+    def create(self, card: CardModel) -> CardModel:
+        self.session.add(card)
+        self.session.commit()
+        return card
+
+    def read(self, card_id: str) -> Optional[CardModel]:
+        return self.session.query(CardModel).filter(CardModel.id == str(card_id)).first()
+
+    def read_by_workspace(self, workspace_id: str) -> List[CardModel]:
+        return self.session.query(CardModel).filter(
+            CardModel.workspace_id == workspace_id,
+            CardModel.is_active == True
+        ).all()
+
+    def read_by_account(self, account_id: str) -> List[CardModel]:
+        return self.session.query(CardModel).filter(
+            CardModel.account_id == account_id,
+            CardModel.is_active == True
+        ).all()
+
+    def update(self, card: CardModel) -> CardModel:
+        card.updated_at = datetime.utcnow()
+        self.session.commit()
+        return card
+
+    def delete(self, card_id: str) -> None:
+        card = self.read(card_id)
+        if card:
+            self.session.delete(card)
+            self.session.commit()
+
+
+class PaymentMethodRepository(BaseRepository):
+    """Repository for PaymentMethod entities"""
+
+    def create(self, pm: PaymentMethodModel) -> PaymentMethodModel:
+        self.session.add(pm)
+        self.session.commit()
+        return pm
+
+    def read(self, pm_id: str) -> Optional[PaymentMethodModel]:
+        return self.session.query(PaymentMethodModel).filter(
+            PaymentMethodModel.id == str(pm_id)
+        ).first()
+
+    def read_by_workspace(self, workspace_id: str) -> List[PaymentMethodModel]:
+        return self.session.query(PaymentMethodModel).filter(
+            PaymentMethodModel.workspace_id == workspace_id
+        ).all()
+
+    def read_active_by_workspace(self, workspace_id: str) -> List[PaymentMethodModel]:
+        return self.session.query(PaymentMethodModel).filter(
+            PaymentMethodModel.workspace_id == workspace_id,
+            PaymentMethodModel.is_active == True
+        ).all()
+
+    def read_by_card(self, card_id: str) -> Optional[PaymentMethodModel]:
+        return self.session.query(PaymentMethodModel).filter(
+            PaymentMethodModel.card_id == card_id
+        ).first()
+
+    def update(self, pm: PaymentMethodModel) -> PaymentMethodModel:
+        pm.updated_at = datetime.utcnow()
+        self.session.commit()
+        return pm
+
+    def delete(self, pm_id: str) -> None:
+        pm = self.read(pm_id)
+        if pm:
+            self.session.delete(pm)
+            self.session.commit()
+
+
+class RecurringTransactionRepository(BaseRepository):
+    """Repository for RecurringTransaction entities"""
+
+    def create(self, recurring: RecurringTransactionModel) -> RecurringTransactionModel:
+        self.session.add(recurring)
+        self.session.commit()
+        return recurring
+
+    def read(self, recurring_id: str) -> Optional[RecurringTransactionModel]:
+        return self.session.query(RecurringTransactionModel).filter(
+            RecurringTransactionModel.id == str(recurring_id)
+        ).first()
+
+    def read_by_workspace(self, workspace_id: str) -> List[RecurringTransactionModel]:
+        return self.session.query(RecurringTransactionModel).filter(
+            RecurringTransactionModel.workspace_id == workspace_id
+        ).order_by(RecurringTransactionModel.next_occurrence).all()
+
+    def read_active_by_workspace(self, workspace_id: str) -> List[RecurringTransactionModel]:
+        return self.session.query(RecurringTransactionModel).filter(
+            RecurringTransactionModel.workspace_id == workspace_id,
+            RecurringTransactionModel.is_active == True
+        ).order_by(RecurringTransactionModel.next_occurrence).all()
+
+    def read_pending(self, workspace_id: str, as_of_date) -> List[RecurringTransactionModel]:
+        """Get active templates where next_occurrence <= as_of_date"""
+        return self.session.query(RecurringTransactionModel).filter(
+            RecurringTransactionModel.workspace_id == workspace_id,
+            RecurringTransactionModel.is_active == True,
+            RecurringTransactionModel.next_occurrence <= as_of_date
+        ).order_by(RecurringTransactionModel.next_occurrence).all()
+
+    def update(self, recurring: RecurringTransactionModel) -> RecurringTransactionModel:
+        recurring.updated_at = datetime.utcnow()
+        self.session.commit()
+        return recurring
+
+    def delete(self, recurring_id: str) -> None:
+        recurring = self.read(recurring_id)
+        if recurring:
+            self.session.delete(recurring)
             self.session.commit()

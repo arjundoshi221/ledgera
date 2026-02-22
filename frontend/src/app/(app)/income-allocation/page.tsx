@@ -194,7 +194,12 @@ export default function IncomeAllocationPage() {
                     <th className="px-3 py-2 text-right font-medium">Savings Remainder</th>
                     {fundsHeaders.map((f) => (
                       <th key={f.fund_id} colSpan={2} className="px-3 py-2 text-center font-medium border-l">
-                        {f.emoji} {f.fund_name}
+                        <div>{f.emoji} {f.fund_name}</div>
+                        {f.linked_account_names && f.linked_account_names.length > 0 && (
+                          <div className="text-[10px] font-normal text-muted-foreground">
+                            {f.linked_account_names.join(", ")}
+                          </div>
+                        )}
                       </th>
                     ))}
                   </tr>
