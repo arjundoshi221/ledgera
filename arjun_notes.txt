@@ -8,77 +8,28 @@ Frontend
 > cd frontend
 > npm run dev
 
+Make multiple csvs (one for each bank details)
 
-Income allocation should take the actual costs for the calculation
+Make a fund map - like visualize my current financial world. (How my funds work essentially)
 
-
-First
-On the Income Allocations Page
-The Working Capital budget should be based on the model. SO that input should be auto calculated as the same as allocated.
-
-IN case I do optimizations i.e (change %tage allocated) there it should refelct in the money being sent into the accounts for the month. Nothing more.
-
-Also I only need until the current month there. No need for future views for the whole year.
-
-Also LOCK in forever the previous months simulation. So if i run a new simulation today - it should pick up from now and only current months allocated amount and the working capital should change.
-
-Income allocation sum of %tages == 100 apart from working capital. That is displayed as 2 values. As %tage of income and 
-
-
-To do:
-Allow start balance in accounts/import balance
-Add proper monthly dashboard
-test the transactions with dummy transactions
-
-If transfer has change in currency from base to the account I am tranferring to - ask for rate + costs
-
-Next:
-We need a full new Tab that is Fund & Account  Tracker,
-
-Add visuals for each funds view
-Add visuals for each account view
-How much it should be and how much it is. (Initiate transfer if needed automatically)
-I need this to be a full scale accounting with open contibution and close balances. The fund rate is taken from the actual transactions and calculated. So all income under the fund income category should be calculated.
-Eg. If i input dividends from the categories and credit into the fund (IBKR Singapore) I should be able to see and analyze that.
-THis is by far the most important set up - to see and analyze what is happening.
-
-At the end of the year I should be able to export the returns for each fund if i choose. Build this such that I can keep tracking and in such a way that if i end up connecting my actual bank account details then we can build fund and account management efficiently. 
-This is the true accounting logic where we contribute monthly based on income allocation to funds and then aggregate based on which funds actually live in which accounts physically.
-
-Then all transactions have a fund and account allocated to them so we can see the balances of funds as they move and change
-
-Have a check every week that shows how much there should be in a fund/account and how much there is based on contribution not in terms of returns
-
-Funds are on the idea of allocation and plannning. Accounts are where the money actually sits.
+At the end of the year I should be able to export the returns for each fund if i choose. 
 
 Combined users & Family planning. Each person has their own logins but I can view the accounts in one place as family admin. Max of 8 users in a family plan
 
 
-Next 2
-FULL ADMIN PANEL
-User and marketing analytics
-
 --
 Add goal setter
 
-Api Link the exchange rate. Also aggregate the exchange rate uniquely for each month.
-
-Store a simulation and use those numbers as benchmarks for the level. So I set these as my numbers for budget tracking. Making sure I am sticking to budgets for each category
-
-Add a page monthly analysis (Should be able to see how this months budgets are fully. Credit and debit statements as a sub page - I need bank level statements for my month)
+Credit and debit statements as a sub page - I need bank level statements for my month
 Should be able to export this and in pdf format
 
-Live net worth (from accounting vs modelled net worth - from simulation - the default one which we use as the set up)
-
-At some point look at bank integrations/Credit card set up
+At some point look at bank integrations set up
 
 For travel etc. Create a new travel accounting. Links same as before but just shows categories for that trip specifically
 
-Add password encryption industry grade such that the admin cannot see it 
-
 Quicken model copy
 
-
+For transfers tag as bank transfer as payment method
 
 Aditi:
 1. Inflation as a function of data
@@ -88,4 +39,13 @@ Aditi:
 5. Add change or increase in bonus %
 6. simulation add benchmarks for the funds related to investments
 
+In Admin I need to make the API for all 
+1. historical exchange rates
+2. Tax slabs and changes
+3. Inflation and CPI
+
+
 Feedback and explanation
+
+Security:
+2FA using email, authenticator, OTP on phone numbers
