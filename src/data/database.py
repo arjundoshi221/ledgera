@@ -343,6 +343,19 @@ def _run_migrations(engine) -> None:
                 "INSERT INTO _migrations (name) VALUES ('promote_arjun_admin_v1')"
             ))
 
+    # Re-promote arjun after signup (v1 ran before user existed)
+    with engine.begin() as conn:
+        already = conn.execute(
+            text("SELECT 1 FROM _migrations WHERE name = 'promote_arjun_admin_v2'")
+        ).fetchone()
+        if not already:
+            conn.execute(text(
+                f"UPDATE users SET is_admin = {BOOL_TRUE} WHERE email = 'arjundoshi221@gmail.com'"
+            ))
+            conn.execute(text(
+                "INSERT INTO _migrations (name) VALUES ('promote_arjun_admin_v2')"
+            ))
+
 
 def get_session():
     """Get database session (FastAPI dependency)"""
