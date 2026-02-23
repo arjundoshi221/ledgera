@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { LoginForm } from "@/components/login-form"
 import { SignupForm } from "@/components/signup-form"
@@ -27,7 +27,7 @@ const highlights = [
   },
 ]
 
-export default function LoginPage() {
+function LoginContent() {
   const searchParams = useSearchParams()
   const [tab, setTab] = useState(searchParams.get("tab") === "signup" ? "signup" : "login")
 
@@ -89,5 +89,19 @@ export default function LoginPage() {
         </div>
       </div>
     </Card>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-screen items-center justify-center">
+          <div className="animate-pulse text-muted-foreground">Loading...</div>
+        </div>
+      }
+    >
+      <LoginContent />
+    </Suspense>
   )
 }
