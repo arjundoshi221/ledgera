@@ -202,6 +202,15 @@ class AdminRepository:
                 "DELETE FROM workspaces WHERE owner_user_id = :uid"
             ), {"uid": user_id})
 
+        # Delete bug report media and bug reports
+        self.session.execute(text(
+            "DELETE FROM bug_report_media WHERE bug_report_id IN "
+            "(SELECT id FROM bug_reports WHERE user_id = :uid)"
+        ), {"uid": user_id})
+        self.session.execute(text(
+            "DELETE FROM bug_reports WHERE user_id = :uid"
+        ), {"uid": user_id})
+
         # Delete audit log entries where this user is the actor
         self.session.execute(text(
             "DELETE FROM audit_logs WHERE actor_user_id = :uid"

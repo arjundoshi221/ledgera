@@ -2,7 +2,7 @@
 
 from sqlalchemy import (
     Column, String, Numeric, DateTime, ForeignKey,
-    Enum, Text, Boolean, Table, Index, Integer
+    Enum, Text, Boolean, Table, Index, Integer, LargeBinary
 )
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime
@@ -515,3 +515,44 @@ class AuditLogModel(Base):
         Index('idx_audit_logs_action_created', 'action', 'created_at'),
         Index('idx_audit_logs_target', 'target_type', 'target_id'),
     )
+
+
+# === Bug Reports ===
+
+class BugReportModel(Base):
+    """User-submitted bug report"""
+    __tablename__ = 'bug_reports'
+
+    id = Column(String(36), primary_key=True, default=new_uuid)
+    user_id = Column(String(36), ForeignKey('users.id'), nullable=False, index=True)
+    title = Column(String(500), nullable=False)
+    description = Column(Text, nullable=False)
+    status = Column(String(20), nullable=False, default='open')  # open, in_progress, resolved
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    resolved_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    user = relationship("UserModel")
+    media = relationship("BugReportMediaModel", back_populates="bug_report", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index('idx_bug_reports_user_status', 'user_id', 'status'),
+        Index('idx_bug_reports_status_created', 'status', 'created_at'),
+    )
+
+
+class BugReportMediaModel(Base):
+    """Media attachments for bug reports (stored as BLOB)"""
+    __tablename__ = 'bug_report_media'
+
+    id = Column(String(36), primary_key=True, default=new_uuid)
+    bug_report_id = Column(String(36), ForeignKey('bug_reports.id'), nullable=False, index=True)
+    filename = Column(String(255), nullable=False)
+    content_type = Column(String(100), nullable=False)
+    file_size = Column(Integer, nullable=False)
+    file_data = Column(LargeBinary, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    # Relationships
+    bug_report = relationship("BugReportModel", back_populates="media")

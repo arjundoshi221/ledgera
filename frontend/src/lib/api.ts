@@ -47,6 +47,7 @@ import type {
   PendingInstance,
   ConfirmRecurringRequest,
   SkipRecurringRequest,
+  BugReport,
 } from "./types"
 
 const BASE_URL =
@@ -668,4 +669,45 @@ export async function skipRecurring(
     method: "POST",
     body: JSON.stringify(data),
   })
+}
+
+// ---------------------
+// Bug Reports
+// ---------------------
+
+async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
+  const token = getToken()
+  const headers: Record<string, string> = {}
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`
+  }
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers,
+    body: formData,
+  })
+  if (!response.ok) {
+    let body: unknown
+    try { body = await response.json() } catch { body = await response.text() }
+    throw new ApiError(response.status, body)
+  }
+  return response.json() as Promise<T>
+}
+
+export async function submitBugReport(
+  title: string,
+  description: string,
+  files: File[]
+): Promise<BugReport> {
+  const formData = new FormData()
+  formData.append("title", title)
+  formData.append("description", description)
+  for (const file of files) {
+    formData.append("files", file)
+  }
+  return apiUpload<BugReport>("/api/v1/bugs", formData)
+}
+
+export async function getMyBugReports(): Promise<BugReport[]> {
+  return apiFetch<BugReport[]>("/api/v1/bugs")
 }

@@ -10,6 +10,8 @@ import type {
   ConversionFunnel,
   FeatureAdoption,
   PaginatedAuditLogResponse,
+  PaginatedBugReportResponse,
+  AdminBugReportDetail,
 } from "./admin-types"
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
@@ -157,4 +159,37 @@ export async function getAuditLogs(params: {
   if (params.offset) qs.set("offset", String(params.offset))
   if (params.limit) qs.set("limit", String(params.limit))
   return adminFetch<PaginatedAuditLogResponse>(`/api/v1/admin/audit-logs?${qs}`)
+}
+
+// ── Bug Reports (Admin) ──
+
+export async function getAdminBugReports(params: {
+  status?: string
+  offset?: number
+  limit?: number
+} = {}): Promise<PaginatedBugReportResponse> {
+  const qs = new URLSearchParams()
+  if (params.status && params.status !== "all") qs.set("status_filter", params.status)
+  if (params.offset !== undefined) qs.set("offset", String(params.offset))
+  if (params.limit !== undefined) qs.set("limit", String(params.limit))
+  return adminFetch<PaginatedBugReportResponse>(`/api/v1/admin/bugs?${qs}`)
+}
+
+export async function getAdminBugReportDetail(bugId: string): Promise<AdminBugReportDetail> {
+  return adminFetch<AdminBugReportDetail>(`/api/v1/admin/bugs/${bugId}`)
+}
+
+export async function updateBugStatus(bugId: string, status: string): Promise<{ message: string }> {
+  return adminFetch(`/api/v1/admin/bugs/${bugId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  })
+}
+
+export async function deleteAdminBugReport(bugId: string): Promise<{ message: string }> {
+  return adminFetch(`/api/v1/admin/bugs/${bugId}`, { method: "DELETE" })
+}
+
+export function getBugMediaUrl(bugId: string, mediaId: string): string {
+  return `${BASE_URL}/api/v1/admin/bugs/${bugId}/media/${mediaId}`
 }

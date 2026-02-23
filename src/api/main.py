@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.data.database import init_db
 from .schemas import HealthResponse
-from .routes import accounts, transactions, projections, prices, auth, workspace, categories, analytics, payments, recurring, admin
+from .routes import accounts, transactions, projections, prices, auth, workspace, categories, analytics, payments, recurring, admin, bugs
 from .middleware import AuthMiddleware
 
 
@@ -64,6 +64,7 @@ app.include_router(prices.router, prefix="/api/v1/prices", tags=["prices"])
 app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"])
 app.include_router(recurring.router, prefix="/api/v1/recurring", tags=["recurring"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
+app.include_router(bugs.router, prefix="/api/v1/bugs", tags=["bugs"])
 
 
 if __name__ == "__main__":

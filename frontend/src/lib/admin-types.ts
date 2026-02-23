@@ -111,3 +111,39 @@ export interface PaginatedAuditLogResponse {
   offset: number
   limit: number
 }
+
+// ---------------------
+// Bug Reports (Admin)
+// ---------------------
+
+export interface AdminBugReport {
+  id: string
+  user_id: string
+  user_email: string | null
+  title: string
+  description: string
+  status: "open" | "in_progress" | "resolved"
+  media_count: number
+  created_at: string
+  updated_at: string
+  resolved_at: string | null
+}
+
+export interface AdminBugReportMediaInfo {
+  id: string
+  filename: string
+  content_type: string
+  file_size: number
+  created_at: string
+}
+
+export interface AdminBugReportDetail extends AdminBugReport {
+  media: AdminBugReportMediaInfo[]
+}
+
+export interface PaginatedBugReportResponse {
+  reports: AdminBugReport[]
+  total: number
+  offset: number
+  limit: number
+}

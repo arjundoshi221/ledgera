@@ -823,3 +823,28 @@ export interface ConfirmRecurringRequest {
 export interface SkipRecurringRequest {
   occurrence_date: string
 }
+
+// ---------------------
+// Bug Reports
+// ---------------------
+
+export type BugReportStatus = "open" | "in_progress" | "resolved"
+
+export interface BugReportMediaInfo {
+  id: string
+  filename: string
+  content_type: string
+  file_size: number
+  created_at: string
+}
+
+export interface BugReport {
+  id: string
+  title: string
+  description: string
+  status: BugReportStatus
+  media_count: number
+  created_at: string
+  updated_at: string
+  resolved_at: string | null
+}

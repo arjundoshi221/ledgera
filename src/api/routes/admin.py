@@ -528,3 +528,236 @@ def list_audit_logs(
     return PaginatedAuditLogResponse(
         logs=entries, total=total, offset=offset, limit=limit,
     )
+
+
+# ── Bug Reports (Admin) ──
+
+class AdminBugReportListItem(BaseModel):
+    id: str
+    user_id: str
+    user_email: Optional[str] = None
+    title: str
+    description: str
+    status: str
+    media_count: int
+    created_at: str
+    updated_at: str
+    resolved_at: Optional[str] = None
+
+
+class AdminBugReportMediaInfo(BaseModel):
+    id: str
+    filename: str
+    content_type: str
+    file_size: int
+    created_at: str
+
+
+class AdminBugReportDetail(AdminBugReportListItem):
+    media: List[AdminBugReportMediaInfo] = []
+
+
+class PaginatedBugReportResponse(BaseModel):
+    reports: List[AdminBugReportListItem]
+    total: int
+    offset: int
+    limit: int
+
+
+class UpdateBugStatusRequest(BaseModel):
+    status: str
+
+
+@router.get("/bugs", response_model=PaginatedBugReportResponse)
+def list_bug_reports(
+    status_filter: Optional[str] = Query(default=None),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+    admin: UserModel = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    """List all bug reports (admin)"""
+    from src.data.bug_repository import BugReportRepository
+    from src.data.repositories import UserRepository
+
+    repo = BugReportRepository(session)
+    reports, total = repo.list_all(
+        status_filter=status_filter,
+        offset=offset,
+        limit=limit,
+    )
+
+    user_repo = UserRepository(session)
+    user_cache: dict = {}
+
+    items = []
+    for r in reports:
+        if r.user_id not in user_cache:
+            user = user_repo.read(r.user_id)
+            user_cache[r.user_id] = user.email if user else "unknown"
+        items.append(AdminBugReportListItem(
+            id=r.id,
+            user_id=r.user_id,
+            user_email=user_cache[r.user_id],
+            title=r.title,
+            description=r.description,
+            status=r.status,
+            media_count=len(r.media) if r.media else 0,
+            created_at=r.created_at.isoformat(),
+            updated_at=r.updated_at.isoformat(),
+            resolved_at=r.resolved_at.isoformat() if r.resolved_at else None,
+        ))
+
+    return PaginatedBugReportResponse(
+        reports=items, total=total, offset=offset, limit=limit,
+    )
+
+
+@router.get("/bugs/{bug_id}", response_model=AdminBugReportDetail)
+def get_bug_report_detail(
+    bug_id: str,
+    admin: UserModel = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    """Get bug report details with media info (admin)"""
+    from src.data.bug_repository import BugReportRepository
+    from src.data.repositories import UserRepository
+
+    repo = BugReportRepository(session)
+    report = repo.get_by_id(bug_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Bug report not found")
+
+    user_repo = UserRepository(session)
+    user = user_repo.read(report.user_id)
+
+    return AdminBugReportDetail(
+        id=report.id,
+        user_id=report.user_id,
+        user_email=user.email if user else "unknown",
+        title=report.title,
+        description=report.description,
+        status=report.status,
+        media_count=len(report.media),
+        created_at=report.created_at.isoformat(),
+        updated_at=report.updated_at.isoformat(),
+        resolved_at=report.resolved_at.isoformat() if report.resolved_at else None,
+        media=[
+            AdminBugReportMediaInfo(
+                id=m.id,
+                filename=m.filename,
+                content_type=m.content_type,
+                file_size=m.file_size,
+                created_at=m.created_at.isoformat(),
+            )
+            for m in report.media
+        ],
+    )
+
+
+@router.patch("/bugs/{bug_id}")
+def update_bug_status(
+    bug_id: str,
+    body: UpdateBugStatusRequest,
+    request: Request,
+    admin: UserModel = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    """Update bug report status (admin)"""
+    from src.data.bug_repository import BugReportRepository
+    from src.data.repositories import UserRepository
+    from src.services.email_service import send_bug_report_resolved
+
+    valid_statuses = {'open', 'in_progress', 'resolved'}
+    if body.status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status. Must be one of: {valid_statuses}"
+        )
+
+    repo = BugReportRepository(session)
+    report = repo.update_status(bug_id, body.status)
+    if not report:
+        raise HTTPException(status_code=404, detail="Bug report not found")
+
+    # If resolved, delete media and send email
+    if body.status == 'resolved':
+        repo.delete_media_for_report(bug_id)
+
+        try:
+            user_repo = UserRepository(session)
+            user = user_repo.read(report.user_id)
+            if user and user.email:
+                send_bug_report_resolved(user.email, report.title)
+        except Exception:
+            pass
+
+    # Audit log
+    audit = AuditLogRepository(session)
+    audit.create(
+        actor_user_id=admin.id,
+        action=f"admin.bug.{body.status}",
+        target_type="bug_report",
+        target_id=bug_id,
+        details=json.dumps({"title": report.title, "new_status": body.status}),
+        ip_address=_get_client_ip(request),
+    )
+
+    return {"message": f"Bug report status updated to {body.status}"}
+
+
+@router.get("/bugs/{bug_id}/media/{media_id}")
+def serve_bug_media(
+    bug_id: str,
+    media_id: str,
+    admin: UserModel = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    """Serve a media file from a bug report (admin)"""
+    from src.data.bug_repository import BugReportRepository
+    from fastapi.responses import Response
+
+    repo = BugReportRepository(session)
+    media = repo.get_media(media_id)
+    if not media or media.bug_report_id != bug_id:
+        raise HTTPException(status_code=404, detail="Media not found")
+
+    return Response(
+        content=media.file_data,
+        media_type=media.content_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{media.filename}"',
+            "Cache-Control": "private, max-age=3600",
+        },
+    )
+
+
+@router.delete("/bugs/{bug_id}")
+def delete_bug_report(
+    bug_id: str,
+    request: Request,
+    admin: UserModel = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    """Permanently delete a bug report and its media (admin)"""
+    from src.data.bug_repository import BugReportRepository
+
+    repo = BugReportRepository(session)
+    report = repo.get_by_id(bug_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Bug report not found")
+
+    title = report.title
+    repo.delete_report(bug_id)
+
+    audit = AuditLogRepository(session)
+    audit.create(
+        actor_user_id=admin.id,
+        action="admin.bug.delete",
+        target_type="bug_report",
+        target_id=bug_id,
+        details=json.dumps({"title": title}),
+        ip_address=_get_client_ip(request),
+    )
+
+    return {"message": f"Bug report deleted"}

@@ -48,3 +48,9 @@ mypy>=1.6.0
 
 # Testing HTTP
 httpx>=0.25.0
+
+# File uploads (FastAPI multipart)
+python-multipart>=0.0.6
+
+# Email (Resend)
+resend>=0.7.0
