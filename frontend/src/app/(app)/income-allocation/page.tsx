@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { getIncomeAllocation, createOrUpdateAllocationOverride } from "@/lib/api"
+import { getIncomeAllocation, createOrUpdateAllocationOverride, getWorkspace } from "@/lib/api"
 import { useToast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
 import type { IncomeAllocationResponse } from "@/lib/types"
@@ -20,6 +20,7 @@ export default function IncomeAllocationPage() {
   const [data, setData] = useState<IncomeAllocationResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [years, setYears] = useState("1")
+  const [baseCurrency, setBaseCurrency] = useState("")
   const { toast } = useToast()
 
   // Track which cell is being edited: key = "year-month-fundId"
@@ -30,8 +31,12 @@ export default function IncomeAllocationPage() {
   async function loadData() {
     try {
       setLoading(true)
-      const result = await getIncomeAllocation(parseInt(years))
+      const [result, ws] = await Promise.all([
+        getIncomeAllocation(parseInt(years)),
+        getWorkspace(),
+      ])
       setData(result)
+      setBaseCurrency(ws.base_currency)
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to load income allocation", description: err.message })
     } finally {
@@ -143,7 +148,7 @@ export default function IncomeAllocationPage() {
                   <span className="text-sm font-medium">Budget Model: </span>
                   <span className="text-sm">{data.active_scenario_name}</span>
                   <span className="text-xs text-muted-foreground ml-2">
-                    (S${Number(data.budget_benchmark).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mo)
+                    ({baseCurrency} {Number(data.budget_benchmark).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mo)
                   </span>
                 </div>
                 <a href="/projections" className="text-xs underline text-blue-600 dark:text-blue-400">

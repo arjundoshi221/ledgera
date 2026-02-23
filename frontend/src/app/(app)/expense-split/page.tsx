@@ -26,9 +26,10 @@ const DONUT_COLORS = [
   "#8b5cf6", "#06b6d4", "#f97316", "#ec4899",
 ]
 
-function fmt(val: number, currency: string = "S$") {
+function fmt(val: number, currency: string = "") {
   if (val === 0) return "-"
-  return `${currency}${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const prefix = currency ? `${currency} ` : ""
+  return `${prefix}${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 // ── Fund category horizontal bar chart ──
@@ -222,9 +223,7 @@ export default function ExpenseSplitPage() {
 
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i)
-  const currencyPrefix = dashboardData?.currency
-    ? `${dashboardData.currency === "SGD" ? "S$" : dashboardData.currency + " "}`
-    : "S$"
+  const currencyPrefix = dashboardData?.currency || ""
 
   if (loading) {
     return <div className="animate-pulse text-muted-foreground">Loading monthly dashboard...</div>

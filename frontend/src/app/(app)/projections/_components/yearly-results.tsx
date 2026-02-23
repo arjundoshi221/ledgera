@@ -7,6 +7,7 @@ import type { AggregateResult } from "./yearly-aggregation"
 interface YearlyResultsProps {
   data: AggregateResult
   usdRate: number
+  baseCurrency: string
 }
 
 function fmt(n: number): string {
@@ -17,7 +18,7 @@ function pct(n: number): string {
   return n.toFixed(1) + "%"
 }
 
-export function YearlyResults({ data, usdRate }: YearlyResultsProps) {
+export function YearlyResults({ data, usdRate, baseCurrency }: YearlyResultsProps) {
   const { summaryRows, fundRows, fundNames, totalWealthFinal } = data
 
   if (summaryRows.length === 0) return null
@@ -36,7 +37,7 @@ export function YearlyResults({ data, usdRate }: YearlyResultsProps) {
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <div className="text-xs text-muted-foreground">Total Wealth (SGD)</div>
+            <div className="text-xs text-muted-foreground">Total Wealth ({baseCurrency})</div>
             <div className="text-xl font-bold">{fmt(totalWealthFinal)}</div>
           </CardContent>
         </Card>
@@ -161,7 +162,7 @@ export function YearlyResults({ data, usdRate }: YearlyResultsProps) {
               })}
               {/* Totals */}
               <TableRow className="border-t-2">
-                <TableCell className="font-bold">Total Wealth (SGD)</TableCell>
+                <TableCell className="font-bold">Total Wealth ({baseCurrency})</TableCell>
                 <TableCell />
                 <TableCell className="text-right font-bold">{fmt(totalWealthFinal)}</TableCell>
                 <TableCell />

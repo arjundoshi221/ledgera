@@ -22,6 +22,7 @@ import {
   activateScenario,
   deleteScenario,
   createRecurringTransaction,
+  getWorkspace,
 } from "@/lib/api"
 import { useToast } from "@/components/ui/use-toast"
 import type {
@@ -43,6 +44,9 @@ import { YearlyResults } from "./_components/yearly-results"
 import { SaveScenarioDialog } from "./_components/save-scenario-dialog"
 
 export default function ProjectionsPage() {
+  // Workspace currency
+  const [baseCurrency, setBaseCurrency] = useState("SGD")
+
   // Income & general
   const [years, setYears] = useState(5)
   const [salary, setSalary] = useState("5000")
@@ -97,13 +101,15 @@ export default function ProjectionsPage() {
   useEffect(() => {
     async function loadRefData() {
       try {
-        const [cats, fnds, scns, accts, subs] = await Promise.all([
+        const [cats, fnds, scns, accts, subs, ws] = await Promise.all([
           getCategories("expense"),
           getFunds(),
           getScenarios(),
           getAccounts(),
           getSubcategories(),
+          getWorkspace(),
         ])
+        setBaseCurrency(ws.base_currency)
         setExpenseCategories(cats)
         setExpenseSubcategories(subs.filter((s: Subcategory) => cats.some((c: Category) => c.id === s.category_id)))
         setFunds(fnds)
@@ -142,7 +148,7 @@ export default function ProjectionsPage() {
   // Build current assumptions from form state
   const buildAssumptions = useCallback((): ProjectionAssumptions => {
     return {
-      base_currency: "SGD",
+      base_currency: baseCurrency,
       monthly_salary: parseFloat(salary),
       annual_bonus: parseFloat(bonus),
       other_income: parseFloat(otherIncome),
@@ -160,7 +166,7 @@ export default function ProjectionsPage() {
       ),
       minimum_cash_buffer_months: 6,
     }
-  }, [salary, bonus, otherIncome, taxRate, inflation, useCategoryBudgets, categoryBudgets, expenses, oneTimeCosts, fundWeights, fundReturns])
+  }, [baseCurrency, salary, bonus, otherIncome, taxRate, inflation, useCategoryBudgets, categoryBudgets, expenses, oneTimeCosts, fundWeights, fundReturns])
 
   // Load a scenario's assumptions into the form
   async function loadScenario(scenarioId: string) {
@@ -319,7 +325,7 @@ export default function ProjectionsPage() {
       name,
       transaction_type: "income",
       amount: parsed,
-      currency: "SGD",
+      currency: baseCurrency,
       frequency,
     })
     setRecurringAccountId("")
@@ -335,7 +341,7 @@ export default function ProjectionsPage() {
       name: data.name,
       transaction_type: "expense",
       amount: data.amount,
-      currency: "SGD",
+      currency: baseCurrency,
       frequency: "monthly",
       category_id: data.category_id,
       subcategory_id: data.subcategory_id,
@@ -356,7 +362,7 @@ export default function ProjectionsPage() {
         name: recurringPrefill.name!,
         transaction_type: recurringPrefill.transaction_type!,
         amount: recurringPrefill.amount!,
-        currency: recurringPrefill.currency || "SGD",
+        currency: recurringPrefill.currency || baseCurrency,
         frequency: recurringPrefill.frequency!,
         account_id: recurringAccountId,
         category_id: recurringPrefill.category_id,
@@ -426,7 +432,7 @@ export default function ProjectionsPage() {
                     <span className="font-medium">{s.name}</span>
                     {s.is_active && <Badge variant="default" className="text-xs">Active</Badge>}
                     <span className="text-muted-foreground text-xs">
-                      S${Number(s.monthly_expenses_total).toFixed(0)}/mo
+                      {baseCurrency} {Number(s.monthly_expenses_total).toFixed(0)}/mo
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
@@ -566,8 +572,8 @@ export default function ProjectionsPage() {
                   One-Time Costs
                   {oneTimeCosts.length > 0 && (
                     <span className="ml-1 font-normal text-muted-foreground">
-                      ({oneTimeCosts.length} item{oneTimeCosts.length !== 1 ? "s" : ""}, $
-                      {oneTimeCosts.reduce((s, c) => s + c.amount, 0).toLocaleString()})
+                      ({oneTimeCosts.length} item{oneTimeCosts.length !== 1 ? "s" : ""},{" "}
+                      {baseCurrency} {oneTimeCosts.reduce((s, c) => s + c.amount, 0).toLocaleString()})
                     </span>
                   )}
                 </summary>
@@ -616,7 +622,7 @@ export default function ProjectionsPage() {
                 <Input type="number" min="1" max="30" value={years} onChange={(e) => { setYears(parseInt(e.target.value) || 5); markDirty() }} />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">SGD &rarr; USD Rate</Label>
+                <Label className="text-xs">{baseCurrency} &rarr; USD Rate</Label>
                 <Input type="number" step="0.01" min="0" value={usdRate} onChange={(e) => setUsdRate(e.target.value)} />
               </div>
 
@@ -630,7 +636,7 @@ export default function ProjectionsPage() {
         {/* Results */}
         <div className="space-y-4 lg:col-span-2">
           {yearlyData && yearlyData.summaryRows.length > 0 ? (
-            <YearlyResults data={yearlyData} usdRate={parseFloat(usdRate) || 0} />
+            <YearlyResults data={yearlyData} usdRate={parseFloat(usdRate) || 0} baseCurrency={baseCurrency} />
           ) : (
             !loading && (
               <Card>
@@ -681,7 +687,7 @@ export default function ProjectionsPage() {
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Currency</Label>
-                  <Input value={recurringPrefill.currency ?? "SGD"} readOnly className="bg-muted" />
+                  <Input value={recurringPrefill.currency ?? baseCurrency} readOnly className="bg-muted" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
