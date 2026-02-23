@@ -124,7 +124,6 @@ export default function OnboardingPage() {
   const [addressCountry, setAddressCountry] = useState("")
   const [taxIdNumber, setTaxIdNumber] = useState("")
   const [baseCurrency, setBaseCurrency] = useState("SGD")
-  const [isUsPerson, setIsUsPerson] = useState(false)
   const [tosAccepted, setTosAccepted] = useState(false)
   const [privacyAccepted, setPrivacyAccepted] = useState(false)
 
@@ -207,7 +206,7 @@ export default function OnboardingPage() {
         address_postal_code: addressPostalCode,
         address_country: addressCountry,
         tax_id_number: taxIdNumber,
-        is_us_person: isUsPerson,
+        is_us_person: false,
         tos_accepted: tosAccepted,
         privacy_accepted: privacyAccepted,
         base_currency: baseCurrency,
@@ -234,7 +233,7 @@ export default function OnboardingPage() {
   }
 
   return (
-    <Card className="w-full">
+    <Card className="w-full max-w-md">
       <CardHeader className="text-center">
         <CardTitle>Complete Your Profile</CardTitle>
         <CardDescription>
@@ -356,11 +355,6 @@ export default function OnboardingPage() {
               Your workspace reporting currency. Can be changed later in settings.
             </p>
           </div>
-
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={isUsPerson} onChange={(e) => setIsUsPerson(e.target.checked)} className="rounded" />
-            <span className="text-sm">I am a US Person (US citizen, green card holder, or US tax resident)</span>
-          </label>
 
           {/* Consent */}
           <div className="space-y-3 border-t pt-4">

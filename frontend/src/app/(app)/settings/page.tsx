@@ -757,11 +757,6 @@ export default function SettingsPage() {
                     </div>
                     <Separator />
                     <div>
-                      <Label className="text-xs text-muted-foreground">US Person (FATCA)</Label>
-                      <p className="text-sm font-medium">{user.is_us_person ? "Yes" : "No"}</p>
-                    </div>
-                    <Separator />
-                    <div>
                       <Label className="text-xs text-muted-foreground">Terms of Service</Label>
                       <p className="text-sm font-medium">
                         {user.tos_accepted_at

@@ -49,3 +49,6 @@ Feedback and explanation
 
 Security:
 2FA using email, authenticator, OTP on phone numbers
+
+Explore
+Projection should use current closing balance as start to build on top
