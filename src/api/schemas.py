@@ -316,7 +316,8 @@ class FundAllocationOverrideCreate(BaseModel):
     fund_id: str
     year: int
     month: int
-    allocation_percentage: Decimal
+    allocation_percentage: Optional[Decimal] = None
+    override_amount: Optional[Decimal] = None
 
 
 class FundAllocationOverrideResponse(BaseModel):

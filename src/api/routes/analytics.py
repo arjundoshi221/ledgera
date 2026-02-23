@@ -62,12 +62,15 @@ class FundAllocationDetail(BaseModel):
     allocation_percentage: float
     allocated_amount: float
     is_auto: bool = False
+    override_amount: Optional[float] = None
+    model_amount: Optional[float] = None
 
 
 class IncomeAllocationRow(BaseModel):
     """One month's row in the income allocation table"""
     year: int
     month: int
+    current_month_income: float
     net_income: float
     allocated_fixed_cost: float
     actual_fixed_cost: float
@@ -130,10 +133,11 @@ def _prev_month(year: int, month: int):
     return year, month - 1
 
 
-def _get_income_for_month(session: Session, workspace_id: str, year: int, month: int) -> Decimal:
-    """Sum of income-category transaction postings for a given month."""
+def _get_income_for_month(session: Session, workspace_id: str, year: int, month: int, fund_id: str = None) -> Decimal:
+    """Sum of income-category transaction postings for a given month.
+    If fund_id is provided, only includes income assigned to that fund."""
     start, end = _get_month_range(year, month)
-    result = session.query(
+    query = session.query(
         func.sum(PostingModel.base_amount)
     ).join(
         TransactionModel, PostingModel.transaction_id == TransactionModel.id
@@ -146,7 +150,10 @@ def _get_income_for_month(session: Session, workspace_id: str, year: int, month:
         TransactionModel.timestamp <= end,
         CategoryModel.type == 'income',
         PostingModel.base_amount > 0
-    ).scalar()
+    )
+    if fund_id is not None:
+        query = query.filter(TransactionModel.fund_id == fund_id)
+    result = query.scalar()
     return Decimal(str(result)) if result else Decimal(0)
 
 
@@ -319,13 +326,21 @@ def get_income_allocation(
         active_scenario = scenario_repo.read_active(workspace_id)
         budget_benchmark = Decimal(str(active_scenario.monthly_expenses_total)) if active_scenario else Decimal(0)
 
-        # Load all overrides for this workspace
+        # Load all overrides for this workspace, split by type
         override_repo = FundAllocationOverrideRepository(session)
         all_overrides = override_repo.read_by_workspace(workspace_id)
-        override_map = {
-            (o.fund_id, o.year, o.month): Decimal(str(o.allocation_percentage))
-            for o in all_overrides
-        }
+        pct_override_map = {}
+        amount_override_map = {}
+        for o in all_overrides:
+            key = (o.fund_id, o.year, o.month)
+            if o.override_amount is not None:
+                amount_override_map[key] = Decimal(str(o.override_amount))
+            else:
+                pct_override_map[key] = Decimal(str(o.allocation_percentage))
+
+        # Find Working Capital fund ID (only WC income is counted)
+        wc_fund = next((f for f in funds if f.name == "Working Capital"), None)
+        wc_fund_id = wc_fund.id if wc_fund else None
 
         # Build rows for full calendar year(s): Jan-Dec
         now = datetime.utcnow()
@@ -336,9 +351,12 @@ def get_income_allocation(
         for y in range(start_year, current_year + 1):
             end_month = now.month if y == current_year else 12
             for m in range(1, end_month + 1):
-                # Previous month's income (one-month lag)
+                # Current month's actual WC income only
+                current_month_income = _get_income_for_month(session, workspace_id, y, m, fund_id=wc_fund_id)
+
+                # Previous month's WC income (one-month lag) = Allocated Budget
                 prev_y, prev_m = _prev_month(y, m)
-                net_income = _get_income_for_month(session, workspace_id, prev_y, prev_m)
+                net_income = _get_income_for_month(session, workspace_id, prev_y, prev_m, fund_id=wc_fund_id)
 
                 # This month's actual expenses (fixed cost)
                 actual_fixed_cost = _get_expenses_for_month(session, workspace_id, y, m)
@@ -349,12 +367,16 @@ def get_income_allocation(
                 # Fixed cost optimization = allocated - actual (positive = underspent)
                 fixed_cost_optimization = allocated_fixed_cost - actual_fixed_cost
 
-                # Savings remainder = income minus fixed costs
-                savings_remainder = net_income - allocated_fixed_cost
+                # Determine Working Capital amount (editable, defaults to model)
+                wc_key = (wc_fund_id, y, m) if wc_fund_id else None
+                wc_amount = amount_override_map.get(wc_key, allocated_fixed_cost) if wc_key else allocated_fixed_cost
+
+                # Savings remainder = Allocated Budget - WC balance
+                savings_remainder = net_income - wc_amount
 
                 # Working capital percentages
                 if net_income > 0:
-                    working_capital_pct_of_income = float((allocated_fixed_cost / net_income) * 100)
+                    working_capital_pct_of_income = float((wc_amount / net_income) * 100)
                     savings_pct_of_income = float((savings_remainder / net_income) * 100)
                 else:
                     working_capital_pct_of_income = 0.0
@@ -363,33 +385,34 @@ def get_income_allocation(
                 # Lock: only the current month is editable
                 is_locked = not (y == current_year and m == now.month)
 
-                # Allocate funds from savings remainder (not income)
+                # Allocate funds from savings remainder
                 fund_allocs = []
                 total_allocated = Decimal(0)
                 for f in funds:
-                    # Working Capital fund is auto-calculated from budget model
+                    # Working Capital fund: editable with amount override
                     if f.name == "Working Capital":
+                        if net_income > 0:
+                            wc_pct = float((wc_amount / net_income) * 100)
+                        else:
+                            wc_pct = 0.0
                         fund_allocs.append(FundAllocationDetail(
                             fund_id=f.id,
                             fund_name=f.name,
                             emoji=f.emoji or "",
-                            allocation_percentage=working_capital_pct_of_income,
-                            allocated_amount=float(allocated_fixed_cost),
-                            is_auto=True,
+                            allocation_percentage=wc_pct,
+                            allocated_amount=float(wc_amount),
+                            is_auto=False,
+                            override_amount=float(wc_amount) if wc_key and wc_key in amount_override_map else None,
+                            model_amount=float(allocated_fixed_cost),
                         ))
                         continue
 
-                    # If savings remainder is negative, non-WC funds get 0
+                    # Non-WC funds: percentage of savings remainder
+                    override_key = (f.id, y, m)
+                    pct = pct_override_map.get(override_key, Decimal(str(f.allocation_percentage)))
                     if savings_remainder < 0:
                         allocated = Decimal(0)
-                        override_key = (f.id, y, m)
-                        pct = override_map.get(override_key, Decimal(str(f.allocation_percentage)))
                     else:
-                        override_key = (f.id, y, m)
-                        if override_key in override_map:
-                            pct = override_map[override_key]
-                        else:
-                            pct = Decimal(str(f.allocation_percentage))
                         allocated = savings_remainder * pct / 100
                     total_allocated += allocated
                     fund_allocs.append(FundAllocationDetail(
@@ -400,15 +423,16 @@ def get_income_allocation(
                         allocated_amount=allocated,
                     ))
 
-                # Sum only non-auto (non-WC) fund percentages for 100% validation
+                # Sum only non-WC fund percentages for 100% validation
                 total_fund_allocation_pct = float(sum(
                     Decimal(str(fa.allocation_percentage)) for fa in fund_allocs
-                    if not fa.is_auto
+                    if fa.fund_name != "Working Capital"
                 ))
 
                 rows.append(IncomeAllocationRow(
                     year=y,
                     month=m,
+                    current_month_income=current_month_income,
                     net_income=net_income,
                     allocated_fixed_cost=allocated_fixed_cost,
                     actual_fixed_cost=actual_fixed_cost,
@@ -515,9 +539,19 @@ def create_or_update_override(
     if not fund or fund.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Fund not found")
 
-    # Validate percentage
-    if override_data.allocation_percentage < 0 or override_data.allocation_percentage > 100:
-        raise HTTPException(status_code=400, detail="Allocation percentage must be between 0 and 100")
+    # Must provide either allocation_percentage or override_amount
+    if override_data.allocation_percentage is None and override_data.override_amount is None:
+        raise HTTPException(status_code=400, detail="Must provide allocation_percentage or override_amount")
+
+    # Validate percentage if provided
+    if override_data.allocation_percentage is not None:
+        if override_data.allocation_percentage < 0 or override_data.allocation_percentage > 100:
+            raise HTTPException(status_code=400, detail="Allocation percentage must be between 0 and 100")
+
+    # Validate amount if provided
+    if override_data.override_amount is not None:
+        if override_data.override_amount < 0:
+            raise HTTPException(status_code=400, detail="Override amount must be >= 0")
 
     # Validate month
     if override_data.month < 1 or override_data.month > 12:
@@ -535,7 +569,8 @@ def create_or_update_override(
 
     if existing:
         # Update existing
-        existing.allocation_percentage = override_data.allocation_percentage
+        existing.allocation_percentage = override_data.allocation_percentage or 0
+        existing.override_amount = override_data.override_amount
         return override_repo.update(existing)
     else:
         # Create new
@@ -544,7 +579,8 @@ def create_or_update_override(
             fund_id=override_data.fund_id,
             year=override_data.year,
             month=override_data.month,
-            allocation_percentage=override_data.allocation_percentage
+            allocation_percentage=override_data.allocation_percentage or 0,
+            override_amount=override_data.override_amount,
         )
         return override_repo.create(override)
 

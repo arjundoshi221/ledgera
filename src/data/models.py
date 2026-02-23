@@ -233,7 +233,7 @@ class FundModel(Base):
 
 
 class FundAllocationOverrideModel(Base):
-    """Per-month override for fund allocation percentages"""
+    """Per-month override for fund allocation percentages or amounts"""
     __tablename__ = 'fund_allocation_overrides'
 
     id = Column(String(36), primary_key=True, default=new_uuid)
@@ -242,6 +242,7 @@ class FundAllocationOverrideModel(Base):
     year = Column(Integer, nullable=False)  # e.g., 2026
     month = Column(Integer, nullable=False)  # 1-12
     allocation_percentage = Column(Numeric(5, 2), nullable=False)  # Override percentage
+    override_amount = Column(Numeric(19, 4), nullable=True)  # Absolute amount override (for Working Capital)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 

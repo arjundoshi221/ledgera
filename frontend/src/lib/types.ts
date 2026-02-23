@@ -434,11 +434,14 @@ export interface FundAllocation {
   allocation_percentage: number
   allocated_amount: number
   is_auto?: boolean
+  override_amount?: number | null
+  model_amount?: number | null
 }
 
 export interface IncomeAllocationRow {
   year: number
   month: number
+  current_month_income: number
   net_income: number
   allocated_fixed_cost: number
   actual_fixed_cost: number
@@ -481,7 +484,8 @@ export interface CreateFundAllocationOverrideRequest {
   fund_id: string
   year: number
   month: number
-  allocation_percentage: number
+  allocation_percentage?: number
+  override_amount?: number
 }
 
 // ---------------------
