@@ -364,12 +364,12 @@ def get_income_allocation(
                 # Allocated fixed cost from active simulation benchmark
                 allocated_fixed_cost = budget_benchmark
 
-                # Fixed cost optimization = allocated - actual (positive = underspent)
-                fixed_cost_optimization = allocated_fixed_cost - actual_fixed_cost
-
                 # Determine Working Capital amount (editable, defaults to model)
                 wc_key = (wc_fund_id, y, m) if wc_fund_id else None
                 wc_amount = amount_override_map.get(wc_key, allocated_fixed_cost) if wc_key else allocated_fixed_cost
+
+                # Fixed cost optimization = WC - actual (0 when optimized, positive = surplus, negative = under-allocated)
+                fixed_cost_optimization = wc_amount - actual_fixed_cost
 
                 # Savings remainder = Allocated Budget - WC balance
                 savings_remainder = net_income - wc_amount

@@ -48,14 +48,19 @@ export default function IncomeAllocationPage() {
   const [editingCell, setEditingCell] = useState<string | null>(null)
   const [editValue, setEditValue] = useState("")
   const [saving, setSaving] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
 
   // Track WC amount editing
   const [editingWcCell, setEditingWcCell] = useState<string | null>(null)
   const [editWcValue, setEditWcValue] = useState("")
 
-  async function loadData() {
+  async function loadData(silent = false) {
     try {
-      setLoading(true)
+      if (silent) {
+        setRefreshing(true)
+      } else {
+        setLoading(true)
+      }
       const [result, ws] = await Promise.all([
         getIncomeAllocation(parseInt(years)),
         getWorkspace(),
@@ -65,7 +70,11 @@ export default function IncomeAllocationPage() {
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to load income allocation", description: err.message })
     } finally {
-      setLoading(false)
+      if (silent) {
+        setRefreshing(false)
+      } else {
+        setLoading(false)
+      }
     }
   }
 
@@ -118,7 +127,7 @@ export default function IncomeAllocationPage() {
       })
       toast({ title: "Allocation updated" })
       setEditingCell(null)
-      await loadData() // Reload to show updated values
+      await loadData(true) // Reload to show updated values
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to save", description: err.message })
     } finally {
@@ -167,7 +176,7 @@ export default function IncomeAllocationPage() {
       })
       toast({ title: "Working Capital updated" })
       setEditingWcCell(null)
-      await loadData()
+      await loadData(true)
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to save", description: err.message })
     } finally {
@@ -189,7 +198,7 @@ export default function IncomeAllocationPage() {
     try {
       await deleteAllocationOverride(fundId, year, month)
       toast({ title: "Reset to model amount" })
-      await loadData()
+      await loadData(true)
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to reset", description: err.message })
     } finally {
@@ -207,7 +216,7 @@ export default function IncomeAllocationPage() {
         override_amount: actualFixedCost,
       })
       toast({ title: "Optimized to actual costs" })
-      await loadData()
+      await loadData(true)
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to optimize", description: err.message })
     } finally {
@@ -231,6 +240,9 @@ export default function IncomeAllocationPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Income Allocation</h1>
           <div className="flex items-center gap-3">
+            {refreshing && (
+              <span className="text-xs text-muted-foreground animate-pulse">Refreshing...</span>
+            )}
             <Label>History:</Label>
             <Select value={years} onValueChange={setYears}>
               <SelectTrigger className="w-[100px]">
@@ -295,7 +307,7 @@ export default function IncomeAllocationPage() {
           <Card>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm [&_td]:align-top">
                   <thead>
                     <tr className="border-b bg-muted/50">
                       <th className="px-3 py-2 text-left font-medium sticky left-0 bg-muted/50 z-10">Year</th>
@@ -315,7 +327,7 @@ export default function IncomeAllocationPage() {
                       <th className="px-3 py-2 text-right font-medium">Actual Fixed Costs</th>
                       <th className="px-3 py-2 text-right font-medium">
                         Fixed Cost Opt.
-                        <InfoTooltip text="Allocated Fixed Cost - Actual Fixed Costs" />
+                        <InfoTooltip text="Working Capital - Actual Fixed Costs" />
                       </th>
                       <th className="px-3 py-2 text-right font-medium">
                         Savings Remainder
@@ -341,11 +353,10 @@ export default function IncomeAllocationPage() {
                       <th />
                       <th />
                       <th />
-                      <th />
                       {fundsHeaders.map((f) => (
                         <Fragment key={f.fund_id}>
                           <th className="px-3 py-1 text-right border-l">Amount</th>
-                          <th className="px-3 py-1 text-right">%</th>
+                          <th className="px-3 py-1 text-right">{f.fund_name === "Working Capital" ? "%" : "% of Sav"}</th>
                         </Fragment>
                       ))}
                     </tr>
@@ -380,8 +391,25 @@ export default function IncomeAllocationPage() {
                           <td className="px-3 py-2 text-right font-mono">{fmt(row.net_income)}</td>
                           <td className="px-3 py-2 text-right font-mono">{fmt(row.allocated_fixed_cost)}</td>
                           <td className="px-3 py-2 text-right font-mono">{fmt(row.actual_fixed_cost)}</td>
-                          <td className={`px-3 py-2 text-right font-mono ${optColor}`}>{fmt(row.fixed_cost_optimization)}</td>
-                          <td className={`px-3 py-2 text-right font-mono ${savColor}`}>{fmt(row.savings_remainder)}</td>
+                          <td className={`px-3 py-2 text-right font-mono ${optColor}`}>
+                            <div>{fmt(row.fixed_cost_optimization)}</div>
+                            {!row.is_locked && Number(row.fixed_cost_optimization) > 0 && (
+                              <div className="text-[9px] text-green-600/70 dark:text-green-400/70 mt-0.5">
+                                Transfer surplus to savings
+                              </div>
+                            )}
+                            {!row.is_locked && Number(row.fixed_cost_optimization) < 0 && (
+                              <div className="text-[9px] text-red-600/70 dark:text-red-400/70 mt-0.5">
+                                Top up WC or cut costs
+                              </div>
+                            )}
+                          </td>
+                          <td className={`px-3 py-2 text-right font-mono ${savColor}`}>
+                            <div>{fmt(row.savings_remainder)}</div>
+                            <div className="text-[10px] text-muted-foreground/60">
+                              {fmtPct(row.savings_pct_of_income)} of inc
+                            </div>
+                          </td>
                           {row.fund_allocations.map((fa) => {
                             const cellKey = `${row.year}-${row.month}-${fa.fund_id}`
                             const isWc = fa.fund_name === "Working Capital"
@@ -415,15 +443,15 @@ export default function IncomeAllocationPage() {
                                       disabled={saving}
                                     />
                                   ) : (
-                                    <div className="flex items-center justify-end gap-1">
-                                      <span>{fmt(fa.allocated_amount)}</span>
+                                    <div>
+                                      <div className="text-right">{fmt(fa.allocated_amount)}</div>
                                       {isWc && isWcEditable && (
-                                        <>
+                                        <div className="flex justify-end gap-1 mt-0.5">
                                           {fa.override_amount != null && (
                                             <Button
-                                              variant="ghost"
+                                              variant="outline"
                                               size="sm"
-                                              className="h-5 px-1 text-[10px] text-blue-600 dark:text-blue-400 whitespace-nowrap"
+                                              className="h-5 px-1.5 text-[10px] text-blue-600 dark:text-blue-400 border-blue-300 dark:border-blue-700 whitespace-nowrap"
                                               onClick={(e) => {
                                                 e.stopPropagation()
                                                 handleUseModelAmount(row.year, row.month, fa.fund_id)
@@ -435,9 +463,9 @@ export default function IncomeAllocationPage() {
                                           )}
                                           {Number(fa.allocated_amount) !== Number(row.actual_fixed_cost) && (
                                             <Button
-                                              variant="ghost"
+                                              variant="outline"
                                               size="sm"
-                                              className="h-5 px-1 text-[10px] text-green-600 dark:text-green-400 whitespace-nowrap"
+                                              className="h-5 px-1.5 text-[10px] text-green-600 dark:text-green-400 border-green-300 dark:border-green-700 whitespace-nowrap"
                                               onClick={(e) => {
                                                 e.stopPropagation()
                                                 handleOptimize(row.year, row.month, fa.fund_id, Number(row.actual_fixed_cost))
@@ -447,7 +475,7 @@ export default function IncomeAllocationPage() {
                                               Optimize
                                             </Button>
                                           )}
-                                        </>
+                                        </div>
                                       )}
                                     </div>
                                   )}
@@ -479,9 +507,8 @@ export default function IncomeAllocationPage() {
                                       disabled={saving}
                                     />
                                   ) : isWc ? (
-                                    <div className="text-[11px] leading-tight">
-                                      <div>{fmtPct(row.working_capital_pct_of_income)} inc</div>
-                                      <div>{fmtPct(row.savings_pct_of_income)} sav</div>
+                                    <div className="text-[10px] leading-tight text-muted-foreground/60">
+                                      <div><span className="text-muted-foreground/40">Inc</span> {fmtPct(row.working_capital_pct_of_income)}</div>
                                     </div>
                                   ) : (
                                     fmtPct(fa.allocation_percentage)
