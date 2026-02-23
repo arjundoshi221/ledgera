@@ -60,7 +60,7 @@ export default function DashboardPage() {
         <Card>
           <CardContent className="flex flex-col items-center gap-4 py-12">
             <p className="text-muted-foreground">No accounts yet. Create one to get started.</p>
-            <Button onClick={() => router.push("/accounts")}>Go to Accounts</Button>
+            <Button onClick={() => router.push("/settings?tab=accounts")}>Go to Settings</Button>
           </CardContent>
         </Card>
       ) : (

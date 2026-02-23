@@ -19,6 +19,7 @@ import {
   updateWorkspace,
   getMe,
   getAccounts,
+  createAccount,
   updateAccount,
   deleteAccount,
   getCategories,
@@ -43,15 +44,16 @@ import {
   deletePaymentMethod,
 } from "@/lib/api"
 import { clearAuth } from "@/lib/auth"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { CURRENCIES, ACCOUNT_TYPES, CARD_TYPES, CARD_NETWORKS } from "@/lib/constants"
 import type { Workspace, UserResponse, Account, AccountType, Category, Subcategory, Fund, Card as CardType, PaymentMethod } from "@/lib/types"
 
 export default function SettingsPage() {
   const { toast } = useToast()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState("workspace")
+  const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "workspace")
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const [user, setUser] = useState<UserResponse | null>(null)
   const [wsName, setWsName] = useState("")
@@ -181,6 +183,16 @@ export default function SettingsPage() {
     }
   }
 
+  function openCreateAccount() {
+    setEditingAccount(null)
+    setAccName("")
+    setAccType("asset")
+    setAccCurrency("SGD")
+    setAccInstitution("")
+    setAccStartingBalance("")
+    setAccountDialogOpen(true)
+  }
+
   function openEditAccount(acc: Account) {
     setEditingAccount(acc)
     setAccName(acc.name)
@@ -193,16 +205,21 @@ export default function SettingsPage() {
 
   async function handleSaveAccount(e: React.FormEvent) {
     e.preventDefault()
-    if (!editingAccount) return
     try {
-      await updateAccount(editingAccount.id, {
+      const data = {
         name: accName,
         type: accType as AccountType,
         account_currency: accCurrency,
         institution: accInstitution || undefined,
         starting_balance: accStartingBalance ? parseFloat(accStartingBalance) : 0,
-      })
-      toast({ title: "Account updated" })
+      }
+      if (editingAccount) {
+        await updateAccount(editingAccount.id, data)
+        toast({ title: "Account updated" })
+      } else {
+        await createAccount(data)
+        toast({ title: "Account created" })
+      }
       setAccountDialogOpen(false)
       loadData()
     } catch (err: any) {
@@ -788,9 +805,12 @@ export default function SettingsPage() {
         {/* Accounts Tab */}
         <TabsContent value="accounts">
           <Card>
-            <CardHeader>
-              <CardTitle>Bank & Investment Accounts</CardTitle>
-              <CardDescription>Manage your accounts</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Bank & Investment Accounts</CardTitle>
+                <CardDescription>Manage your accounts</CardDescription>
+              </div>
+              <Button onClick={openCreateAccount}>+ New Account</Button>
             </CardHeader>
             <CardContent>
               {accounts.filter((a) => a.name !== "External").length > 0 ? (
@@ -849,7 +869,7 @@ export default function SettingsPage() {
                   </TableBody>
                 </Table>
               ) : (
-                <p className="text-muted-foreground text-center py-8">No accounts. Create one in the Accounts page.</p>
+                <p className="text-muted-foreground text-center py-8">No accounts yet. Click &quot;+ New Account&quot; to create one.</p>
               )}
             </CardContent>
           </Card>
@@ -1101,11 +1121,11 @@ export default function SettingsPage() {
 
       {/* ── Shared Dialogs ── */}
 
-      {/* Account edit dialog */}
+      {/* Account create/edit dialog */}
       <Dialog open={accountDialogOpen} onOpenChange={setAccountDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Account</DialogTitle>
+            <DialogTitle>{editingAccount ? "Edit Account" : "Create Account"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSaveAccount} className="space-y-4">
             <div>
@@ -1150,7 +1170,7 @@ export default function SettingsPage() {
               <Label>Starting Balance</Label>
               <Input type="number" step="0.01" value={accStartingBalance} onChange={(e) => setAccStartingBalance(e.target.value)} placeholder="0.00" />
             </div>
-            <Button type="submit" className="w-full">Save Changes</Button>
+            <Button type="submit" className="w-full">{editingAccount ? "Save Changes" : "Create Account"}</Button>
           </form>
         </DialogContent>
       </Dialog>
