@@ -573,6 +573,7 @@ export interface TransferSuggestion {
   currency: string
   source_fund_id: string | null
   dest_fund_id: string | null
+  note: string | null
 }
 
 export interface CreateTransferRequest {

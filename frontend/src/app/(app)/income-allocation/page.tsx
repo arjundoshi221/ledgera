@@ -487,7 +487,7 @@ export default function IncomeAllocationPage() {
                                         <div className="text-[9px] text-purple-600 dark:text-purple-400 mt-0.5 text-right">
                                           {fa.self_funding_percentage === 100
                                             ? "Stays in WC account"
-                                            : `${fmt(fa.self_funding_amount)} stays in WC`}
+                                            : `${fmt(fa.self_funding_amount ?? 0)} stays in WC`}
                                         </div>
                                       )}
                                       {isWc && isWcEditable && (

@@ -429,6 +429,7 @@ class TransferSuggestion(BaseModel):
     currency: str  # base currency amount (kept for backward compat)
     source_fund_id: Optional[str] = None
     dest_fund_id: Optional[str] = None
+    note: Optional[str] = None
 
 
 class WCOptimization(BaseModel):

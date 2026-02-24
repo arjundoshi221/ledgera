@@ -1369,7 +1369,22 @@ def get_fund_tracker(
         for a in account_summaries:
             if a.account_id in wc_account_ids:
                 continue
-            if a.expected_contributions > 0 and a.difference < -0.01:
+            # Use current_month_expected (from income allocation model) to cap
+            # the suggested transfer.  When the difference is inflated by a
+            # legitimate withdrawal we should only ask the user to transfer what
+            # the model expects, not the full shortfall.
+            if a.current_month_expected > 0 and a.current_month_difference < -0.01:
+                suggested = min(abs(a.current_month_difference), a.current_month_expected)
+                # Build an explanatory note when the full shortfall exceeds
+                # the model-expected contribution (i.e. a withdrawal inflated
+                # the gap).
+                note = None
+                if abs(a.current_month_difference) > a.current_month_expected + 0.01:
+                    note = (
+                        f"Full shortfall is {abs(a.current_month_difference):,.2f} "
+                        f"but only {a.current_month_expected:,.2f} is expected "
+                        f"from income allocation this month"
+                    )
                 transfer_suggestions.append(TransferSuggestion(
                     from_account_name=wc_primary_account_name,
                     from_account_id=wc_primary_account_id,
@@ -1377,10 +1392,11 @@ def get_fund_tracker(
                     to_account_name=a.account_name,
                     to_account_id=a.account_id,
                     to_currency=a.account_currency,
-                    amount=round(abs(a.difference), 2),
+                    amount=round(suggested, 2),
                     currency=a.account_currency,
                     source_fund_id=wc_fund_id,
                     dest_fund_id=account_fund_map.get(a.account_id),
+                    note=note,
                 ))
 
         # ── WC optimization: if WC balance > 10% above budget benchmark ──

@@ -596,7 +596,15 @@ export default function FundTrackerPage() {
                               <span className="text-orange-600 dark:text-orange-400 font-medium">
                                 {s.from_currency || s.currency} {fmt(s.amount)}
                               </span>
+                              {s.note && (
+                                <span className="text-[10px] text-muted-foreground ml-1" title={s.note}>
+                                  (allocation only)
+                                </span>
+                              )}
                             </div>
+                            {s.note && (
+                              <p className="text-[11px] text-muted-foreground pl-0.5">{s.note}</p>
+                            )}
                             {!showFxInput && (
                               <Button
                                 size="sm"
