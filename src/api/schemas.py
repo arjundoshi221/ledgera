@@ -354,6 +354,7 @@ class FundMonthlyLedgerRow(BaseModel):
     charge_details: List[FundChargeDetail] = []
     fund_income: float
     closing_balance: float
+    self_funding_credits: float = 0
 
 
 class FundLedgerResponse(BaseModel):
@@ -366,6 +367,9 @@ class FundLedgerResponse(BaseModel):
     total_contributions: float
     total_fund_income: float
     current_balance: float
+    is_self_funding: bool = False
+    self_funding_percentage: float = 0
+    overlapping_account_names: List[str] = []
 
 
 class AccountTrackerRow(BaseModel):
@@ -387,6 +391,30 @@ class AccountTrackerRow(BaseModel):
     market_value_base: float = 0
     cost_basis_base: float = 0
     unrealized_fx_gain: float = 0
+
+
+class AccountMonthlyLedgerRow(BaseModel):
+    """One month's data for an account in the ledger view"""
+    year: int
+    month: int
+    opening_balance: float
+    expected: float
+    actual_credits: float
+    actual_debits: float
+    closing_balance: float
+
+
+class AccountLedgerResponse(BaseModel):
+    """Account ledger view: per-account monthly time series"""
+    account_id: str
+    account_name: str
+    institution: Optional[str] = None
+    account_currency: str
+    current_fx_rate: float = 1.0
+    months: List[AccountMonthlyLedgerRow]
+    current_balance: float
+    native_balance: float
+    market_value_base: float
 
 
 class TransferSuggestion(BaseModel):
@@ -427,6 +455,7 @@ class FundTrackerResponse(BaseModel):
     """Full fund & account tracker response"""
     fund_ledgers: List[FundLedgerResponse]
     account_summaries: List[AccountTrackerRow]
+    account_ledgers: List[AccountLedgerResponse] = []
     summary: FundTrackerSummary
 
 

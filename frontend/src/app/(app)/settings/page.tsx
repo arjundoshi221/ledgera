@@ -58,6 +58,7 @@ export default function SettingsPage() {
   const [user, setUser] = useState<UserResponse | null>(null)
   const [wsName, setWsName] = useState("")
   const [wsCurrency, setWsCurrency] = useState("SGD")
+  const [minWcBalance, setMinWcBalance] = useState(0)
   const [saving, setSaving] = useState(false)
 
   // Accounts
@@ -137,6 +138,7 @@ export default function SettingsPage() {
       setUser(me)
       setWsName(ws.name)
       setWsCurrency(ws.base_currency)
+      setMinWcBalance(ws.min_wc_balance ?? 0)
       setAccounts(accts)
       setCategories(cats)
       setSubcategories(subs)
@@ -160,7 +162,7 @@ export default function SettingsPage() {
     e.preventDefault()
     setSaving(true)
     try {
-      const updated = await updateWorkspace({ name: wsName, base_currency: wsCurrency })
+      const updated = await updateWorkspace({ name: wsName, base_currency: wsCurrency, min_wc_balance: minWcBalance })
       setWorkspace(updated)
       toast({ title: "Settings saved" })
     } catch (err: any) {
@@ -663,6 +665,19 @@ export default function SettingsPage() {
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Minimum Working Capital Balance</Label>
+                    <Input
+                      type="number"
+                      step="any"
+                      className="w-48"
+                      value={minWcBalance}
+                      onChange={(e) => setMinWcBalance(parseFloat(e.target.value) || 0)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Optimize will never set WC below this amount
+                    </p>
                   </div>
                   <Button type="submit" disabled={saving}>
                     {saving ? "Saving..." : "Save Changes"}

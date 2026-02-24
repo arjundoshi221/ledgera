@@ -66,6 +66,7 @@ class WorkspaceModel(Base):
     owner_user_id = Column(String(36), ForeignKey('users.id'), nullable=False, index=True)
     name = Column(String(255), nullable=False, default='Personal')
     base_currency = Column(String(3), nullable=False, default='SGD')
+    min_wc_balance = Column(Numeric(19, 4), nullable=False, default=0)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 

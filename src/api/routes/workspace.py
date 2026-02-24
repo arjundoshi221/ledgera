@@ -17,11 +17,13 @@ class WorkspaceResponse(BaseModel):
     owner_user_id: str
     name: str
     base_currency: str
+    min_wc_balance: float = 0
 
 
 class WorkspaceUpdateRequest(BaseModel):
     base_currency: Optional[str] = None
     name: Optional[str] = None
+    min_wc_balance: Optional[float] = None
 
 
 @router.get("/workspace", response_model=WorkspaceResponse)
@@ -43,7 +45,8 @@ def read_workspace(
         id=str(workspace.id),
         owner_user_id=str(workspace.owner_user_id),
         name=workspace.name,
-        base_currency=workspace.base_currency
+        base_currency=workspace.base_currency,
+        min_wc_balance=float(workspace.min_wc_balance or 0),
     )
 
 
@@ -67,6 +70,8 @@ def update_workspace(
         workspace.base_currency = req.base_currency
     if req.name:
         workspace.name = req.name
+    if req.min_wc_balance is not None:
+        workspace.min_wc_balance = req.min_wc_balance
 
     workspace = workspace_repo.update(workspace)
 
@@ -74,5 +79,6 @@ def update_workspace(
         id=str(workspace.id),
         owner_user_id=str(workspace.owner_user_id),
         name=workspace.name,
-        base_currency=workspace.base_currency
+        base_currency=workspace.base_currency,
+        min_wc_balance=float(workspace.min_wc_balance or 0),
     )

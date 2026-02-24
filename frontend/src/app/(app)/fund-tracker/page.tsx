@@ -208,6 +208,11 @@ export default function FundTrackerPage() {
                           <div>
                             <CardTitle className="text-base">
                               {fl.emoji} {fl.fund_name}
+                              {fl.is_self_funding && (
+                                <Badge variant="secondary" className="ml-2 text-[9px] bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300">
+                                  {fl.self_funding_percentage === 100 ? "Self-Funding" : `${fl.self_funding_percentage}% Self-Funding`}
+                                </Badge>
+                              )}
                             </CardTitle>
                             {fl.linked_accounts.length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-1">
@@ -238,7 +243,10 @@ export default function FundTrackerPage() {
                                 <th className="px-3 py-2 text-right font-medium">Expected</th>
                                 <th className="px-3 py-2 text-right font-medium">Credits</th>
                                 <th className="px-3 py-2 text-right font-medium">Debits</th>
-                                <th className="px-3 py-2 text-right font-medium">Fund Income</th>
+                                <th className="px-3 py-2 text-right font-medium">
+                                  <div>Fund Income</div>
+                                  <div className="text-[9px] font-normal text-muted-foreground">Extra cash from growth</div>
+                                </th>
                                 <th className="px-3 py-2 text-right font-medium">Closing</th>
                               </tr>
                             </thead>
@@ -257,7 +265,16 @@ export default function FundTrackerPage() {
                                     "px-3 py-2 text-right font-mono",
                                     m.actual_credits > 0 ? "text-green-600 dark:text-green-400" : ""
                                   )}>
-                                    {m.actual_credits > 0 ? `+${fmt(m.actual_credits)}` : "-"}
+                                    {(m.actual_credits > 0 || (fl.fund_name === "Working Capital" && m.self_funding_credits > 0)) ? (
+                                      <div>
+                                        {m.actual_credits > 0 && <span>+{fmt(m.actual_credits)}</span>}
+                                        {fl.fund_name === "Working Capital" && m.self_funding_credits > 0 && (
+                                          <div className="text-[9px] text-purple-600 dark:text-purple-400 mt-0.5">
+                                            -{fmt(m.self_funding_credits)} self-funding
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : "-"}
                                   </td>
                                   <td className="px-3 py-2 text-right font-mono">
                                     {m.actual_debits > 0 ? (
@@ -315,8 +332,9 @@ export default function FundTrackerPage() {
               </TabsContent>
 
               {/* By Account */}
-              <TabsContent value="accounts">
-                {data.account_summaries.length > 0 ? (
+              <TabsContent value="accounts" className="space-y-6">
+                {/* Summary table */}
+                {data.account_summaries.length > 0 && (
                   <Card>
                     <CardContent className="p-0">
                       <div className="overflow-x-auto">
@@ -377,6 +395,99 @@ export default function FundTrackerPage() {
                       </div>
                     </CardContent>
                   </Card>
+                )}
+
+                {/* Monthly ledger per account */}
+                {data.account_ledgers && data.account_ledgers.length > 0 ? (
+                  data.account_ledgers.map((al) => {
+                    const isForeign = al.current_fx_rate !== 1
+                    const totalExpected = al.months.reduce((s, m) => s + m.expected, 0)
+                    return (
+                      <Card key={al.account_id}>
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <CardTitle className="text-base">
+                                {al.account_name}
+                                {al.institution && (
+                                  <span className="ml-2 text-sm font-normal text-muted-foreground">{al.institution}</span>
+                                )}
+                              </CardTitle>
+                              <div className="flex items-center gap-2 mt-1">
+                                <Badge variant="outline" className="text-[10px]">{al.account_currency}</Badge>
+                                {isForeign && (
+                                  <span className="text-[10px] text-muted-foreground">@{al.current_fx_rate.toFixed(4)}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-semibold">{fmt(al.current_balance)}</p>
+                              <p className="text-xs text-muted-foreground">Current Balance</p>
+                              {isForeign && (
+                                <p className="text-[10px] text-muted-foreground">
+                                  {al.account_currency} {fmt(al.native_balance)} ≈ {fmt(al.market_value_base)} base
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="p-0">
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b bg-muted/50">
+                                  <th className="px-3 py-2 text-left font-medium">Month</th>
+                                  <th className="px-3 py-2 text-right font-medium">Opening</th>
+                                  <th className="px-3 py-2 text-right font-medium">Expected</th>
+                                  <th className="px-3 py-2 text-right font-medium">Credits</th>
+                                  <th className="px-3 py-2 text-right font-medium">Debits</th>
+                                  <th className="px-3 py-2 text-right font-medium">Closing</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {al.months.map((m, idx) => (
+                                  <tr key={idx} className="border-b hover:bg-muted/20">
+                                    <td className="px-3 py-2 font-medium">{MONTH_NAMES[m.month - 1]} {m.year}</td>
+                                    <td className="px-3 py-2 text-right font-mono">{fmt(m.opening_balance)}</td>
+                                    <td className={cn(
+                                      "px-3 py-2 text-right font-mono",
+                                      m.expected > 0 ? "text-green-600 dark:text-green-400" : ""
+                                    )}>
+                                      {fmt(m.expected)}
+                                    </td>
+                                    <td className={cn(
+                                      "px-3 py-2 text-right font-mono",
+                                      m.actual_credits > 0 ? "text-green-600 dark:text-green-400" : ""
+                                    )}>
+                                      {m.actual_credits > 0 ? `+${fmt(m.actual_credits)}` : "-"}
+                                    </td>
+                                    <td className="px-3 py-2 text-right font-mono">
+                                      {m.actual_debits > 0 ? (
+                                        <span className="text-red-600 dark:text-red-400">-{fmt(m.actual_debits)}</span>
+                                      ) : "-"}
+                                    </td>
+                                    <td className="px-3 py-2 text-right font-mono font-semibold">{fmt(m.closing_balance)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                              <tfoot>
+                                <tr className="bg-muted/30 font-semibold">
+                                  <td className="px-3 py-2">Total</td>
+                                  <td className="px-3 py-2" />
+                                  <td className="px-3 py-2 text-right font-mono text-green-600 dark:text-green-400">
+                                    {fmt(totalExpected)}
+                                  </td>
+                                  <td className="px-3 py-2" />
+                                  <td className="px-3 py-2" />
+                                  <td className="px-3 py-2 text-right font-mono">{fmt(al.current_balance)}</td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })
                 ) : (
                   <Card>
                     <CardContent className="py-12 text-center text-muted-foreground">

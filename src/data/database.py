@@ -281,6 +281,14 @@ def _run_migrations(engine) -> None:
                     "ALTER TABLE transactions ADD COLUMN payment_method_id VARCHAR(36) REFERENCES payment_methods(id)"
                 ))
 
+    # Workspaces: add min_wc_balance column
+    ws_cols = {c["name"] for c in insp.get_columns("workspaces")}
+    if "min_wc_balance" not in ws_cols:
+        with engine.begin() as conn:
+            conn.execute(text(
+                "ALTER TABLE workspaces ADD COLUMN min_wc_balance NUMERIC(19,4) NOT NULL DEFAULT 0"
+            ))
+
     # Seed system payment methods for existing workspaces
     if insp.has_table("payment_methods"):
         with engine.begin() as conn:

@@ -42,6 +42,7 @@ export default function IncomeAllocationPage() {
   const [loading, setLoading] = useState(true)
   const [years, setYears] = useState("1")
   const [baseCurrency, setBaseCurrency] = useState("")
+  const [minWcBalance, setMinWcBalance] = useState(0)
   const { toast } = useToast()
 
   // Track which cell is being edited: key = "year-month-fundId"
@@ -67,6 +68,7 @@ export default function IncomeAllocationPage() {
       ])
       setData(result)
       setBaseCurrency(ws.base_currency)
+      setMinWcBalance(ws.min_wc_balance ?? 0)
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to load income allocation", description: err.message })
     } finally {
@@ -206,14 +208,27 @@ export default function IncomeAllocationPage() {
     }
   }
 
+  /** Compute the optimized WC target: actual fixed costs + minimum WC balance.
+   *  Self-funding amounts stay in the WC account but are earmarked for their
+   *  respective funds, so they should not reduce the WC allocation. */
+  function computeOptimizedWcTarget(row: typeof data extends null ? never : NonNullable<typeof data>["rows"][0]) {
+    const A = Number(row.actual_fixed_cost)
+    const B = minWcBalance
+    const target = A + B
+    return Math.max(Math.round(target * 100) / 100, 0)
+  }
+
   async function handleOptimize(year: number, month: number, fundId: string, actualFixedCost: number) {
+    const row = data?.rows.find(r => r.year === year && r.month === month)
+    const target = row ? computeOptimizedWcTarget(row) : actualFixedCost + minWcBalance
+
     setSaving(true)
     try {
       await createOrUpdateAllocationOverride({
         fund_id: fundId,
         year,
         month,
-        override_amount: actualFixedCost,
+        override_amount: target,
       })
       toast({ title: "Optimized to actual costs" })
       await loadData(true)
@@ -303,6 +318,24 @@ export default function IncomeAllocationPage() {
           </Card>
         )}
 
+        {/* Self-Funding Detection Warning */}
+        {data && data.self_funding_warnings && data.self_funding_warnings.length > 0 && (
+          <Card className="border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-950">
+            <CardContent className="py-3">
+              <div className="space-y-1">
+                <div className="text-sm font-medium text-purple-800 dark:text-purple-200">
+                  Self-Funding Detected
+                </div>
+                {data.self_funding_warnings.map((w) => (
+                  <div key={w.fund_id} className="text-sm text-purple-700 dark:text-purple-300">
+                    {w.message}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {data && data.rows.length > 0 ? (
           <Card>
             <CardContent className="p-0">
@@ -340,6 +373,11 @@ export default function IncomeAllocationPage() {
                             <div className="text-[10px] font-normal text-muted-foreground">
                               {f.linked_account_names.join(", ")}
                             </div>
+                          )}
+                          {f.is_self_funding && (
+                            <Badge variant="secondary" className="text-[9px] bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 mt-0.5">
+                              {f.self_funding_percentage === 100 ? "Self-Funding" : `${f.self_funding_percentage}% Self-Funding`}
+                            </Badge>
                           )}
                         </th>
                       ))}
@@ -445,6 +483,13 @@ export default function IncomeAllocationPage() {
                                   ) : (
                                     <div>
                                       <div className="text-right">{fmt(fa.allocated_amount)}</div>
+                                      {!isWc && fa.is_self_funding && Number(fa.self_funding_amount) > 0 && (
+                                        <div className="text-[9px] text-purple-600 dark:text-purple-400 mt-0.5 text-right">
+                                          {fa.self_funding_percentage === 100
+                                            ? "Stays in WC account"
+                                            : `${fmt(fa.self_funding_amount)} stays in WC`}
+                                        </div>
+                                      )}
                                       {isWc && isWcEditable && (
                                         <div className="flex justify-end gap-1 mt-0.5">
                                           {fa.override_amount != null && (
@@ -461,7 +506,7 @@ export default function IncomeAllocationPage() {
                                               Use Model
                                             </Button>
                                           )}
-                                          {Number(fa.allocated_amount) !== Number(row.actual_fixed_cost) && (
+                                          {Math.abs(Number(fa.allocated_amount) - computeOptimizedWcTarget(row)) > 0.01 && (
                                             <Button
                                               variant="outline"
                                               size="sm"

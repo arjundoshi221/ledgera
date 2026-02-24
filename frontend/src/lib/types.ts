@@ -305,11 +305,13 @@ export interface Workspace {
   id: string
   name: string
   base_currency: string
+  min_wc_balance: number
 }
 
 export interface UpdateWorkspaceRequest {
   name?: string
   base_currency?: string
+  min_wc_balance?: number
 }
 
 // ---------------------
@@ -436,6 +438,10 @@ export interface FundAllocation {
   is_auto?: boolean
   override_amount?: number | null
   model_amount?: number | null
+  is_self_funding?: boolean
+  self_funding_percentage?: number
+  self_funding_amount?: number
+  overlapping_account_names?: string[]
 }
 
 export interface IncomeAllocationRow {
@@ -452,14 +458,25 @@ export interface IncomeAllocationRow {
   working_capital_pct_of_income: number
   savings_pct_of_income: number
   total_fund_allocation_pct: number
+  total_self_funding_amount: number
+  self_funding_savings_ratio: number
 }
 
 export interface IncomeAllocationResponse {
   rows: IncomeAllocationRow[]
-  funds_meta: Array<{ fund_id: string; fund_name: string; emoji: string; linked_account_names: string[] }>
+  funds_meta: Array<{
+    fund_id: string
+    fund_name: string
+    emoji: string
+    linked_account_names: string[]
+    is_self_funding?: boolean
+    self_funding_percentage?: number
+    overlapping_account_names?: string[]
+  }>
   active_scenario_name: string | null
   active_scenario_id: string | null
   budget_benchmark: number
+  self_funding_warnings: Array<{ fund_id: string; fund_name: string; message: string }>
 }
 
 // Keep for backward compat with expense-split
@@ -508,6 +525,7 @@ export interface FundMonthlyLedgerRow {
   charge_details: FundChargeDetail[]
   fund_income: number
   closing_balance: number
+  self_funding_credits: number
 }
 
 export interface FundLedger {
@@ -519,6 +537,9 @@ export interface FundLedger {
   total_contributions: number
   total_fund_income: number
   current_balance: number
+  is_self_funding: boolean
+  self_funding_percentage: number
+  overlapping_account_names: string[]
 }
 
 export interface AccountTrackerRow {
@@ -589,9 +610,32 @@ export interface FundTrackerSummary {
   wc_optimization: WCOptimization | null
 }
 
+export interface AccountMonthlyLedgerRow {
+  year: number
+  month: number
+  opening_balance: number
+  expected: number
+  actual_credits: number
+  actual_debits: number
+  closing_balance: number
+}
+
+export interface AccountLedger {
+  account_id: string
+  account_name: string
+  institution: string | null
+  account_currency: string
+  current_fx_rate: number
+  months: AccountMonthlyLedgerRow[]
+  current_balance: number
+  native_balance: number
+  market_value_base: number
+}
+
 export interface FundTrackerResponse {
   fund_ledgers: FundLedger[]
   account_summaries: AccountTrackerRow[]
+  account_ledgers: AccountLedger[]
   summary: FundTrackerSummary
 }
 

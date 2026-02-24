@@ -15,6 +15,7 @@ from src.api.deps import get_workspace_id
 from src.api.schemas import (
     FundAllocationOverrideCreate,
     FundMonthlyLedgerRow, FundLedgerResponse, AccountTrackerRow,
+    AccountMonthlyLedgerRow, AccountLedgerResponse,
     FundTrackerSummary, FundTrackerResponse, LinkedAccountSummary,
     TransferSuggestion, FundChargeDetail, WCOptimization,
     AccountNetWorthRow, CurrencyBreakdown, NetWorthHistoryPoint, NetWorthResponse,
@@ -64,6 +65,10 @@ class FundAllocationDetail(BaseModel):
     is_auto: bool = False
     override_amount: Optional[float] = None
     model_amount: Optional[float] = None
+    is_self_funding: bool = False
+    self_funding_percentage: float = 0
+    self_funding_amount: float = 0
+    overlapping_account_names: List[str] = []
 
 
 class IncomeAllocationRow(BaseModel):
@@ -81,6 +86,8 @@ class IncomeAllocationRow(BaseModel):
     working_capital_pct_of_income: float
     savings_pct_of_income: float
     total_fund_allocation_pct: float
+    total_self_funding_amount: float = 0
+    self_funding_savings_ratio: float = 0
 
 
 class FundMeta(BaseModel):
@@ -89,6 +96,15 @@ class FundMeta(BaseModel):
     fund_name: str
     emoji: str
     linked_account_names: List[str] = []
+    is_self_funding: bool = False
+    self_funding_percentage: float = 0
+    overlapping_account_names: List[str] = []
+
+
+class SelfFundingWarning(BaseModel):
+    fund_id: str
+    fund_name: str
+    message: str
 
 
 class IncomeAllocationResponse(BaseModel):
@@ -98,6 +114,7 @@ class IncomeAllocationResponse(BaseModel):
     active_scenario_name: Optional[str] = None
     active_scenario_id: Optional[str] = None
     budget_benchmark: float = 0
+    self_funding_warnings: List[SelfFundingWarning] = []
 
 
 # Keep old schema for backward compat
@@ -131,6 +148,50 @@ def _prev_month(year: int, month: int):
     if month == 1:
         return year - 1, 12
     return year, month - 1
+
+
+def _compute_self_funding_metadata(funds, wc_fund):
+    """Detect non-WC funds whose linked accounts overlap with WC's linked accounts.
+
+    Returns dict keyed by fund_id with self-funding metadata.
+    """
+    if not wc_fund:
+        return {}
+
+    wc_account_ids = {link.account_id for link in wc_fund.account_links}
+    if not wc_account_ids:
+        return {}
+
+    result = {}
+    for f in funds:
+        if f.id == wc_fund.id:
+            continue
+
+        overlapping_ids = []
+        overlapping_names = []
+        self_funding_pct = Decimal(0)
+
+        for link in f.account_links:
+            if link.account_id in wc_account_ids:
+                overlapping_ids.append(link.account_id)
+                overlapping_names.append(link.account.name)
+                alloc_pct = Decimal(str(
+                    link.allocation_percentage
+                    if link.allocation_percentage is not None
+                    else 100
+                ))
+                self_funding_pct += alloc_pct
+
+        if overlapping_ids:
+            result[f.id] = {
+                "is_self_funding": True,
+                "self_funding_percentage": self_funding_pct,
+                "is_fully_self_funding": self_funding_pct == Decimal(100),
+                "overlapping_account_ids": overlapping_ids,
+                "overlapping_account_names": overlapping_names,
+            }
+
+    return result
 
 
 def _get_income_for_month(session: Session, workspace_id: str, year: int, month: int, fund_id: str = None) -> Decimal:
@@ -310,16 +371,6 @@ def get_income_allocation(
             FundModel.is_active == True
         ).order_by(FundModel.created_at).all()
 
-        funds_meta = [
-            FundMeta(
-                fund_id=f.id,
-                fund_name=f.name,
-                emoji=f.emoji or "",
-                linked_account_names=[acc.name for acc in getattr(f, 'accounts', []) or []]
-            )
-            for f in funds
-        ]
-
         # Look up active simulation for budget benchmark
         from src.data.repositories import ScenarioRepository, FundAllocationOverrideRepository
         scenario_repo = ScenarioRepository(session)
@@ -341,6 +392,45 @@ def get_income_allocation(
         # Find Working Capital fund ID (only WC income is counted)
         wc_fund = next((f for f in funds if f.name == "Working Capital"), None)
         wc_fund_id = wc_fund.id if wc_fund else None
+
+        # Detect self-funding funds (non-WC funds sharing WC accounts)
+        self_funding_map = _compute_self_funding_metadata(funds, wc_fund)
+
+        funds_meta = [
+            FundMeta(
+                fund_id=f.id,
+                fund_name=f.name,
+                emoji=f.emoji or "",
+                linked_account_names=[acc.name for acc in getattr(f, 'accounts', []) or []],
+                is_self_funding=f.id in self_funding_map,
+                self_funding_percentage=float(self_funding_map[f.id]["self_funding_percentage"]) if f.id in self_funding_map else 0,
+                overlapping_account_names=self_funding_map[f.id]["overlapping_account_names"] if f.id in self_funding_map else [],
+            )
+            for f in funds
+        ]
+
+        # Build warnings for self-funding funds
+        self_funding_warnings = []
+        for sf_fund_id, sf_meta in self_funding_map.items():
+            sf_fund = next((f for f in funds if f.id == sf_fund_id), None)
+            if sf_fund:
+                acct_names = ", ".join(sf_meta["overlapping_account_names"])
+                if sf_meta["is_fully_self_funding"]:
+                    msg = (
+                        f"{sf_fund.emoji or ''} {sf_fund.name} is fully self-funding: "
+                        f"its account ({acct_names}) is the same as Working Capital. "
+                        f"Allocated amounts stay in WC's account."
+                    )
+                else:
+                    msg = (
+                        f"{sf_fund.emoji or ''} {sf_fund.name} is {sf_meta['self_funding_percentage']}% self-funding: "
+                        f"{acct_names} overlaps with Working Capital."
+                    )
+                self_funding_warnings.append(SelfFundingWarning(
+                    fund_id=sf_fund_id,
+                    fund_name=sf_fund.name,
+                    message=msg,
+                ))
 
         # Build rows for full calendar year(s): Jan-Dec
         now = datetime.utcnow()
@@ -415,18 +505,43 @@ def get_income_allocation(
                     else:
                         allocated = savings_remainder * pct / 100
                     total_allocated += allocated
+
+                    # Self-funding detection
+                    sf = self_funding_map.get(f.id)
+                    sf_pct = Decimal(str(sf["self_funding_percentage"])) / 100 if sf else Decimal(0)
+                    sf_amount = float(allocated * sf_pct) if sf else 0
+
                     fund_allocs.append(FundAllocationDetail(
                         fund_id=f.id,
                         fund_name=f.name,
                         emoji=f.emoji or "",
                         allocation_percentage=pct,
                         allocated_amount=allocated,
+                        is_self_funding=sf is not None,
+                        self_funding_percentage=float(sf["self_funding_percentage"]) if sf else 0,
+                        self_funding_amount=sf_amount,
+                        overlapping_account_names=sf["overlapping_account_names"] if sf else [],
                     ))
 
                 # Sum only non-WC fund percentages for 100% validation
                 total_fund_allocation_pct = float(sum(
                     Decimal(str(fa.allocation_percentage)) for fa in fund_allocs
                     if fa.fund_name != "Working Capital"
+                ))
+
+                # Total self-funding amount across all funds this month
+                total_self_funding_amount = float(sum(
+                    Decimal(str(fa.self_funding_amount))
+                    for fa in fund_allocs
+                    if fa.is_self_funding
+                ))
+
+                # Self-funding savings ratio K = sum(fund_pct * sf_pct) / 10000
+                # Used by optimizer to solve fixed-point: WC = (A + B - I*K) / (1 - K)
+                self_funding_savings_ratio = float(sum(
+                    Decimal(str(fa.allocation_percentage)) * Decimal(str(fa.self_funding_percentage)) / Decimal(10000)
+                    for fa in fund_allocs
+                    if fa.is_self_funding
                 ))
 
                 rows.append(IncomeAllocationRow(
@@ -443,6 +558,8 @@ def get_income_allocation(
                     working_capital_pct_of_income=working_capital_pct_of_income,
                     savings_pct_of_income=savings_pct_of_income,
                     total_fund_allocation_pct=total_fund_allocation_pct,
+                    total_self_funding_amount=total_self_funding_amount,
+                    self_funding_savings_ratio=self_funding_savings_ratio,
                 ))
 
         return IncomeAllocationResponse(
@@ -451,6 +568,7 @@ def get_income_allocation(
             active_scenario_name=active_scenario.name if active_scenario else None,
             active_scenario_id=active_scenario.id if active_scenario else None,
             budget_benchmark=float(budget_benchmark),
+            self_funding_warnings=self_funding_warnings,
         )
 
     except Exception as e:
@@ -659,9 +777,12 @@ def _compute_fund_contribution(
     override_map: dict,
     year: int,
     month: int,
+    amount_override_map: dict | None = None,
 ) -> Decimal:
     """Compute a single fund's contribution for one month (shared logic)."""
     if fund.name == "Working Capital":
+        if amount_override_map:
+            return amount_override_map.get((fund.id, year, month), allocated_fixed_cost)
         return allocated_fixed_cost
 
     # If savings remainder is negative, only Working Capital absorbs the deficit
@@ -720,13 +841,24 @@ def get_fund_tracker(
         active_scenario = scenario_repo.read_active(workspace_id)
         budget_benchmark = Decimal(str(active_scenario.monthly_expenses_total)) if active_scenario else Decimal(0)
 
-        # Load overrides
+        # Load overrides (percentage for non-WC funds, amount for WC)
         override_repo = FundAllocationOverrideRepository(session)
         all_overrides = override_repo.read_by_workspace(workspace_id)
-        override_map = {
-            (o.fund_id, o.year, o.month): Decimal(str(o.allocation_percentage))
-            for o in all_overrides
-        }
+        override_map = {}
+        amount_override_map = {}
+        for o in all_overrides:
+            key = (o.fund_id, o.year, o.month)
+            if o.override_amount is not None:
+                amount_override_map[key] = Decimal(str(o.override_amount))
+            else:
+                override_map[key] = Decimal(str(o.allocation_percentage))
+
+        # Find Working Capital fund ID for savings remainder calculation
+        wc_fund = next((f for f in funds if f.name == "Working Capital"), None)
+        wc_fund_id = wc_fund.id if wc_fund else None
+
+        # Detect self-funding funds
+        sf_map = _compute_self_funding_metadata(funds, wc_fund)
 
         # Time range
         now = datetime.utcnow()
@@ -740,11 +872,58 @@ def get_fund_tracker(
             for m in range(1, end_month + 1):
                 months_list.append((y, m))
 
+        # ── Batch account credit/debit sums (shared by fund & account ledgers) ──
+        from sqlalchemy import extract
+        acct_ext_filter = [PostingModel.account_id != external_account_id] if external_account_id else []
+        monthly_credits_q = session.query(
+            PostingModel.account_id,
+            extract('year', TransactionModel.timestamp).label('yr'),
+            extract('month', TransactionModel.timestamp).label('mo'),
+            func.sum(PostingModel.base_amount),
+        ).join(
+            TransactionModel, PostingModel.transaction_id == TransactionModel.id
+        ).filter(
+            TransactionModel.workspace_id == workspace_id,
+            PostingModel.base_amount > 0,
+            *acct_ext_filter,
+        ).group_by(
+            PostingModel.account_id,
+            extract('year', TransactionModel.timestamp),
+            extract('month', TransactionModel.timestamp),
+        ).all()
+
+        monthly_debits_q = session.query(
+            PostingModel.account_id,
+            extract('year', TransactionModel.timestamp).label('yr'),
+            extract('month', TransactionModel.timestamp).label('mo'),
+            func.sum(PostingModel.base_amount),
+        ).join(
+            TransactionModel, PostingModel.transaction_id == TransactionModel.id
+        ).filter(
+            TransactionModel.workspace_id == workspace_id,
+            PostingModel.base_amount < 0,
+            *acct_ext_filter,
+        ).group_by(
+            PostingModel.account_id,
+            extract('year', TransactionModel.timestamp),
+            extract('month', TransactionModel.timestamp),
+        ).all()
+
+        # Build lookup dicts: (account_id, year, month) -> Decimal
+        acct_monthly_credits = {}
+        for acc_id, yr, mo, total in monthly_credits_q:
+            acct_monthly_credits[(acc_id, int(yr), int(mo))] = Decimal(str(total))
+
+        acct_monthly_debits = {}
+        for acc_id, yr, mo, total in monthly_debits_q:
+            acct_monthly_debits[(acc_id, int(yr), int(mo))] = abs(Decimal(str(total)))
+
         # ── Per-fund ledger ──
         fund_ledgers = []
         # Track cumulative contributions per fund for account summaries
         fund_total_contributions = {}  # fund_id -> Decimal
         fund_current_month_contribution = {}  # fund_id -> Decimal (current month only)
+        fund_month_contributions = {}  # (fund_id, year, month) -> Decimal
 
         for f in funds:
             fund_months = []
@@ -765,18 +944,24 @@ def get_fund_tracker(
                 prev_y, prev_m = _prev_month(y, m)
                 net_income = _get_income_for_month(session, workspace_id, prev_y, prev_m)
                 allocated_fixed_cost = budget_benchmark
-                savings_remainder = net_income - allocated_fixed_cost
+                # Use actual WC amount (with overrides) for savings remainder, matching income allocation
+                wc_key = (wc_fund_id, y, m) if wc_fund_id else None
+                wc_amount = amount_override_map.get(wc_key, allocated_fixed_cost) if wc_key else allocated_fixed_cost
+                savings_remainder = net_income - wc_amount
 
                 contribution = _compute_fund_contribution(
-                    f, savings_remainder, allocated_fixed_cost, override_map, y, m
+                    f, savings_remainder, allocated_fixed_cost, override_map, y, m,
+                    amount_override_map=amount_override_map,
                 )
+
+                # Store per-fund per-month contribution for account ledgers
+                fund_month_contributions[(f.id, y, m)] = contribution
 
                 # Capture current month's contribution for account-level analysis
                 if y == now.year and m == now.month:
                     fund_current_month_contribution[f.id] = contribution
 
-                # Actual credits & debits: transfer-aware
-                # Non-transfers use fund_id; transfers use source/dest_fund_id
+                # Actual credits & debits: per-fund transaction-level queries
                 start, end = _get_month_range(y, m)
                 common_filters = [
                     TransactionModel.workspace_id == workspace_id,
@@ -791,14 +976,14 @@ def get_fund_tracker(
                     or_(TransactionModel.type.is_(None), TransactionModel.type != "transfer"),
                     TransactionModel.fund_id == f.id,
                 )
-                # Transfer transactions where this fund is destination (credit side)
+                # Transfer destination credits (money in)
                 transfer_dest_filter = and_(
                     *common_filters,
                     TransactionModel.type == "transfer",
                     TransactionModel.dest_fund_id == f.id,
                     PostingModel.base_amount > 0,
                 )
-                # Transfer transactions where this fund is source (debit side)
+                # Transfer source debits (money out)
                 transfer_source_filter = and_(
                     *common_filters,
                     TransactionModel.type == "transfer",
@@ -806,7 +991,7 @@ def get_fund_tracker(
                     PostingModel.base_amount < 0,
                 )
 
-                # Credits: positive postings from non-transfers + transfer dest
+                # Credits = positive non-transfer postings + transfer dest
                 credits_non_tf = session.query(
                     func.sum(PostingModel.base_amount)
                 ).join(
@@ -822,7 +1007,7 @@ def get_fund_tracker(
                 actual_credits = Decimal(str(credits_non_tf)) + Decimal(str(credits_tf))
                 transfer_credits = Decimal(str(credits_tf))
 
-                # Debits: negative postings from non-transfers + transfer source
+                # Debits = negative non-transfer postings + transfer source
                 debits_non_tf = session.query(
                     func.sum(PostingModel.base_amount)
                 ).join(
@@ -837,8 +1022,7 @@ def get_fund_tracker(
 
                 actual_debits = abs(Decimal(str(debits_non_tf)) + Decimal(str(debits_tf)))
 
-                # Category breakdown for debits (charges) — non-transfer only
-                # (transfers have no category; they show separately)
+                # Category breakdown of debits (charges)
                 charge_base_filters = [
                     TransactionModel.workspace_id == workspace_id,
                     TransactionModel.fund_id == f.id,
@@ -865,8 +1049,6 @@ def get_fund_tracker(
                     )
                     for name, emoji, total in charge_q.all() if total
                 ]
-
-                # Add transfer outflows as a separate charge detail if any
                 if debits_tf and abs(Decimal(str(debits_tf))) > Decimal("0.01"):
                     charge_details.append(FundChargeDetail(
                         category_name="Transfer Out",
@@ -874,15 +1056,48 @@ def get_fund_tracker(
                         amount=abs(float(debits_tf)),
                     ))
 
-                # Fund income (dividends, interest etc. tagged to this fund)
-                # WC receives ALL income first; the budget allocation IS the contribution.
-                # Salary should NOT be counted as additional fund_income — that double-counts.
+                # Fund income (non-WC only — WC income is the budget itself)
                 if f.name == "Working Capital":
                     fund_income = Decimal(0)
                 else:
                     fund_income = _get_fund_income_for_month(session, workspace_id, f.id, y, m)
 
-                closing = opening + contribution + fund_income + transfer_credits - actual_debits
+                # Self-funding credits: credits from this fund's txns on WC-overlapping accounts
+                sf_info = sf_map.get(f.id)
+                sf_account_ids = set(sf_info["overlapping_account_ids"]) if sf_info else set()
+                self_funding_credits = Decimal(0)
+                if sf_account_ids:
+                    sf_cr = session.query(
+                        func.sum(PostingModel.base_amount)
+                    ).join(
+                        TransactionModel, PostingModel.transaction_id == TransactionModel.id
+                    ).filter(
+                        non_transfer_filter,
+                        PostingModel.base_amount > 0,
+                        PostingModel.account_id.in_(sf_account_ids),
+                    ).scalar() or 0
+                    self_funding_credits = Decimal(str(sf_cr))
+
+                # WC: closing uses actual credits (real money in), minus self-funding deductions
+                # Non-WC: closing = Opening + Expected + Fund Income - Debits (all visible columns)
+                if f.name == "Working Capital":
+                    # Compute self-funding deduction: contributions earmarked for self-funding funds
+                    sf_deduction = Decimal(0)
+                    for sf_fund_id, sf_info_data in sf_map.items():
+                        sf_fund_obj = next((sf for sf in funds if sf.id == sf_fund_id), None)
+                        if sf_fund_obj:
+                            sf_contrib = _compute_fund_contribution(
+                                sf_fund_obj, savings_remainder, allocated_fixed_cost,
+                                override_map, y, m, amount_override_map=amount_override_map,
+                            )
+                            sf_pct = Decimal(str(sf_info_data["self_funding_percentage"])) / 100
+                            sf_deduction += sf_contrib * sf_pct
+                    self_funding_credits = sf_deduction
+                    closing = opening + actual_credits - sf_deduction - actual_debits
+                else:
+                    actual_credits = Decimal(0)  # Non-WC: Expected already covers it
+                    closing = opening + contribution + fund_income - actual_debits
+
                 running_balance = closing
                 total_contributions += contribution
                 total_fund_income += fund_income
@@ -897,6 +1112,7 @@ def get_fund_tracker(
                     charge_details=charge_details,
                     fund_income=float(fund_income),
                     closing_balance=float(closing),
+                    self_funding_credits=float(self_funding_credits),
                 ))
 
             fund_total_contributions[f.id] = total_contributions
@@ -913,6 +1129,7 @@ def get_fund_tracker(
                 for link in f.account_links
             ]
 
+            sf_info = sf_map.get(f.id)
             fund_ledgers.append(FundLedgerResponse(
                 fund_id=f.id,
                 fund_name=f.name,
@@ -922,6 +1139,9 @@ def get_fund_tracker(
                 total_contributions=float(total_contributions),
                 total_fund_income=float(total_fund_income),
                 current_balance=float(running_balance),
+                is_self_funding=sf_info is not None,
+                self_funding_percentage=float(sf_info["self_funding_percentage"]) if sf_info else 0,
+                overlapping_account_names=sf_info["overlapping_account_names"] if sf_info else [],
             ))
 
         # ── Account summaries ──
@@ -1032,6 +1252,58 @@ def get_fund_tracker(
                 unrealized_fx_gain=float(unrealized_fx_gain),
             ))
 
+        # ── Per-account monthly ledger ──
+        # (batch queries already computed above, reused here)
+        account_ledgers = []
+        for acc in all_accounts:
+            starting = Decimal(str(acc.starting_balance or 0))
+            running = starting
+            acc_months = []
+
+            for y, m in months_list:
+                opening = running
+
+                # Expected = sum of linked fund contributions * allocation %
+                expected = Decimal(0)
+                for link in acc.fund_links:
+                    fund_contrib = fund_month_contributions.get((link.fund_id, y, m), Decimal(0))
+                    alloc_pct = Decimal(str(link.allocation_percentage if link.allocation_percentage is not None else 100))
+                    expected += fund_contrib * alloc_pct / 100
+
+                credits = acct_monthly_credits.get((acc.id, y, m), Decimal(0))
+                debits = acct_monthly_debits.get((acc.id, y, m), Decimal(0))
+                closing = opening + credits - debits
+                running = closing
+
+                acc_months.append(AccountMonthlyLedgerRow(
+                    year=y,
+                    month=m,
+                    opening_balance=float(opening),
+                    expected=float(expected),
+                    actual_credits=float(credits),
+                    actual_debits=float(debits),
+                    closing_balance=float(closing),
+                ))
+
+            # FX / mark-to-market for header
+            ccy = acc.account_currency
+            current_fx_rate = fx_rates.get(ccy, Decimal(1)) if ccy != base_currency else Decimal(1)
+            native_postings = alltime_native_sums.get(acc.id)
+            native_balance = starting + (Decimal(str(native_postings)) if native_postings else Decimal(0))
+            market_value_base = native_balance * current_fx_rate
+
+            account_ledgers.append(AccountLedgerResponse(
+                account_id=acc.id,
+                account_name=acc.name,
+                institution=acc.institution,
+                account_currency=ccy,
+                current_fx_rate=float(current_fx_rate),
+                months=acc_months,
+                current_balance=float(running),
+                native_balance=float(native_balance),
+                market_value_base=float(market_value_base),
+            ))
+
         # ── Summary ──
         total_expected = sum(fl.current_balance for fl in fund_ledgers)
         total_actual = sum(a.actual_balance for a in account_summaries)
@@ -1139,6 +1411,7 @@ def get_fund_tracker(
         return FundTrackerResponse(
             fund_ledgers=fund_ledgers,
             account_summaries=account_summaries,
+            account_ledgers=account_ledgers,
             summary=summary,
         )
 
