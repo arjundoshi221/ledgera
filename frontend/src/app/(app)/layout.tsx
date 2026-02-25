@@ -12,8 +12,8 @@ export default function AppLayout({
     <AuthGuard>
       <div className="flex h-screen">
         <AppSidebar />
-        <main className="flex-1 overflow-auto">
-          <div className="container max-w-6xl p-6">{children}</div>
+        <main className="flex-1 overflow-auto pt-14 md:pt-0">
+          <div className="container max-w-6xl p-4 md:p-6">{children}</div>
         </main>
       </div>
     </AuthGuard>

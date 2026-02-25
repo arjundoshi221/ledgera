@@ -12,8 +12,8 @@ export default function AdminLayout({
     <AdminGuard>
       <div className="flex h-screen">
         <AdminSidebar />
-        <main className="flex-1 overflow-auto">
-          <div className="container max-w-7xl p-6">{children}</div>
+        <main className="flex-1 overflow-auto pt-14 md:pt-0">
+          <div className="container max-w-7xl p-4 md:p-6">{children}</div>
         </main>
       </div>
     </AdminGuard>

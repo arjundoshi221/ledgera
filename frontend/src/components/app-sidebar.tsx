@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 import { clearAuth, isAdmin } from "@/lib/auth"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { BugReportDialog } from "@/components/bug-report-dialog"
 
 const navItems = [
@@ -24,19 +25,21 @@ export function AppSidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const [bugDialogOpen, setBugDialogOpen] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   function handleLogout() {
     clearAuth()
     router.push("/login")
   }
 
-  return (
+  const header = (
+    <div className="flex h-14 items-center px-6 font-bold text-lg">
+      Ledgera
+    </div>
+  )
+
+  const navContent = (
     <>
-    <aside className="flex h-screen w-64 flex-col border-r bg-sidebar text-sidebar-foreground">
-      <div className="flex h-14 items-center px-6 font-bold text-lg">
-        Ledgera
-      </div>
-      <Separator />
       <nav className="flex-1 space-y-1 p-3">
         {navItems.map((item) => {
           const Icon = item.icon
@@ -45,6 +48,7 @@ export function AppSidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={() => setMobileOpen(false)}
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                 active
@@ -71,6 +75,7 @@ export function AppSidebar() {
         {isAdmin() && (
           <Link
             href="/admin"
+            onClick={() => setMobileOpen(false)}
             className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors text-red-600 hover:bg-sidebar-accent hover:text-red-700"
           >
             <ShieldIcon className="h-4 w-4" />
@@ -86,8 +91,41 @@ export function AppSidebar() {
           Logout
         </Button>
       </div>
-    </aside>
-    <BugReportDialog open={bugDialogOpen} onOpenChange={setBugDialogOpen} />
+    </>
+  )
+
+  return (
+    <>
+      {/* Mobile header */}
+      <div className="fixed top-0 left-0 right-0 z-40 flex h-14 items-center gap-3 border-b bg-background px-4 md:hidden">
+        <button
+          onClick={() => setMobileOpen(true)}
+          className="rounded-md p-2 hover:bg-accent"
+          aria-label="Open menu"
+        >
+          <MenuIcon className="h-5 w-5" />
+        </button>
+        <span className="font-bold text-lg">Ledgera</span>
+      </div>
+
+      {/* Mobile drawer */}
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <SheetContent side="left" className="w-64 p-0 bg-sidebar text-sidebar-foreground">
+          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          {header}
+          <Separator />
+          {navContent}
+        </SheetContent>
+      </Sheet>
+
+      {/* Desktop sidebar */}
+      <aside className="hidden md:flex h-screen w-64 flex-col border-r bg-sidebar text-sidebar-foreground">
+        {header}
+        <Separator />
+        {navContent}
+      </aside>
+
+      <BugReportDialog open={bugDialogOpen} onOpenChange={setBugDialogOpen} />
     </>
   )
 }
@@ -197,6 +235,16 @@ function ShieldIcon({ className }: { className?: string }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+    </svg>
+  )
+}
+
+function MenuIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <line x1="4" x2="20" y1="12" y2="12" />
+      <line x1="4" x2="20" y1="6" y2="6" />
+      <line x1="4" x2="20" y1="18" y2="18" />
     </svg>
   )
 }
