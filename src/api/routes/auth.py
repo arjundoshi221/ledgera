@@ -46,7 +46,7 @@ class SignupRequest(BaseModel):
     is_us_person: bool = False
     tos_accepted: bool
     privacy_accepted: bool
-    base_currency: str = "SGD"
+    base_currency: str = "USD"
 
 
 class LoginRequest(BaseModel):
@@ -77,7 +77,7 @@ class CompleteProfileRequest(BaseModel):
     is_us_person: bool = False
     tos_accepted: bool
     privacy_accepted: bool
-    base_currency: str = "SGD"
+    base_currency: str = "USD"
 
 
 class AuthResponse(BaseModel):
@@ -174,7 +174,7 @@ def _validate_password(password: str):
         )
 
 
-def _create_workspace_and_defaults(session: Session, user_id: str, base_currency: str = "SGD"):
+def _create_workspace_and_defaults(session: Session, user_id: str, base_currency: str = "USD"):
     """Create workspace + system resources (fund, category, external account) for a new user."""
     workspace_repo = WorkspaceRepository(session)
     workspace = WorkspaceModel(

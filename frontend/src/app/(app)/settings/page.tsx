@@ -189,7 +189,7 @@ export default function SettingsPage() {
     setEditingAccount(null)
     setAccName("")
     setAccType("asset")
-    setAccCurrency("SGD")
+    setAccCurrency(wsCurrency)
     setAccInstitution("")
     setAccStartingBalance("")
     setAccountDialogOpen(true)

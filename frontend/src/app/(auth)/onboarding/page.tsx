@@ -123,7 +123,7 @@ export default function OnboardingPage() {
   const [addressPostalCode, setAddressPostalCode] = useState("")
   const [addressCountry, setAddressCountry] = useState("")
   const [taxIdNumber, setTaxIdNumber] = useState("")
-  const [baseCurrency, setBaseCurrency] = useState("SGD")
+  const [baseCurrency, setBaseCurrency] = useState("USD")
   const [tosAccepted, setTosAccepted] = useState(false)
   const [privacyAccepted, setPrivacyAccepted] = useState(false)
 

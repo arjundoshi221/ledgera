@@ -153,7 +153,7 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
   const [addressPostalCode, setAddressPostalCode] = useState("")
   const [addressCountry, setAddressCountry] = useState("")
   const [taxIdNumber, setTaxIdNumber] = useState("")
-  const [baseCurrency, setBaseCurrency] = useState("SGD")
+  const [baseCurrency, setBaseCurrency] = useState("USD")
   const [tosAccepted, setTosAccepted] = useState(false)
   const [privacyAccepted, setPrivacyAccepted] = useState(false)
   const [loading, setLoading] = useState(false)
