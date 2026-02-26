@@ -723,7 +723,7 @@ def serve_bug_media(
         raise HTTPException(status_code=404, detail="Media not found")
 
     return Response(
-        content=media.file_data,
+        content=bytes(media.file_data),
         media_type=media.content_type,
         headers={
             "Content-Disposition": f'inline; filename="{media.filename}"',
