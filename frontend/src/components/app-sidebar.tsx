@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { BugReportDialog } from "@/components/bug-report-dialog"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboardIcon },
@@ -33,8 +34,9 @@ export function AppSidebar() {
   }
 
   const header = (
-    <div className="flex h-14 items-center px-6 font-bold text-lg">
-      Ledgera
+    <div className="flex h-14 items-center justify-between px-6">
+      <span className="font-bold text-lg">Ledgera</span>
+      <ThemeToggle />
     </div>
   )
 
@@ -105,7 +107,8 @@ export function AppSidebar() {
         >
           <MenuIcon className="h-5 w-5" />
         </button>
-        <span className="font-bold text-lg">Ledgera</span>
+        <span className="font-bold text-lg flex-1">Ledgera</span>
+        <ThemeToggle />
       </div>
 
       {/* Mobile drawer */}

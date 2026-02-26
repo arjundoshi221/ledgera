@@ -9,9 +9,11 @@ import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar,
   XAxis, YAxis, Tooltip, CartesianGrid,
 } from "recharts"
+import { useChartTheme } from "@/lib/chart-theme"
 
 export default function AdminDashboardPage() {
   const { toast } = useToast()
+  const { tooltipStyle, gridStroke, tickStyle } = useChartTheme()
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<SystemStats | null>(null)
   const [signups, setSignups] = useState<TimeSeriesPoint[]>([])
@@ -84,10 +86,10 @@ export default function AdminDashboardPage() {
           ) : (
             <ResponsiveContainer width="100%" height={250}>
               <LineChart data={signups}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
-                <Tooltip />
+                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                <XAxis dataKey="date" tick={tickStyle} />
+                <YAxis allowDecimals={false} tick={tickStyle} />
+                <Tooltip contentStyle={tooltipStyle} />
                 <Line type="monotone" dataKey="count" stroke="#3b82f6" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
@@ -109,10 +111,10 @@ export default function AdminDashboardPage() {
             ) : (
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={dau}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" tick={{ fontSize: 9 }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
-                  <Tooltip />
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                  <XAxis dataKey="date" tick={tickStyle} />
+                  <YAxis allowDecimals={false} tick={tickStyle} />
+                  <Tooltip contentStyle={tooltipStyle} />
                   <Bar dataKey="count" fill="#10b981" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -132,10 +134,10 @@ export default function AdminDashboardPage() {
             ) : (
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={mau}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" tick={{ fontSize: 9 }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
-                  <Tooltip />
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                  <XAxis dataKey="month" tick={tickStyle} />
+                  <YAxis allowDecimals={false} tick={tickStyle} />
+                  <Tooltip contentStyle={tooltipStyle} />
                   <Bar dataKey="count" fill="#8b5cf6" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>

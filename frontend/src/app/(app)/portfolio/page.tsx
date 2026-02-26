@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { getNetWorth } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { NetWorthResponse } from "@/lib/types"
+import { useChartTheme, CHART_COLORS } from "@/lib/chart-theme"
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
@@ -19,10 +20,7 @@ const MONTH_NAMES = [
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
 ]
 
-const PIE_COLORS = [
-  "#6366f1", "#ec4899", "#14b8a6", "#f59e0b",
-  "#8b5cf6", "#06b6d4", "#f97316", "#10b981",
-]
+const PIE_COLORS = CHART_COLORS
 
 function fmt(n: number, decimals = 0): string {
   return n.toLocaleString(undefined, {
@@ -39,6 +37,7 @@ export default function PortfolioPage() {
   const [data, setData] = useState<NetWorthResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [years, setYears] = useState("1")
+  const { isDark, tooltipStyle, gridStroke, tickStyle } = useChartTheme()
 
   async function loadData() {
     setLoading(true)
@@ -151,10 +150,10 @@ export default function PortfolioPage() {
           <CardContent>
             <ResponsiveContainer width="100%" height={320}>
               <AreaChart data={historyChartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => fmt(v)} />
-                <Tooltip formatter={(v: number) => fmtCcy(v, base)} />
+                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                <XAxis dataKey="label" tick={tickStyle} />
+                <YAxis tick={tickStyle} tickFormatter={(v) => fmt(v)} />
+                <Tooltip formatter={(v: number) => fmtCcy(v, base)} contentStyle={tooltipStyle} />
                 <Legend />
                 <Area
                   type="monotone"
@@ -162,7 +161,8 @@ export default function PortfolioPage() {
                   name="Assets"
                   stackId="1"
                   stroke="#16a34a"
-                  fill="#bbf7d0"
+                  fill={isDark ? "#16a34a" : "#bbf7d0"}
+                  fillOpacity={isDark ? 0.3 : 1}
                 />
                 <Area
                   type="monotone"
@@ -170,7 +170,8 @@ export default function PortfolioPage() {
                   name="Liabilities"
                   stackId="2"
                   stroke="#dc2626"
-                  fill="#fecaca"
+                  fill={isDark ? "#dc2626" : "#fecaca"}
+                  fillOpacity={isDark ? 0.3 : 1}
                 />
                 <Area
                   type="monotone"
@@ -281,7 +282,7 @@ export default function PortfolioPage() {
                         <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(v: number) => fmtCcy(v, base)} />
+                    <Tooltip formatter={(v: number) => fmtCcy(v, base)} contentStyle={tooltipStyle} />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="mt-4 space-y-2">

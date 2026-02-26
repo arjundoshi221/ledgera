@@ -12,6 +12,7 @@ import { getFundTracker, createTransfer, getPrice } from "@/lib/api"
 import { useToast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
 import type { FundTrackerResponse, TransferSuggestion } from "@/lib/types"
+import { useChartTheme, CHART_COLORS } from "@/lib/chart-theme"
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
@@ -23,10 +24,7 @@ const MONTH_NAMES = [
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
 ]
 
-const FUND_COLORS = [
-  "#6366f1", "#ec4899", "#14b8a6", "#f59e0b",
-  "#8b5cf6", "#06b6d4", "#f97316", "#10b981",
-]
+const FUND_COLORS = CHART_COLORS
 
 export default function FundTrackerPage() {
   const [data, setData] = useState<FundTrackerResponse | null>(null)
@@ -38,6 +36,7 @@ export default function FundTrackerPage() {
   const [fxRateInput, setFxRateInput] = useState<{ index: number; rate: string; fee: string } | null>(null)
   const [fetchingRate, setFetchingRate] = useState(false)
   const { toast } = useToast()
+  const { tooltipStyle, gridStroke, tickStyle } = useChartTheme()
 
   function isCrossCurrencySuggestion(s: TransferSuggestion): boolean {
     return !!(s.from_currency && s.to_currency && s.from_currency !== s.to_currency)
@@ -701,12 +700,12 @@ export default function FundTrackerPage() {
                 <CardContent>
                   <ResponsiveContainer width="100%" height={350}>
                     <AreaChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                      <YAxis tickFormatter={fmtCompact} tick={{ fontSize: 11 }} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                      <XAxis dataKey="label" tick={tickStyle} />
+                      <YAxis tickFormatter={fmtCompact} tick={tickStyle} />
                       <Tooltip
                         formatter={(value: number) => fmt(value)}
-                        contentStyle={{ fontSize: 12 }}
+                        contentStyle={tooltipStyle}
                       />
                       <Legend />
                       {data.fund_ledgers.map((fl, i) => (
@@ -735,12 +734,12 @@ export default function FundTrackerPage() {
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={accountChartData}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                      <YAxis tickFormatter={fmtCompact} tick={{ fontSize: 11 }} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                      <XAxis dataKey="name" tick={tickStyle} />
+                      <YAxis tickFormatter={fmtCompact} tick={tickStyle} />
                       <Tooltip
                         formatter={(value: number) => fmt(value)}
-                        contentStyle={{ fontSize: 12 }}
+                        contentStyle={tooltipStyle}
                       />
                       <Legend />
                       <Bar dataKey="expected" name="Expected" fill="#6366f1" radius={[4, 4, 0, 0]} />

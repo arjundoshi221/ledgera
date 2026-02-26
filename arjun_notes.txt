@@ -52,3 +52,15 @@ Security:
 
 Explore
 Projection should use current closing balance as start to build on top
+Editable address and phone numbers
+
+Re verify if phone & email change 
+Edit nationality and tax residency as well
+
+Working Capital Fund should be based on the allocation in Fund Tracker.
+
+We can also add a nice visual based on:
+
+Model Expected  Credits Debits.
+
+Count only actual debit and credit as part of the balance 

@@ -16,11 +16,13 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar,
   XAxis, YAxis, Tooltip, CartesianGrid, Legend,
 } from "recharts"
+import { useChartTheme, CHART_COLORS } from "@/lib/chart-theme"
 
-const COLORS = ["#3b82f6", "#f59e0b", "#ef4444", "#10b981", "#8b5cf6", "#06b6d4"]
+const COLORS = CHART_COLORS
 
 export default function AdminAnalyticsPage() {
   const { toast } = useToast()
+  const { tooltipStyle, gridStroke, tickStyle } = useChartTheme()
   const [loading, setLoading] = useState(true)
   const [authProviders, setAuthProviders] = useState<AuthProviderBreakdown[]>([])
   const [profileStats, setProfileStats] = useState<{ completed: number; incomplete: number } | null>(null)
@@ -121,7 +123,7 @@ export default function AdminAnalyticsPage() {
                           <Cell key={i} fill={COLORS[i % COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip />
+                      <Tooltip contentStyle={tooltipStyle} />
                     </PieChart>
                   </ResponsiveContainer>
                 )}
@@ -150,7 +152,7 @@ export default function AdminAnalyticsPage() {
                         <Cell fill="#10b981" />
                         <Cell fill="#ef4444" />
                       </Pie>
-                      <Tooltip />
+                      <Tooltip contentStyle={tooltipStyle} />
                     </PieChart>
                   </ResponsiveContainer>
                 )}
@@ -170,10 +172,10 @@ export default function AdminAnalyticsPage() {
                 ) : (
                   <ResponsiveContainer width="100%" height={Math.max(200, geoData.length * 35)}>
                     <BarChart data={geoData} layout="vertical" margin={{ left: 40, right: 20 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10 }} />
-                      <YAxis type="category" dataKey="country" tick={{ fontSize: 11 }} width={50} />
-                      <Tooltip />
+                      <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                      <XAxis type="number" allowDecimals={false} tick={tickStyle} />
+                      <YAxis type="category" dataKey="country" tick={tickStyle} width={50} />
+                      <Tooltip contentStyle={tooltipStyle} />
                       <Bar dataKey="count" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={20} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -192,10 +194,10 @@ export default function AdminAnalyticsPage() {
                 ) : (
                   <ResponsiveContainer width="100%" height={Math.max(200, ageData.length * 35)}>
                     <BarChart data={ageData} layout="vertical" margin={{ left: 20, right: 20 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10 }} />
-                      <YAxis type="category" dataKey="bracket" tick={{ fontSize: 11 }} width={50} />
-                      <Tooltip />
+                      <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                      <XAxis type="number" allowDecimals={false} tick={tickStyle} />
+                      <YAxis type="category" dataKey="bracket" tick={tickStyle} width={50} />
+                      <Tooltip contentStyle={tooltipStyle} />
                       <Bar dataKey="count" fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={20} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -218,15 +220,16 @@ export default function AdminAnalyticsPage() {
               ) : (
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={funnelChartData} margin={{ left: 20, right: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="stage" tick={{ fontSize: 11 }} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                    <XAxis dataKey="stage" tick={tickStyle} />
+                    <YAxis allowDecimals={false} tick={tickStyle} />
                     <Tooltip
                       formatter={(value: number, name: string) => [value, "Users"]}
                       labelFormatter={(label) => {
                         const item = funnelChartData.find((d) => d.stage === label)
                         return `${label} (${item?.rate || ""})`
                       }}
+                      contentStyle={tooltipStyle}
                     />
                     <Bar dataKey="count" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
                   </BarChart>
@@ -262,15 +265,16 @@ export default function AdminAnalyticsPage() {
               ) : (
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={adoptionChartData} margin={{ left: 20, right: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="feature" tick={{ fontSize: 11 }} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                    <XAxis dataKey="feature" tick={tickStyle} />
+                    <YAxis allowDecimals={false} tick={tickStyle} />
                     <Tooltip
                       formatter={(value: number, name: string) => [value, "Users"]}
                       labelFormatter={(label) => {
                         const item = adoptionChartData.find((d) => d.feature === label)
                         return `${label} (${item?.rate || 0}%)`
                       }}
+                      contentStyle={tooltipStyle}
                     />
                     <Legend />
                     <Bar dataKey="count" name="Users" fill="#f59e0b" radius={[4, 4, 0, 0]} />

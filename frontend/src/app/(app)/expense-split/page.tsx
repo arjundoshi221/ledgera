@@ -11,6 +11,7 @@ import { getMonthlyDashboard, getExpenseSplit } from "@/lib/api"
 import { useToast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
 import type { MonthlyDashboardResponse, MonthlyExpenseSplit, FundDashboardAnalysis } from "@/lib/types"
+import { useChartTheme, CHART_COLORS } from "@/lib/chart-theme"
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -21,10 +22,7 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ]
 
-const DONUT_COLORS = [
-  "#3b82f6", "#f59e0b", "#ef4444", "#10b981",
-  "#8b5cf6", "#06b6d4", "#f97316", "#ec4899",
-]
+const DONUT_COLORS = CHART_COLORS
 
 function fmt(val: number, currency: string = "") {
   if (val === 0) return "-"
@@ -34,6 +32,7 @@ function fmt(val: number, currency: string = "") {
 
 // ── Fund category horizontal bar chart ──
 function FundCategoryChart({ fund, currency }: { fund: FundDashboardAnalysis; currency: string }) {
+  const { tooltipStyle, tickStyle } = useChartTheme()
   const hasCategories = fund.categories.length > 0
   const hasBudget = fund.is_working_capital && fund.categories.some(c => c.budget_allocated > 0)
 
@@ -79,17 +78,17 @@ function FundCategoryChart({ fund, currency }: { fund: FundDashboardAnalysis; cu
           type="number"
           domain={[0, Math.ceil(maxValue * 1.1)]}
           tickFormatter={(v: number) => fmt(v, currency)}
-          tick={{ fontSize: 10 }}
+          tick={tickStyle}
         />
         <YAxis
           type="category"
           dataKey="name"
           width={130}
-          tick={{ fontSize: 11 }}
+          tick={tickStyle}
         />
         <Tooltip
           formatter={(value: number) => fmt(value, currency)}
-          contentStyle={{ fontSize: 12 }}
+          contentStyle={tooltipStyle}
         />
         <Legend />
         <Bar
@@ -117,6 +116,7 @@ function FundExtractionDonut({
   items: MonthlyDashboardResponse["fund_extraction"]
   currency: string
 }) {
+  const { tooltipStyle } = useChartTheme()
   const activeItems = items.filter(i => i.amount > 0)
 
   if (activeItems.length === 0) {
@@ -159,7 +159,7 @@ function FundExtractionDonut({
               fmt(value, currency),
               props.payload.name,
             ]}
-            contentStyle={{ fontSize: 12 }}
+            contentStyle={tooltipStyle}
           />
         </PieChart>
       </ResponsiveContainer>
