@@ -37,6 +37,7 @@ export default function AdminBugsPage() {
   const [detailOpen, setDetailOpen] = useState(false)
   const [detail, setDetail] = useState<AdminBugReportDetail | null>(null)
   const [mediaUrls, setMediaUrls] = useState<Record<string, string>>({})
+  const [mediaState, setMediaState] = useState<Record<string, "loading" | "error" | "done">>({})
   const [detailLoading, setDetailLoading] = useState(false)
 
   const loadReports = useCallback(async () => {
@@ -63,6 +64,7 @@ export default function AdminBugsPage() {
     setDetailLoading(true)
     setDetailOpen(true)
     setMediaUrls({})
+    setMediaState({})
     try {
       const d = await getAdminBugReportDetail(bugId)
       setDetail(d)
@@ -81,18 +83,25 @@ export default function AdminBugsPage() {
   }
 
   async function fetchMediaBlob(bugId: string, mediaId: string) {
+    setMediaState((prev) => ({ ...prev, [mediaId]: "loading" }))
     try {
       const token = getToken()
       const response = await fetch(
         `${BASE_URL}/api/v1/admin/bugs/${bugId}/media/${mediaId}`,
         { headers: { Authorization: `Bearer ${token}` } }
       )
-      if (!response.ok) return
+      if (!response.ok) {
+        console.error(`Failed to fetch media ${mediaId}: HTTP ${response.status}`)
+        setMediaState((prev) => ({ ...prev, [mediaId]: "error" }))
+        return
+      }
       const blob = await response.blob()
       const url = URL.createObjectURL(blob)
       setMediaUrls((prev) => ({ ...prev, [mediaId]: url }))
-    } catch {
-      // Silently fail on media load
+      setMediaState((prev) => ({ ...prev, [mediaId]: "done" }))
+    } catch (err) {
+      console.error(`Failed to fetch media ${mediaId}:`, err)
+      setMediaState((prev) => ({ ...prev, [mediaId]: "error" }))
     }
   }
 
@@ -294,12 +303,32 @@ export default function AdminBugsPage() {
                           <span className="text-sm truncate">{m.filename}</span>
                           <span className="text-xs text-muted-foreground">{formatFileSize(m.file_size)}</span>
                         </div>
-                        {m.content_type.startsWith("image/") && mediaUrls[m.id] && (
-                          <img
-                            src={mediaUrls[m.id]}
-                            alt={m.filename}
-                            className="rounded-md max-h-[300px] w-auto object-contain"
-                          />
+                        {m.content_type.startsWith("image/") && (
+                          <>
+                            {mediaState[m.id] === "loading" && (
+                              <div className="text-sm text-muted-foreground animate-pulse py-2">Loading image...</div>
+                            )}
+                            {mediaUrls[m.id] && (
+                              <img
+                                src={mediaUrls[m.id]}
+                                alt={m.filename}
+                                className="rounded-md max-h-[300px] w-auto object-contain"
+                              />
+                            )}
+                            {mediaState[m.id] === "error" && (
+                              <div className="flex items-center gap-2 py-2">
+                                <span className="text-sm text-destructive">Failed to load image</span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() => detail && fetchMediaBlob(detail.id, m.id)}
+                                >
+                                  Retry
+                                </Button>
+                              </div>
+                            )}
+                          </>
                         )}
                         {m.content_type.startsWith("video/") && (
                           <p className="text-xs text-muted-foreground italic">Video file - download to view</p>
