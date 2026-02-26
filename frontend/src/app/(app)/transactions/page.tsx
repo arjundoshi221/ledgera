@@ -11,7 +11,7 @@ import { Separator } from "@/components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
-import { getAccounts, getTransactions, createTransaction, createTransfer, updateTransaction, deleteTransaction, getCategories, getSubcategories, getFunds, getPrice, getPaymentMethods, getRecurringTransactions, createRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, getPendingInstances, confirmRecurring, skipRecurring } from "@/lib/api"
+import { getAccounts, getTransactions, createTransaction, createTransfer, updateTransaction, deleteTransaction, getCategories, getSubcategories, getFunds, getPrice, getPaymentMethods, getRecurringTransactions, createRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, getPendingInstances, confirmRecurring, skipRecurring, getWorkspace } from "@/lib/api"
 import { TRANSACTION_STATUSES, RECURRING_FREQUENCIES } from "@/lib/constants"
 import { useToast } from "@/components/ui/use-toast"
 import type { Account, Transaction, Posting, Category, Subcategory, Fund, PaymentMethod, RecurringTransaction, PendingInstance, RecurringFrequency } from "@/lib/types"
@@ -26,6 +26,7 @@ export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [baseCurrency, setBaseCurrency] = useState("SGD")
 
   // Reference data
   const [categories, setCategories] = useState<Category[]>([])
@@ -47,13 +48,13 @@ export default function TransactionsPage() {
   // For income/expense (single account)
   const [accountId, setAccountId] = useState("")
   const [amount, setAmount] = useState("")
-  const [currency, setCurrency] = useState("SGD")
+  const [currency, setCurrency] = useState(baseCurrency)
 
   // For transfers (two accounts)
   const [fromAccountId, setFromAccountId] = useState("")
   const [toAccountId, setToAccountId] = useState("")
   const [transferAmount, setTransferAmount] = useState("")
-  const [transferCurrency, setTransferCurrency] = useState("SGD")
+  const [transferCurrency, setTransferCurrency] = useState(baseCurrency)
   const [sourceFundId, setSourceFundId] = useState("")
   const [destFundId, setDestFundId] = useState("")
   const [fxRate, setFxRate] = useState("1")
@@ -90,7 +91,7 @@ export default function TransactionsPage() {
   const [recPayee, setRecPayee] = useState("")
   const [recMemo, setRecMemo] = useState("")
   const [recAmount, setRecAmount] = useState("")
-  const [recCurrency, setRecCurrency] = useState("SGD")
+  const [recCurrency, setRecCurrency] = useState(baseCurrency)
   const [recCategoryId, setRecCategoryId] = useState("")
   const [recSubcategoryId, setRecSubcategoryId] = useState("")
   const [recFundId, setRecFundId] = useState("")
@@ -148,18 +149,20 @@ export default function TransactionsPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [accts, cats, subs, fnds, pms] = await Promise.all([
+        const [accts, cats, subs, fnds, pms, ws] = await Promise.all([
           getAccounts(),
           getCategories(),
           getSubcategories(),
           getFunds(),
           getPaymentMethods(),
+          getWorkspace(),
         ])
         setAccounts(accts)
         setCategories(cats)
         setSubcategories(subs)
         setFunds(fnds)
         setPaymentMethods(pms)
+        if (ws?.base_currency) setBaseCurrency(ws.base_currency)
       } catch {
         // ignore
       } finally {
@@ -190,6 +193,13 @@ export default function TransactionsPage() {
   // Filter subcategories by selected category
   const filteredSubcategories = subcategories.filter((s) => s.category_id === categoryId)
   const recFilteredSubcategories = subcategories.filter((s) => s.category_id === recCategoryId)
+
+  // Sync currency defaults when workspace base currency loads
+  useEffect(() => {
+    setCurrency(baseCurrency)
+    setTransferCurrency(baseCurrency)
+    setRecCurrency(baseCurrency)
+  }, [baseCurrency])
 
   // Reset subcategory when category changes
   useEffect(() => {
@@ -342,11 +352,11 @@ export default function TransactionsPage() {
     setPaymentMethodId("")
     setAccountId("")
     setAmount("")
-    setCurrency("SGD")
+    setCurrency(baseCurrency)
     setFromAccountId("")
     setToAccountId("")
     setTransferAmount("")
-    setTransferCurrency("SGD")
+    setTransferCurrency(baseCurrency)
     setSourceFundId("")
     setDestFundId("")
     setFxRate("1")
@@ -536,7 +546,7 @@ export default function TransactionsPage() {
     setRecPayee("")
     setRecMemo("")
     setRecAmount("")
-    setRecCurrency("SGD")
+    setRecCurrency(baseCurrency)
     setRecCategoryId("")
     setRecSubcategoryId("")
     setRecFundId("")
