@@ -1,11 +1,14 @@
 """Admin panel API routes"""
 
 import json
+import logging
 from typing import Optional, List
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 from src.data.database import get_session
 from src.data.models import UserModel
@@ -722,11 +725,18 @@ def serve_bug_media(
     if not media or media.bug_report_id != bug_id:
         raise HTTPException(status_code=404, detail="Media not found")
 
+    try:
+        file_content = bytes(media.file_data) if media.file_data else b""
+    except Exception as e:
+        logger.error("Failed to read media %s file_data: %s", media_id, e)
+        raise HTTPException(status_code=500, detail="Failed to read media file")
+
     return Response(
-        content=bytes(media.file_data),
+        content=file_content,
         media_type=media.content_type,
         headers={
             "Content-Disposition": f'inline; filename="{media.filename}"',
+            "Content-Length": str(len(file_content)),
             "Cache-Control": "private, max-age=3600",
         },
     )

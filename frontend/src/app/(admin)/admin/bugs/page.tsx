@@ -38,6 +38,7 @@ export default function AdminBugsPage() {
   const [detail, setDetail] = useState<AdminBugReportDetail | null>(null)
   const [mediaUrls, setMediaUrls] = useState<Record<string, string>>({})
   const [mediaState, setMediaState] = useState<Record<string, "loading" | "error" | "done">>({})
+  const [mediaError, setMediaError] = useState<Record<string, string>>({})
   const [detailLoading, setDetailLoading] = useState(false)
 
   const loadReports = useCallback(async () => {
@@ -65,6 +66,7 @@ export default function AdminBugsPage() {
     setDetailOpen(true)
     setMediaUrls({})
     setMediaState({})
+    setMediaError({})
     try {
       const d = await getAdminBugReportDetail(bugId)
       setDetail(d)
@@ -91,7 +93,10 @@ export default function AdminBugsPage() {
         { headers: { Authorization: `Bearer ${token}` } }
       )
       if (!response.ok) {
-        console.error(`Failed to fetch media ${mediaId}: HTTP ${response.status}`)
+        const errText = await response.text().catch(() => "")
+        const msg = `HTTP ${response.status}${errText ? ` - ${errText}` : ""}`
+        console.error(`Failed to fetch media ${mediaId}: ${msg}`)
+        setMediaError((prev) => ({ ...prev, [mediaId]: msg }))
         setMediaState((prev) => ({ ...prev, [mediaId]: "error" }))
         return
       }
@@ -99,8 +104,10 @@ export default function AdminBugsPage() {
       const url = URL.createObjectURL(blob)
       setMediaUrls((prev) => ({ ...prev, [mediaId]: url }))
       setMediaState((prev) => ({ ...prev, [mediaId]: "done" }))
-    } catch (err) {
+    } catch (err: any) {
+      const msg = err?.message || "Network error"
       console.error(`Failed to fetch media ${mediaId}:`, err)
+      setMediaError((prev) => ({ ...prev, [mediaId]: msg }))
       setMediaState((prev) => ({ ...prev, [mediaId]: "error" }))
     }
   }
@@ -316,16 +323,21 @@ export default function AdminBugsPage() {
                               />
                             )}
                             {mediaState[m.id] === "error" && (
-                              <div className="flex items-center gap-2 py-2">
-                                <span className="text-sm text-destructive">Failed to load image</span>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-7 text-xs"
-                                  onClick={() => detail && fetchMediaBlob(detail.id, m.id)}
-                                >
-                                  Retry
-                                </Button>
+                              <div className="space-y-1 py-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm text-destructive">Failed to load image</span>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-xs"
+                                    onClick={() => detail && fetchMediaBlob(detail.id, m.id)}
+                                  >
+                                    Retry
+                                  </Button>
+                                </div>
+                                {mediaError[m.id] && (
+                                  <p className="text-xs text-muted-foreground">{mediaError[m.id]}</p>
+                                )}
                               </div>
                             )}
                           </>
