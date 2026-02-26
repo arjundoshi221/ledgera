@@ -23,6 +23,7 @@ import {
   deleteScenario,
   createRecurringTransaction,
   getWorkspace,
+  getPaymentMethods,
 } from "@/lib/api"
 import { useToast } from "@/components/ui/use-toast"
 import type {
@@ -35,6 +36,7 @@ import type {
   OneTimeCost,
   ScenarioListItem,
   CreateRecurringTransactionRequest,
+  PaymentMethod,
 } from "@/lib/types"
 import { CategoryBudgetEditor } from "./_components/category-budget-editor"
 import { OneTimeCostEditor } from "./_components/one-time-cost-editor"
@@ -95,19 +97,28 @@ export default function ProjectionsPage() {
   const [recurringSubcategoryId, setRecurringSubcategoryId] = useState("")
   const [recurringStartDate, setRecurringStartDate] = useState("")
   const [recurringEndDate, setRecurringEndDate] = useState("")
+  const [recurringPayee, setRecurringPayee] = useState("")
+  const [recurringMemo, setRecurringMemo] = useState("")
+  const [recurringPaymentMethodId, setRecurringPaymentMethodId] = useState("")
+  const [recurringCategoryId, setRecurringCategoryId] = useState("")
   const [creatingRecurring, setCreatingRecurring] = useState(false)
+  const [projPaymentMethods, setProjPaymentMethods] = useState<PaymentMethod[]>([])
+  const [projAllCategories, setProjAllCategories] = useState<Category[]>([])
+  const [projAllSubcategories, setProjAllSubcategories] = useState<Subcategory[]>([])
 
   // Load categories, funds & scenarios on mount
   useEffect(() => {
     async function loadRefData() {
       try {
-        const [cats, fnds, scns, accts, subs, ws] = await Promise.all([
+        const [cats, fnds, scns, accts, subs, ws, pms, allCats] = await Promise.all([
           getCategories("expense"),
           getFunds(),
           getScenarios(),
           getAccounts(),
           getSubcategories(),
           getWorkspace(),
+          getPaymentMethods(),
+          getCategories(),
         ])
         setBaseCurrency(ws.base_currency)
         setExpenseCategories(cats)
@@ -115,6 +126,9 @@ export default function ProjectionsPage() {
         setFunds(fnds)
         setScenarios(scns)
         setProjAccounts(accts.filter((a: Account) => a.name !== "External"))
+        setProjPaymentMethods(pms.filter((pm: PaymentMethod) => pm.is_active))
+        setProjAllCategories(allCats)
+        setProjAllSubcategories(subs)
 
         if (fnds.length > 0) {
           const weights: Record<string, number> = {}
@@ -331,6 +345,10 @@ export default function ProjectionsPage() {
     setRecurringAccountId("")
     setRecurringFundId("")
     setRecurringSubcategoryId("")
+    setRecurringPayee("")
+    setRecurringMemo("")
+    setRecurringPaymentMethodId("")
+    setRecurringCategoryId("")
     setRecurringStartDate(new Date().toISOString().slice(0, 10))
     setRecurringEndDate("")
     setRecurringDialogOpen(true)
@@ -349,6 +367,10 @@ export default function ProjectionsPage() {
     setRecurringAccountId("")
     setRecurringFundId("")
     setRecurringSubcategoryId(data.subcategory_id || "")
+    setRecurringPayee("")
+    setRecurringMemo("")
+    setRecurringPaymentMethodId("")
+    setRecurringCategoryId(data.category_id || "")
     setRecurringStartDate(new Date().toISOString().slice(0, 10))
     setRecurringEndDate("")
     setRecurringDialogOpen(true)
@@ -365,7 +387,12 @@ export default function ProjectionsPage() {
         currency: recurringPrefill.currency || baseCurrency,
         frequency: recurringPrefill.frequency!,
         account_id: recurringAccountId,
-        category_id: recurringPrefill.category_id,
+        payee: recurringPayee || undefined,
+        memo: recurringMemo || undefined,
+        payment_method_id: recurringPaymentMethodId && recurringPaymentMethodId !== "none" ? recurringPaymentMethodId : undefined,
+        category_id: recurringCategoryId && recurringCategoryId !== "none"
+          ? recurringCategoryId
+          : recurringPrefill.category_id || undefined,
         subcategory_id: recurringSubcategoryId && recurringSubcategoryId !== "none"
           ? recurringSubcategoryId
           : recurringPrefill.subcategory_id || undefined,
@@ -707,6 +734,70 @@ export default function ProjectionsPage() {
                   </Select>
                 </div>
                 <div className="space-y-1">
+                  <Label className="text-xs">
+                    {recurringPrefill.transaction_type === "income" ? "Payer" : "Payee"}
+                  </Label>
+                  <Input
+                    value={recurringPayee}
+                    onChange={(e) => setRecurringPayee(e.target.value)}
+                    placeholder={recurringPrefill.transaction_type === "income" ? "e.g. Employer" : "e.g. Landlord"}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Category</Label>
+                  <Select
+                    value={recurringCategoryId}
+                    onValueChange={(v) => {
+                      setRecurringCategoryId(v)
+                      setRecurringSubcategoryId("")
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Optional" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {projAllCategories
+                        .filter((c) => c.type === recurringPrefill.transaction_type)
+                        .map((c) => (
+                          <SelectItem key={c.id} value={c.id}>{c.emoji} {c.name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Subcategory</Label>
+                  {(() => {
+                    const activeCatId = recurringCategoryId && recurringCategoryId !== "none"
+                      ? recurringCategoryId
+                      : recurringPrefill?.category_id
+                    const dialogSubs = projAllSubcategories.filter(
+                      (s) => s.category_id === activeCatId
+                    )
+                    return (
+                      <Select
+                        value={recurringSubcategoryId}
+                        onValueChange={setRecurringSubcategoryId}
+                        disabled={dialogSubs.length === 0}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={dialogSubs.length === 0 ? "No subcategories" : "Optional"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          {dialogSubs.map((s) => (
+                            <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )
+                  })()}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
                   <Label className="text-xs">Fund</Label>
                   <Select value={recurringFundId} onValueChange={setRecurringFundId}>
                     <SelectTrigger>
@@ -722,28 +813,25 @@ export default function ProjectionsPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Payment Method</Label>
+                  <Select value={recurringPaymentMethodId} onValueChange={setRecurringPaymentMethodId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Optional" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {projPaymentMethods.map((pm) => (
+                        <SelectItem key={pm.id} value={pm.id}>{pm.icon} {pm.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              {(() => {
-                const dialogSubs = expenseSubcategories.filter(
-                  (s) => s.category_id === recurringPrefill?.category_id
-                )
-                return dialogSubs.length > 0 ? (
-                  <div className="space-y-1">
-                    <Label className="text-xs">Subcategory</Label>
-                    <Select value={recurringSubcategoryId} onValueChange={setRecurringSubcategoryId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Optional" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">None</SelectItem>
-                        {dialogSubs.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ) : null
-              })()}
+              <div className="space-y-1">
+                <Label className="text-xs">Memo</Label>
+                <Input value={recurringMemo} onChange={(e) => setRecurringMemo(e.target.value)} placeholder="Optional" />
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Start Date</Label>

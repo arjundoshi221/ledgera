@@ -723,8 +723,8 @@ export default function TransactionsPage() {
                   <Input type="datetime-local" value={txTimestamp} onChange={(e) => setTxTimestamp(e.target.value)} required />
                 </div>
                 <div className="space-y-2">
-                  <Label>Payee</Label>
-                  <Input value={payee} onChange={(e) => setPayee(e.target.value)} required placeholder={txType === "income" ? "From whom" : "To whom"} />
+                  <Label>{txType === "income" ? "Payer" : "Payee"}</Label>
+                  <Input value={payee} onChange={(e) => setPayee(e.target.value)} required placeholder={txType === "income" ? "e.g. Employer" : "e.g. Landlord"} />
                 </div>
                 <div className="space-y-2">
                   <Label>Memo</Label>
@@ -1023,8 +1023,8 @@ export default function TransactionsPage() {
                 <Input type="datetime-local" value={txTimestamp} onChange={(e) => setTxTimestamp(e.target.value)} required />
               </div>
               <div className="space-y-2">
-                <Label>Payee</Label>
-                <Input value={payee} onChange={(e) => setPayee(e.target.value)} required placeholder={txType === "income" ? "From whom" : "To whom"} />
+                <Label>{txType === "income" ? "Payer" : "Payee"}</Label>
+                <Input value={payee} onChange={(e) => setPayee(e.target.value)} required placeholder={txType === "income" ? "e.g. Employer" : "e.g. Landlord"} />
               </div>
               <div className="space-y-2">
                 <Label>Memo</Label>
@@ -1512,7 +1512,7 @@ export default function TransactionsPage() {
                           <Input type="number" step="0.01" min="0" value={recAmount} onChange={(e) => setRecAmount(e.target.value)} placeholder="0.00" required />
                         </div>
                         <div>
-                          <Label>Payee</Label>
+                          <Label>Payer</Label>
                           <Input value={recPayee} onChange={(e) => setRecPayee(e.target.value)} placeholder="e.g. Employer" />
                         </div>
                       </div>
