@@ -756,7 +756,9 @@ def serve_bug_media(
             raise HTTPException(status_code=404, detail="Media not found")
 
         file_content = bytes(media.file_data) if media.file_data else b""
-        safe_filename = media.filename.replace('"', '\\"')
+        # HTTP headers must be Latin-1 encodable; replace non-ASCII chars
+        # (e.g. macOS screenshots use U+202F narrow no-break space before AM/PM)
+        safe_filename = media.filename.encode("ascii", "replace").decode("ascii").replace('"', '\\"')
 
         return Response(
             content=file_content,
