@@ -88,6 +88,9 @@ export default function ProjectionsPage() {
   const [showSaveDialog, setShowSaveDialog] = useState(false)
   const [saving, setSaving] = useState(false)
 
+  // Assumptions panel collapse
+  const [panelOpen, setPanelOpen] = useState(true)
+
   // Recurring transaction creation from projections
   const [projAccounts, setProjAccounts] = useState<Account[]>([])
   const [recurringDialogOpen, setRecurringDialogOpen] = useState(false)
@@ -497,11 +500,21 @@ export default function ProjectionsPage() {
         </Card>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className={`grid gap-6 ${panelOpen ? "lg:grid-cols-[minmax(280px,1fr)_2fr]" : ""}`}>
         {/* Assumptions form */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
+        {panelOpen ? (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-lg">Assumptions</CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+              title="Collapse panel"
+              onClick={() => setPanelOpen(false)}
+            >
+              &#x2190;
+            </Button>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleRun} className="space-y-3">
@@ -659,9 +672,19 @@ export default function ProjectionsPage() {
             </form>
           </CardContent>
         </Card>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 self-start"
+            onClick={() => setPanelOpen(true)}
+          >
+            &#x2192; Assumptions
+          </Button>
+        )}
 
         {/* Results */}
-        <div className="space-y-4 lg:col-span-2">
+        <div className="space-y-4">
           {yearlyData && yearlyData.summaryRows.length > 0 ? (
             <YearlyResults data={yearlyData} usdRate={parseFloat(usdRate) || 0} baseCurrency={baseCurrency} />
           ) : (

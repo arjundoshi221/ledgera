@@ -27,6 +27,7 @@ export function AppSidebar() {
   const router = useRouter()
   const [bugDialogOpen, setBugDialogOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
 
   function handleLogout() {
     clearAuth()
@@ -40,7 +41,7 @@ export function AppSidebar() {
     </div>
   )
 
-  const navContent = (
+  const mobileNavContent = (
     <>
       <nav className="flex-1 space-y-1 p-3">
         {navItems.map((item) => {
@@ -96,6 +97,74 @@ export function AppSidebar() {
     </>
   )
 
+  const desktopNavContent = (
+    <>
+      <nav className="flex-1 space-y-1 p-2">
+        {navItems.map((item) => {
+          const Icon = item.icon
+          const active = pathname === item.href
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              title={collapsed ? item.label : undefined}
+              className={cn(
+                "flex items-center rounded-md text-sm font-medium transition-colors",
+                collapsed ? "justify-center p-2" : "gap-3 px-3 py-2",
+                active
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              )}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              {!collapsed && item.label}
+            </Link>
+          )
+        })}
+      </nav>
+      <Separator />
+      <div className="space-y-1 p-2">
+        <Button
+          variant="ghost"
+          title={collapsed ? "Report Bug" : undefined}
+          className={cn(
+            "w-full text-sidebar-foreground/70",
+            collapsed ? "justify-center p-2" : "justify-start gap-3"
+          )}
+          onClick={() => setBugDialogOpen(true)}
+        >
+          <BugIcon className="h-4 w-4 shrink-0" />
+          {!collapsed && "Report Bug"}
+        </Button>
+        {isAdmin() && (
+          <Link
+            href="/admin"
+            title={collapsed ? "Admin Panel" : undefined}
+            className={cn(
+              "flex items-center rounded-md text-sm font-medium transition-colors text-red-600 hover:bg-sidebar-accent hover:text-red-700",
+              collapsed ? "justify-center p-2" : "gap-3 px-3 py-2"
+            )}
+          >
+            <ShieldIcon className="h-4 w-4 shrink-0" />
+            {!collapsed && "Admin Panel"}
+          </Link>
+        )}
+        <Button
+          variant="ghost"
+          title={collapsed ? "Logout" : undefined}
+          className={cn(
+            "w-full text-sidebar-foreground/70",
+            collapsed ? "justify-center p-2" : "justify-start gap-3"
+          )}
+          onClick={handleLogout}
+        >
+          <LogOutIcon className="h-4 w-4 shrink-0" />
+          {!collapsed && "Logout"}
+        </Button>
+      </div>
+    </>
+  )
+
   return (
     <>
       {/* Mobile header */}
@@ -117,15 +186,28 @@ export function AppSidebar() {
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           {header}
           <Separator />
-          {navContent}
+          {mobileNavContent}
         </SheetContent>
       </Sheet>
 
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex h-screen w-64 flex-col border-r bg-sidebar text-sidebar-foreground">
-        {header}
+      <aside className={cn(
+        "hidden md:flex h-screen flex-col border-r bg-sidebar text-sidebar-foreground transition-all duration-200",
+        collapsed ? "w-14" : "w-64"
+      )}>
+        <div className={cn("flex h-14 items-center shrink-0", collapsed ? "justify-center px-2" : "justify-between px-6")}>
+          {!collapsed && <span className="font-bold text-lg">Ledgera</span>}
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="rounded-md p-1.5 hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors"
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? <ChevronRightIcon className="h-4 w-4" /> : <ChevronLeftIcon className="h-4 w-4" />}
+          </button>
+          {!collapsed && <ThemeToggle />}
+        </div>
         <Separator />
-        {navContent}
+        {desktopNavContent}
       </aside>
 
       <BugReportDialog open={bugDialogOpen} onOpenChange={setBugDialogOpen} />
@@ -248,6 +330,22 @@ function MenuIcon({ className }: { className?: string }) {
       <line x1="4" x2="20" y1="12" y2="12" />
       <line x1="4" x2="20" y1="6" y2="6" />
       <line x1="4" x2="20" y1="18" y2="18" />
+    </svg>
+  )
+}
+
+function ChevronLeftIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="m15 18-6-6 6-6" />
+    </svg>
+  )
+}
+
+function ChevronRightIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="m9 18 6-6-6-6" />
     </svg>
   )
 }

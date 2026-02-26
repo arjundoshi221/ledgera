@@ -101,7 +101,7 @@ export function CategoryBudgetEditor({
   const total = effectiveBudgets.reduce((s, b) => s + b.monthly_amount, 0)
   const globalInflation = parseFloat(inflationRate) || 0
   const hasRecurring = !!onCreateRecurring
-  const gridCols = hasRecurring ? "grid-cols-[1fr_80px_60px_28px]" : "grid-cols-[1fr_80px_60px]"
+  const gridCols = hasRecurring ? "grid-cols-[minmax(0,1fr)_70px_50px_28px]" : "grid-cols-[minmax(0,1fr)_70px_50px]"
 
   return (
     <div className="space-y-2">
@@ -121,7 +121,7 @@ export function CategoryBudgetEditor({
         return (
           <div key={cat.id}>
             <div className={`grid ${gridCols} gap-1 items-center`}>
-              <span className="text-xs truncate flex items-center gap-0.5">
+              <span className="text-xs truncate flex items-center gap-0.5 min-w-0" title={cat.name}>
                 {catSubs.length > 0 && (
                   <button
                     type="button"
@@ -131,8 +131,8 @@ export function CategoryBudgetEditor({
                     {isExpanded ? "\u25BE" : "\u25B8"}
                   </button>
                 )}
-                {cat.emoji && <span className="mr-0.5">{cat.emoji}</span>}
-                {cat.name}
+                {cat.emoji && <span className="shrink-0 mr-0.5">{cat.emoji}</span>}
+                <span className="truncate">{cat.name}</span>
               </span>
               <Input
                 type="number"
@@ -176,7 +176,7 @@ export function CategoryBudgetEditor({
               )
               return (
                 <div key={sub.id} className={`grid ${gridCols} gap-1 items-center pl-5 mt-1`}>
-                  <span className="text-xs truncate text-muted-foreground">
+                  <span className="text-xs truncate text-muted-foreground min-w-0" title={sub.name}>
                     {sub.name}
                   </span>
                   <Input
