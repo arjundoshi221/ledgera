@@ -34,6 +34,9 @@ export default function AdminBugsPage() {
   // Detail dialog
   const [detailOpen, setDetailOpen] = useState(false)
   const [detail, setDetail] = useState<AdminBugReportDetail | null>(null)
+  const [mediaUrls, setMediaUrls] = useState<Record<string, string>>({})
+  const [mediaState, setMediaState] = useState<Record<string, "loading" | "error" | "done">>({})
+  const [mediaError, setMediaError] = useState<Record<string, string>>({})
   const [detailLoading, setDetailLoading] = useState(false)
 
   const loadReports = useCallback(async () => {
@@ -56,12 +59,28 @@ export default function AdminBugsPage() {
 
   const totalPages = data ? Math.ceil(data.total / limit) : 0
 
+  /** Build media URL with token in query param (no Authorization header needed) */
+  function getAuthMediaUrl(bugId: string, mediaId: string): string {
+    const token = getToken()
+    const base = getBugMediaUrl(bugId, mediaId)
+    return `${base}?token=${encodeURIComponent(token ?? "")}`
+  }
+
   async function openDetail(bugId: string) {
     setDetailLoading(true)
     setDetailOpen(true)
+    setMediaUrls({})
+    setMediaState({})
+    setMediaError({})
     try {
       const d = await getAdminBugReportDetail(bugId)
       setDetail(d)
+      // Fetch image blobs for preview
+      for (const m of d.media) {
+        if (m.content_type.startsWith("image/")) {
+          fetchMediaBlob(bugId, m.id)
+        }
+      }
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to load details", description: err.message })
       setDetailOpen(false)
@@ -70,11 +89,53 @@ export default function AdminBugsPage() {
     }
   }
 
-  /** Build a direct URL the browser can use for <img src> / <a href> */
-  function getAuthMediaUrl(bugId: string, mediaId: string): string {
-    const token = getToken()
-    const base = getBugMediaUrl(bugId, mediaId)
-    return `${base}?token=${encodeURIComponent(token ?? "")}`
+  /** Fetch media via token-in-URL (no Authorization header = no CORS preflight) */
+  async function fetchMediaBlob(bugId: string, mediaId: string) {
+    setMediaState((prev) => ({ ...prev, [mediaId]: "loading" }))
+    try {
+      const url = getAuthMediaUrl(bugId, mediaId)
+      const response = await fetch(url)
+      if (!response.ok) {
+        const errText = await response.text().catch(() => "")
+        const msg = `HTTP ${response.status}${errText ? ` - ${errText}` : ""}`
+        console.error(`Failed to fetch media ${mediaId}: ${msg}`)
+        setMediaError((prev) => ({ ...prev, [mediaId]: msg }))
+        setMediaState((prev) => ({ ...prev, [mediaId]: "error" }))
+        return
+      }
+      const blob = await response.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      setMediaUrls((prev) => ({ ...prev, [mediaId]: blobUrl }))
+      setMediaState((prev) => ({ ...prev, [mediaId]: "done" }))
+    } catch (err: any) {
+      const msg = err?.message || "Network error"
+      console.error(`Failed to fetch media ${mediaId}:`, err)
+      setMediaError((prev) => ({ ...prev, [mediaId]: msg }))
+      setMediaState((prev) => ({ ...prev, [mediaId]: "error" }))
+    }
+  }
+
+  /** Download a media file via fetch + programmatic click */
+  async function downloadMedia(bugId: string, mediaId: string, filename: string) {
+    try {
+      const url = getAuthMediaUrl(bugId, mediaId)
+      const response = await fetch(url)
+      if (!response.ok) {
+        toast({ variant: "destructive", title: "Download failed", description: `HTTP ${response.status}` })
+        return
+      }
+      const blob = await response.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = blobUrl
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(blobUrl)
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Download failed", description: err?.message || "Network error" })
+    }
   }
 
   async function handleStatusChange(bugId: string, newStatus: string) {
@@ -275,25 +336,51 @@ export default function AdminBugsPage() {
                           <span className="text-sm truncate">{m.filename}</span>
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-muted-foreground">{formatFileSize(m.file_size)}</span>
-                            <a
-                              href={getAuthMediaUrl(detail.id, m.id)}
-                              download={m.filename}
+                            <button
                               className="text-xs text-primary hover:underline"
-                              onClick={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                detail && downloadMedia(detail.id, m.id, m.filename)
+                              }}
                             >
                               Download
-                            </a>
+                            </button>
                           </div>
                         </div>
                         {m.content_type.startsWith("image/") && (
-                          <img
-                            src={getAuthMediaUrl(detail.id, m.id)}
-                            alt={m.filename}
-                            className="rounded-md max-h-[300px] w-auto object-contain"
-                          />
+                          <>
+                            {mediaState[m.id] === "loading" && (
+                              <div className="text-sm text-muted-foreground animate-pulse py-2">Loading image...</div>
+                            )}
+                            {mediaUrls[m.id] && (
+                              <img
+                                src={mediaUrls[m.id]}
+                                alt={m.filename}
+                                className="rounded-md max-h-[300px] w-auto object-contain"
+                              />
+                            )}
+                            {mediaState[m.id] === "error" && (
+                              <div className="space-y-1 py-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm text-destructive">Failed to load image</span>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-xs"
+                                    onClick={() => detail && fetchMediaBlob(detail.id, m.id)}
+                                  >
+                                    Retry
+                                  </Button>
+                                </div>
+                                {mediaError[m.id] && (
+                                  <p className="text-xs text-muted-foreground">{mediaError[m.id]}</p>
+                                )}
+                              </div>
+                            )}
+                          </>
                         )}
                         {m.content_type.startsWith("video/") && (
-                          <p className="text-xs text-muted-foreground italic">Video file - use download link to view</p>
+                          <p className="text-xs text-muted-foreground italic">Video file - use download button to view</p>
                         )}
                       </div>
                     ))}
