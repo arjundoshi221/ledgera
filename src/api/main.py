@@ -27,7 +27,10 @@ app = FastAPI(
     redirect_slashes=False
 )
 
-# CORS configuration
+# JWT authentication middleware (inner — runs after CORS)
+app.add_middleware(AuthMiddleware)
+
+# CORS configuration (outer — wraps ALL responses including auth errors)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -35,9 +38,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# JWT authentication middleware
-app.add_middleware(AuthMiddleware)
 
 
 @app.get("/", response_model=HealthResponse)
