@@ -21,9 +21,7 @@ import {
   deleteAdminBugReport,
   getBugMediaUrl,
 } from "@/lib/admin-api"
-import type { AdminBugReport, AdminBugReportDetail, PaginatedBugReportResponse } from "@/lib/admin-types"
-
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
+import type { AdminBugReportDetail, PaginatedBugReportResponse } from "@/lib/admin-types"
 
 export default function AdminBugsPage() {
   const { toast } = useToast()
@@ -36,9 +34,6 @@ export default function AdminBugsPage() {
   // Detail dialog
   const [detailOpen, setDetailOpen] = useState(false)
   const [detail, setDetail] = useState<AdminBugReportDetail | null>(null)
-  const [mediaUrls, setMediaUrls] = useState<Record<string, string>>({})
-  const [mediaState, setMediaState] = useState<Record<string, "loading" | "error" | "done">>({})
-  const [mediaError, setMediaError] = useState<Record<string, string>>({})
   const [detailLoading, setDetailLoading] = useState(false)
 
   const loadReports = useCallback(async () => {
@@ -64,18 +59,9 @@ export default function AdminBugsPage() {
   async function openDetail(bugId: string) {
     setDetailLoading(true)
     setDetailOpen(true)
-    setMediaUrls({})
-    setMediaState({})
-    setMediaError({})
     try {
       const d = await getAdminBugReportDetail(bugId)
       setDetail(d)
-      // Fetch media blobs for preview
-      for (const m of d.media) {
-        if (m.content_type.startsWith("image/")) {
-          fetchMediaBlob(bugId, m.id)
-        }
-      }
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to load details", description: err.message })
       setDetailOpen(false)
@@ -84,32 +70,11 @@ export default function AdminBugsPage() {
     }
   }
 
-  async function fetchMediaBlob(bugId: string, mediaId: string) {
-    setMediaState((prev) => ({ ...prev, [mediaId]: "loading" }))
-    try {
-      const token = getToken()
-      const response = await fetch(
-        `${BASE_URL}/api/v1/admin/bugs/${bugId}/media/${mediaId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
-      if (!response.ok) {
-        const errText = await response.text().catch(() => "")
-        const msg = `HTTP ${response.status}${errText ? ` - ${errText}` : ""}`
-        console.error(`Failed to fetch media ${mediaId}: ${msg}`)
-        setMediaError((prev) => ({ ...prev, [mediaId]: msg }))
-        setMediaState((prev) => ({ ...prev, [mediaId]: "error" }))
-        return
-      }
-      const blob = await response.blob()
-      const url = URL.createObjectURL(blob)
-      setMediaUrls((prev) => ({ ...prev, [mediaId]: url }))
-      setMediaState((prev) => ({ ...prev, [mediaId]: "done" }))
-    } catch (err: any) {
-      const msg = err?.message || "Network error"
-      console.error(`Failed to fetch media ${mediaId}:`, err)
-      setMediaError((prev) => ({ ...prev, [mediaId]: msg }))
-      setMediaState((prev) => ({ ...prev, [mediaId]: "error" }))
-    }
+  /** Build a direct URL the browser can use for <img src> / <a href> */
+  function getAuthMediaUrl(bugId: string, mediaId: string): string {
+    const token = getToken()
+    const base = getBugMediaUrl(bugId, mediaId)
+    return `${base}?token=${encodeURIComponent(token ?? "")}`
   }
 
   async function handleStatusChange(bugId: string, newStatus: string) {
@@ -308,42 +273,27 @@ export default function AdminBugsPage() {
                       <div key={m.id} className="border rounded-md p-2">
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-sm truncate">{m.filename}</span>
-                          <span className="text-xs text-muted-foreground">{formatFileSize(m.file_size)}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">{formatFileSize(m.file_size)}</span>
+                            <a
+                              href={getAuthMediaUrl(detail.id, m.id)}
+                              download={m.filename}
+                              className="text-xs text-primary hover:underline"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              Download
+                            </a>
+                          </div>
                         </div>
                         {m.content_type.startsWith("image/") && (
-                          <>
-                            {mediaState[m.id] === "loading" && (
-                              <div className="text-sm text-muted-foreground animate-pulse py-2">Loading image...</div>
-                            )}
-                            {mediaUrls[m.id] && (
-                              <img
-                                src={mediaUrls[m.id]}
-                                alt={m.filename}
-                                className="rounded-md max-h-[300px] w-auto object-contain"
-                              />
-                            )}
-                            {mediaState[m.id] === "error" && (
-                              <div className="space-y-1 py-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm text-destructive">Failed to load image</span>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-7 text-xs"
-                                    onClick={() => detail && fetchMediaBlob(detail.id, m.id)}
-                                  >
-                                    Retry
-                                  </Button>
-                                </div>
-                                {mediaError[m.id] && (
-                                  <p className="text-xs text-muted-foreground">{mediaError[m.id]}</p>
-                                )}
-                              </div>
-                            )}
-                          </>
+                          <img
+                            src={getAuthMediaUrl(detail.id, m.id)}
+                            alt={m.filename}
+                            className="rounded-md max-h-[300px] w-auto object-contain"
+                          />
                         )}
                         {m.content_type.startsWith("video/") && (
-                          <p className="text-xs text-muted-foreground italic">Video file - download to view</p>
+                          <p className="text-xs text-muted-foreground italic">Video file - use download link to view</p>
                         )}
                       </div>
                     ))}

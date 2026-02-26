@@ -711,15 +711,42 @@ def update_bug_status(
 
 @router.get("/bugs/{bug_id}/media/{media_id}")
 def serve_bug_media(
+    request: Request,
     bug_id: str,
     media_id: str,
-    admin: UserModel = Depends(require_admin),
+    token: Optional[str] = Query(None),
     session: Session = Depends(get_session),
 ):
-    """Serve a media file from a bug report (admin)"""
-    from src.data.bug_repository import BugReportRepository
-    from fastapi.responses import Response
+    """Serve a media file from a bug report (admin).
 
+    Accepts auth via Authorization header OR ?token= query parameter.
+    The query-param path lets browsers load images directly via <img src>
+    without a cross-origin fetch + blob URL dance.
+    """
+    from src.data.bug_repository import BugReportRepository
+    from src.data.repositories import UserRepository
+    from src.services.auth_service import AuthService
+    from fastapi.responses import Response
+    import os
+
+    # ── Authenticate: header first, then query-param fallback ──
+    user_id = getattr(request.state, "user_id", None)
+
+    if not user_id and token:
+        secret = os.environ.get("JWT_SECRET", "dev-secret-key-change-in-production")
+        result = AuthService(secret_key=secret).decode_access_token(token)
+        if result:
+            user_id = str(result[0])
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # ── Authorise: must be a non-disabled admin ──
+    user = UserRepository(session).read(user_id)
+    if not user or not user.is_admin or user.is_disabled:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    # ── Serve the file ──
     repo = BugReportRepository(session)
     media = repo.get_media(media_id)
     if not media or media.bug_report_id != bug_id:
@@ -731,11 +758,14 @@ def serve_bug_media(
         logger.error("Failed to read media %s file_data: %s", media_id, e)
         raise HTTPException(status_code=500, detail="Failed to read media file")
 
+    # RFC 5987 safe filename
+    safe_filename = media.filename.replace('"', '\\"')
+
     return Response(
         content=file_content,
         media_type=media.content_type,
         headers={
-            "Content-Disposition": f'inline; filename="{media.filename}"',
+            "Content-Disposition": f'inline; filename="{safe_filename}"',
             "Content-Length": str(len(file_content)),
             "Cache-Control": "private, max-age=3600",
         },
