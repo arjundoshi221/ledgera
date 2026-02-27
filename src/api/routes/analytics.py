@@ -451,6 +451,7 @@ def get_income_allocation(
             ).first()
             ext_filter = [PostingModel.account_id != external_acc.id] if external_acc else []
 
+            # Credits: non-transfer tagged to WC fund + transfer dest to WC fund
             wc_credits_q = session.query(
                 sa_extract('year', TransactionModel.timestamp).label('yr'),
                 sa_extract('month', TransactionModel.timestamp).label('mo'),
@@ -462,6 +463,10 @@ def get_income_allocation(
                 PostingModel.account_id.in_(wc_account_ids),
                 PostingModel.base_amount > 0,
                 *ext_filter,
+                or_(
+                    and_(or_(TransactionModel.type.is_(None), TransactionModel.type != "transfer"), TransactionModel.fund_id == wc_fund_id),
+                    and_(TransactionModel.type == "transfer", TransactionModel.dest_fund_id == wc_fund_id),
+                ),
             ).group_by(
                 sa_extract('year', TransactionModel.timestamp),
                 sa_extract('month', TransactionModel.timestamp),
@@ -469,6 +474,7 @@ def get_income_allocation(
             for yr, mo, total in wc_credits_q:
                 wc_monthly_credits[(int(yr), int(mo))] = Decimal(str(total))
 
+            # Debits: non-transfer tagged to WC fund + transfer source from WC fund
             wc_debits_q = session.query(
                 sa_extract('year', TransactionModel.timestamp).label('yr'),
                 sa_extract('month', TransactionModel.timestamp).label('mo'),
@@ -480,6 +486,10 @@ def get_income_allocation(
                 PostingModel.account_id.in_(wc_account_ids),
                 PostingModel.base_amount < 0,
                 *ext_filter,
+                or_(
+                    and_(or_(TransactionModel.type.is_(None), TransactionModel.type != "transfer"), TransactionModel.fund_id == wc_fund_id),
+                    and_(TransactionModel.type == "transfer", TransactionModel.source_fund_id == wc_fund_id),
+                ),
             ).group_by(
                 sa_extract('year', TransactionModel.timestamp),
                 sa_extract('month', TransactionModel.timestamp),
@@ -507,11 +517,8 @@ def get_income_allocation(
                 # This month's actual expenses (fixed cost)
                 actual_fixed_cost = _get_expenses_for_month(session, workspace_id, y, m)
 
-                # WC account balance: capture prev month closing, then advance
+                # WC fund ledger balance: capture prev month closing (updated at end of loop)
                 wc_prev_closing = wc_running_balance
-                wc_cr = wc_monthly_credits.get((y, m), Decimal(0))
-                wc_db = wc_monthly_debits.get((y, m), Decimal(0))
-                wc_running_balance = wc_running_balance + wc_cr - wc_db
 
                 # Allocated fixed cost from active simulation benchmark
                 allocated_fixed_cost = budget_benchmark
@@ -605,6 +612,11 @@ def get_income_allocation(
                     for fa in fund_allocs
                     if fa.is_self_funding
                 ))
+
+                # Advance WC running balance: closing = opening + credits - sf_deduction - debits
+                wc_cr = wc_monthly_credits.get((y, m), Decimal(0))
+                wc_db = wc_monthly_debits.get((y, m), Decimal(0))
+                wc_running_balance = wc_running_balance + wc_cr - Decimal(str(total_self_funding_amount)) - wc_db
 
                 rows.append(IncomeAllocationRow(
                     year=y,
