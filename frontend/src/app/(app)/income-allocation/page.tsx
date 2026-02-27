@@ -208,14 +208,14 @@ export default function IncomeAllocationPage() {
     }
   }
 
-  /** Compute the optimized WC target: actual fixed costs + WC balance deficit.
-   *  If WC already holds the minimum balance, only allocate for actual costs.
-   *  If below minimum, top up only the deficit instead of the full minimum. */
+  /** Compute optimized WC target using projected balance.
+   *  Projects WC balance after income & expenses. If it stays above minimum,
+   *  just cover actual costs (maximize savings). If below, add the shortfall. */
   function computeOptimizedWcTarget(row: typeof data extends null ? never : NonNullable<typeof data>["rows"][0]) {
     const A = Number(row.actual_fixed_cost)
-    const prevBalance = Number(row.wc_prev_closing_balance)
-    const deficit = Math.max(0, minWcBalance - prevBalance)
-    const target = A + deficit
+    const projected = Number(row.wc_prev_closing_balance) + Number(row.net_income) - A
+    const shortfall = Math.max(0, minWcBalance - projected)
+    const target = A + shortfall
     return Math.max(Math.round(target * 100) / 100, 0)
   }
 
@@ -491,11 +491,15 @@ export default function IncomeAllocationPage() {
                                             : `${fmt(fa.self_funding_amount ?? 0)} stays in WC`}
                                         </div>
                                       )}
-                                      {isWc && (
-                                        <div className="text-[9px] text-muted-foreground/60 mt-0.5 text-right">
-                                          Bal: {fmt(row.wc_prev_closing_balance)} | Min: {fmt(minWcBalance)} | Deficit: {fmt(Math.max(0, minWcBalance - Number(row.wc_prev_closing_balance)))}
-                                        </div>
-                                      )}
+                                      {isWc && (() => {
+                                        const projected = Number(row.wc_prev_closing_balance) + Number(row.net_income) - Number(row.actual_fixed_cost)
+                                        const shortfall = Math.max(0, minWcBalance - projected)
+                                        return (
+                                          <div className="text-[9px] text-muted-foreground/60 mt-0.5 text-right">
+                                            Proj: {fmt(projected)} | Min: {fmt(minWcBalance)}{shortfall > 0 ? ` | Shortfall: ${fmt(shortfall)}` : ""}
+                                          </div>
+                                        )
+                                      })()}
                                       {isWc && isWcEditable && (
                                         <div className="flex justify-end gap-1 mt-0.5">
                                           {fa.override_amount != null && (
