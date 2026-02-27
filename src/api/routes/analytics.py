@@ -88,6 +88,7 @@ class IncomeAllocationRow(BaseModel):
     total_fund_allocation_pct: float
     total_self_funding_amount: float = 0
     self_funding_savings_ratio: float = 0
+    wc_prev_closing_balance: float = 0
 
 
 class FundMeta(BaseModel):
@@ -432,11 +433,66 @@ def get_income_allocation(
                     message=msg,
                 ))
 
+        # ── WC account balance: batch queries for optimizer ──
+        from sqlalchemy import extract as sa_extract
+        wc_account_ids = [link.account_id for link in wc_fund.account_links] if wc_fund else []
+        wc_opening_balance = Decimal(0)
+        wc_monthly_credits: Dict[tuple, Decimal] = {}
+        wc_monthly_debits: Dict[tuple, Decimal] = {}
+        if wc_fund and wc_account_ids:
+            for link in wc_fund.account_links:
+                acct_start = Decimal(str(link.account.starting_balance or 0))
+                alloc_pct = Decimal(str(link.allocation_percentage if link.allocation_percentage is not None else 100))
+                wc_opening_balance += acct_start * alloc_pct / 100
+
+            external_acc = session.query(AccountModel).filter(
+                AccountModel.workspace_id == workspace_id,
+                AccountModel.name == "External"
+            ).first()
+            ext_filter = [PostingModel.account_id != external_acc.id] if external_acc else []
+
+            wc_credits_q = session.query(
+                sa_extract('year', TransactionModel.timestamp).label('yr'),
+                sa_extract('month', TransactionModel.timestamp).label('mo'),
+                func.sum(PostingModel.base_amount),
+            ).join(
+                TransactionModel, PostingModel.transaction_id == TransactionModel.id
+            ).filter(
+                TransactionModel.workspace_id == workspace_id,
+                PostingModel.account_id.in_(wc_account_ids),
+                PostingModel.base_amount > 0,
+                *ext_filter,
+            ).group_by(
+                sa_extract('year', TransactionModel.timestamp),
+                sa_extract('month', TransactionModel.timestamp),
+            ).all()
+            for yr, mo, total in wc_credits_q:
+                wc_monthly_credits[(int(yr), int(mo))] = Decimal(str(total))
+
+            wc_debits_q = session.query(
+                sa_extract('year', TransactionModel.timestamp).label('yr'),
+                sa_extract('month', TransactionModel.timestamp).label('mo'),
+                func.sum(PostingModel.base_amount),
+            ).join(
+                TransactionModel, PostingModel.transaction_id == TransactionModel.id
+            ).filter(
+                TransactionModel.workspace_id == workspace_id,
+                PostingModel.account_id.in_(wc_account_ids),
+                PostingModel.base_amount < 0,
+                *ext_filter,
+            ).group_by(
+                sa_extract('year', TransactionModel.timestamp),
+                sa_extract('month', TransactionModel.timestamp),
+            ).all()
+            for yr, mo, total in wc_debits_q:
+                wc_monthly_debits[(int(yr), int(mo))] = abs(Decimal(str(total)))
+
         # Build rows for full calendar year(s): Jan-Dec
         now = datetime.utcnow()
         current_year = now.year
         start_year = current_year - years + 1
 
+        wc_running_balance = wc_opening_balance
         rows = []
         for y in range(start_year, current_year + 1):
             end_month = now.month if y == current_year else 12
@@ -450,6 +506,12 @@ def get_income_allocation(
 
                 # This month's actual expenses (fixed cost)
                 actual_fixed_cost = _get_expenses_for_month(session, workspace_id, y, m)
+
+                # WC account balance: capture prev month closing, then advance
+                wc_prev_closing = wc_running_balance
+                wc_cr = wc_monthly_credits.get((y, m), Decimal(0))
+                wc_db = wc_monthly_debits.get((y, m), Decimal(0))
+                wc_running_balance = wc_running_balance + wc_cr - wc_db
 
                 # Allocated fixed cost from active simulation benchmark
                 allocated_fixed_cost = budget_benchmark
@@ -560,6 +622,7 @@ def get_income_allocation(
                     total_fund_allocation_pct=total_fund_allocation_pct,
                     total_self_funding_amount=total_self_funding_amount,
                     self_funding_savings_ratio=self_funding_savings_ratio,
+                    wc_prev_closing_balance=float(wc_prev_closing),
                 ))
 
         return IncomeAllocationResponse(

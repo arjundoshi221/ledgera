@@ -208,13 +208,14 @@ export default function IncomeAllocationPage() {
     }
   }
 
-  /** Compute the optimized WC target: actual fixed costs + minimum WC balance.
-   *  Self-funding amounts stay in the WC account but are earmarked for their
-   *  respective funds, so they should not reduce the WC allocation. */
+  /** Compute the optimized WC target: actual fixed costs + WC balance deficit.
+   *  If WC already holds the minimum balance, only allocate for actual costs.
+   *  If below minimum, top up only the deficit instead of the full minimum. */
   function computeOptimizedWcTarget(row: typeof data extends null ? never : NonNullable<typeof data>["rows"][0]) {
     const A = Number(row.actual_fixed_cost)
-    const B = minWcBalance
-    const target = A + B
+    const prevBalance = Number(row.wc_prev_closing_balance)
+    const deficit = Math.max(0, minWcBalance - prevBalance)
+    const target = A + deficit
     return Math.max(Math.round(target * 100) / 100, 0)
   }
 
@@ -488,6 +489,11 @@ export default function IncomeAllocationPage() {
                                           {fa.self_funding_percentage === 100
                                             ? "Stays in WC account"
                                             : `${fmt(fa.self_funding_amount ?? 0)} stays in WC`}
+                                        </div>
+                                      )}
+                                      {isWc && (
+                                        <div className="text-[9px] text-muted-foreground/60 mt-0.5 text-right">
+                                          Bal: {fmt(row.wc_prev_closing_balance)} | Min: {fmt(minWcBalance)} | Deficit: {fmt(Math.max(0, minWcBalance - Number(row.wc_prev_closing_balance)))}
                                         </div>
                                       )}
                                       {isWc && isWcEditable && (

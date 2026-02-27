@@ -460,6 +460,7 @@ export interface IncomeAllocationRow {
   total_fund_allocation_pct: number
   total_self_funding_amount: number
   self_funding_savings_ratio: number
+  wc_prev_closing_balance: number
 }
 
 export interface IncomeAllocationResponse {
