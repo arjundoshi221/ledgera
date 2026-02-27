@@ -213,7 +213,7 @@ export default function IncomeAllocationPage() {
    *  just cover actual costs (maximize savings). If below, add the shortfall. */
   function computeOptimizedWcTarget(row: typeof data extends null ? never : NonNullable<typeof data>["rows"][0]) {
     const A = Number(row.actual_fixed_cost)
-    const projected = Number(row.wc_prev_closing_balance) + Number(row.net_income) - A
+    const projected = Number(row.wc_prev_closing_balance) + Number(row.current_month_income) - A
     const shortfall = Math.max(0, minWcBalance - projected)
     const target = A + shortfall
     return Math.max(Math.round(target * 100) / 100, 0)
@@ -492,7 +492,7 @@ export default function IncomeAllocationPage() {
                                         </div>
                                       )}
                                       {isWc && (() => {
-                                        const projected = Number(row.wc_prev_closing_balance) + Number(row.net_income) - Number(row.actual_fixed_cost)
+                                        const projected = Number(row.wc_prev_closing_balance) + Number(row.current_month_income) - Number(row.actual_fixed_cost)
                                         const shortfall = Math.max(0, minWcBalance - projected)
                                         return (
                                           <div className="text-[9px] text-muted-foreground/60 mt-0.5 text-right">
