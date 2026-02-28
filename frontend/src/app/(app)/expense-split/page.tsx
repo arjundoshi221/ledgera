@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { useMonthlyDashboard, useExpenseSplit } from "@/lib/hooks"
 import { useToast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
-import type { FundDashboardAnalysis } from "@/lib/types"
+import type { FundDashboardAnalysis, MonthlyDashboardResponse } from "@/lib/types"
 import { useChartTheme, CHART_COLORS } from "@/lib/chart-theme"
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,

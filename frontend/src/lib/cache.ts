@@ -189,6 +189,14 @@ export function invalidateRecurring() {
 }
 
 /**
+ * Invalidate pending recurring instances cache
+ * Call after: operations that affect pending instances
+ */
+export function invalidatePendingInstances() {
+  return invalidateKey('/api/v1/recurring/pending')
+}
+
+/**
  * Invalidate scenario caches
  * Call after: saveScenario, updateScenario, deleteScenario, activateScenario
  */
