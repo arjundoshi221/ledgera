@@ -64,7 +64,9 @@ class FundAllocationDetail(BaseModel):
     allocated_amount: float
     is_auto: bool = False
     override_amount: Optional[float] = None
-    model_amount: Optional[float] = None
+    mode: Optional[str] = None  # "MODEL", "OPTIMIZE", or None (manual)
+    model_amount: Optional[float] = None  # What MODEL mode would give
+    optimize_amount: Optional[float] = None  # What OPTIMIZE mode would give
     is_self_funding: bool = False
     self_funding_percentage: float = 0
     self_funding_amount: float = 0
@@ -457,11 +459,15 @@ def get_income_allocation(
         override_repo = FundAllocationOverrideRepository(session)
         all_overrides = override_repo.read_by_workspace(workspace_id)
         pct_override_map = {}
-        amount_override_map = {}
+        amount_override_map = {}  # (fund_id, year, month) -> (amount, mode)
         for o in all_overrides:
             key = (o.fund_id, o.year, o.month)
-            if o.override_amount is not None:
-                amount_override_map[key] = Decimal(str(o.override_amount))
+            if o.override_amount is not None or o.mode is not None:
+                # Store both amount and mode (either can be None)
+                amount_override_map[key] = (
+                    Decimal(str(o.override_amount)) if o.override_amount is not None else None,
+                    o.mode
+                )
             else:
                 pct_override_map[key] = Decimal(str(o.allocation_percentage))
 
@@ -527,12 +533,8 @@ def get_income_allocation(
         for y in range(start_year, current_year + 1):
             end_month = now.month if y == current_year else 12
             for m in range(1, end_month + 1):
-                # Current month's actual WC income only
+                # Current month's actual WC income (pure cash basis)
                 current_month_income = _get_income_for_month(session, workspace_id, y, m, fund_id=wc_fund_id)
-
-                # Previous month's WC income (one-month lag) = Allocated Budget
-                prev_y, prev_m = _prev_month(y, m)
-                net_income = _get_income_for_month(session, workspace_id, prev_y, prev_m, fund_id=wc_fund_id)
 
                 # This month's actual expenses (fixed cost)
                 actual_fixed_cost = _get_expenses_for_month(session, workspace_id, y, m)
@@ -558,27 +560,54 @@ def get_income_allocation(
                     pct_k = pct_override_map.get((f_k.id, y, m), Decimal(str(f_k.allocation_percentage)))
                     K += pct_k * Decimal(str(sf_k["self_funding_percentage"])) / Decimal(10000)
 
-                # Determine Working Capital amount
+                # Determine Working Capital amount (three modes)
                 wc_key = (wc_fund_id, y, m) if wc_fund_id else None
+                apply_self_funding = False
+
                 if wc_key and wc_key in amount_override_map:
-                    # Manual override takes precedence
-                    wc_amount = amount_override_map[wc_key]
+                    override_amount, override_mode = amount_override_map[wc_key]
+
+                    if override_mode == "MODEL":
+                        # Model mode: use benchmark allocation
+                        wc_amount = allocated_fixed_cost
+                        raw_savings = current_month_income - wc_amount
+                        apply_self_funding = False
+
+                    elif override_mode == "OPTIMIZE":
+                        # Explicit optimize mode (same as default)
+                        shortfall = max(Decimal(0), min_wc_balance - wc_prev_closing)
+                        wc_amount = actual_fixed_cost + shortfall
+                        income_based_savings = current_month_income - wc_amount
+                        wc_surplus = max(Decimal(0), wc_prev_closing - min_wc_balance)
+                        raw_savings = income_based_savings + wc_surplus
+                        apply_self_funding = True
+
+                    else:  # None = manual override
+                        wc_amount = override_amount
+                        raw_savings = current_month_income - wc_amount
+                        apply_self_funding = False
                 else:
-                    # Auto-optimize: WC = actual costs + shortfall to reach minimum
+                    # Default: Optimize mode
                     shortfall = max(Decimal(0), min_wc_balance - wc_prev_closing)
                     wc_amount = actual_fixed_cost + shortfall
+                    income_based_savings = current_month_income - wc_amount
+                    wc_surplus = max(Decimal(0), wc_prev_closing - min_wc_balance)
+                    raw_savings = income_based_savings + wc_surplus
+                    apply_self_funding = True
 
-                # Savings = income - WC allocation, adjusted for self-funding
-                raw_savings = net_income - wc_amount
-                savings_remainder = max(Decimal(0), raw_savings / (1 + K))
+                # Adjust for self-funding (only in optimize mode)
+                if apply_self_funding:
+                    savings_remainder = max(Decimal(0), raw_savings / (1 + K))
+                else:
+                    savings_remainder = raw_savings
 
                 # Fixed cost optimization = WC - actual (display-only)
                 fixed_cost_optimization = wc_amount - actual_fixed_cost
 
                 # Working capital percentages
-                if net_income > 0:
-                    working_capital_pct_of_income = float((wc_amount / net_income) * 100)
-                    savings_pct_of_income = float((savings_remainder / net_income) * 100)
+                if current_month_income > 0:
+                    working_capital_pct_of_income = float((wc_amount / current_month_income) * 100)
+                    savings_pct_of_income = float((savings_remainder / current_month_income) * 100)
                 else:
                     working_capital_pct_of_income = 0.0
                     savings_pct_of_income = 0.0
@@ -592,10 +621,21 @@ def get_income_allocation(
                 for f in funds:
                     # Working Capital fund: editable with amount override
                     if f.name == "Working Capital":
-                        if net_income > 0:
-                            wc_pct = float((wc_amount / net_income) * 100)
+                        if current_month_income > 0:
+                            wc_pct = float((wc_amount / current_month_income) * 100)
                         else:
                             wc_pct = 0.0
+
+                        # Calculate alternative amounts for display
+                        model_wc_amount = allocated_fixed_cost
+                        optimize_shortfall = max(Decimal(0), min_wc_balance - wc_prev_closing)
+                        optimize_wc_amount = actual_fixed_cost + optimize_shortfall
+
+                        # Extract mode from override if exists
+                        override_mode = None
+                        if wc_key and wc_key in amount_override_map:
+                            _, override_mode = amount_override_map[wc_key]
+
                         fund_allocs.append(FundAllocationDetail(
                             fund_id=f.id,
                             fund_name=f.name,
@@ -603,8 +643,10 @@ def get_income_allocation(
                             allocation_percentage=wc_pct,
                             allocated_amount=float(wc_amount),
                             is_auto=False,
-                            override_amount=float(wc_amount) if wc_key and wc_key in amount_override_map else None,
-                            model_amount=float(allocated_fixed_cost),
+                            override_amount=float(wc_amount) if (wc_key and wc_key in amount_override_map and override_mode is None) else None,
+                            mode=override_mode,
+                            model_amount=float(model_wc_amount),
+                            optimize_amount=float(optimize_wc_amount),
                         ))
                         continue
 
@@ -662,7 +704,7 @@ def get_income_allocation(
                     year=y,
                     month=m,
                     current_month_income=current_month_income,
-                    net_income=net_income,
+                    net_income=current_month_income,  # Pure cash basis: use current month
                     allocated_fixed_cost=allocated_fixed_cost,
                     actual_fixed_cost=actual_fixed_cost,
                     fixed_cost_optimization=fixed_cost_optimization,
@@ -772,9 +814,15 @@ def create_or_update_override(
     if not fund or fund.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Fund not found")
 
-    # Must provide either allocation_percentage or override_amount
-    if override_data.allocation_percentage is None and override_data.override_amount is None:
-        raise HTTPException(status_code=400, detail="Must provide allocation_percentage or override_amount")
+    # Validate mode if provided
+    if override_data.mode and override_data.mode not in ["MODEL", "OPTIMIZE"]:
+        raise HTTPException(status_code=400, detail="Mode must be 'MODEL' or 'OPTIMIZE'")
+
+    # Must provide either allocation_percentage, override_amount, or mode
+    if (override_data.allocation_percentage is None and
+        override_data.override_amount is None and
+        override_data.mode is None):
+        raise HTTPException(status_code=400, detail="Must provide allocation_percentage, override_amount, or mode")
 
     # Validate percentage if provided
     if override_data.allocation_percentage is not None:
@@ -804,6 +852,7 @@ def create_or_update_override(
         # Update existing
         existing.allocation_percentage = override_data.allocation_percentage or 0
         existing.override_amount = override_data.override_amount
+        existing.mode = override_data.mode
         return override_repo.update(existing)
     else:
         # Create new
@@ -814,6 +863,7 @@ def create_or_update_override(
             month=override_data.month,
             allocation_percentage=override_data.allocation_percentage or 0,
             override_amount=override_data.override_amount,
+            mode=override_data.mode,
         )
         return override_repo.create(override)
 
@@ -959,15 +1009,19 @@ def get_fund_tracker(
         active_scenario = scenario_repo.read_active(workspace_id)
         budget_benchmark = Decimal(str(active_scenario.monthly_expenses_total)) if active_scenario else Decimal(0)
 
-        # Load overrides (percentage for non-WC funds, amount for WC)
+        # Load overrides (percentage for non-WC funds, amount/mode for WC)
         override_repo = FundAllocationOverrideRepository(session)
         all_overrides = override_repo.read_by_workspace(workspace_id)
         override_map = {}
-        amount_override_map = {}
+        amount_override_map = {}  # (fund_id, year, month) -> (amount, mode)
         for o in all_overrides:
             key = (o.fund_id, o.year, o.month)
-            if o.override_amount is not None:
-                amount_override_map[key] = Decimal(str(o.override_amount))
+            if o.override_amount is not None or o.mode is not None:
+                # Store both amount and mode
+                amount_override_map[key] = (
+                    Decimal(str(o.override_amount)) if o.override_amount is not None else None,
+                    o.mode
+                )
             else:
                 override_map[key] = Decimal(str(o.allocation_percentage))
 
@@ -1059,19 +1113,46 @@ def get_fund_tracker(
                 pct_k = override_map.get((f_k.id, y, m), Decimal(str(f_k.allocation_percentage)))
                 K += pct_k * Decimal(str(sf_k["self_funding_percentage"])) / Decimal(10000)
 
-            prev_y, prev_m = _prev_month(y, m)
-            net_inc = _get_income_for_month(session, workspace_id, prev_y, prev_m)
+            # Pure cash basis: use current month income
+            net_inc = _get_income_for_month(session, workspace_id, y, m)
             actual_costs = _get_expenses_for_month(session, workspace_id, y, m)
             wc_key = (wc_fund_id, y, m) if wc_fund_id else None
+            apply_self_funding = False
 
             if wc_key and wc_key in amount_override_map:
-                wc_amt = amount_override_map[wc_key]
+                override_amount, override_mode = amount_override_map[wc_key]
+
+                if override_mode == "MODEL":
+                    wc_amt = budget_benchmark
+                    raw_savings = net_inc - wc_amt
+                    apply_self_funding = False
+
+                elif override_mode == "OPTIMIZE":
+                    shortfall = max(Decimal(0), min_wc_balance - wc_sweep_running)
+                    wc_amt = actual_costs + shortfall
+                    income_based_savings = net_inc - wc_amt
+                    wc_surplus = max(Decimal(0), wc_sweep_running - min_wc_balance)
+                    raw_savings = income_based_savings + wc_surplus
+                    apply_self_funding = True
+
+                else:  # manual override
+                    wc_amt = override_amount
+                    raw_savings = net_inc - wc_amt
+                    apply_self_funding = False
             else:
+                # Default: optimize mode
                 shortfall = max(Decimal(0), min_wc_balance - wc_sweep_running)
                 wc_amt = actual_costs + shortfall
+                income_based_savings = net_inc - wc_amt
+                wc_surplus = max(Decimal(0), wc_sweep_running - min_wc_balance)
+                raw_savings = income_based_savings + wc_surplus
+                apply_self_funding = True
 
-            raw_savings = net_inc - wc_amt
-            sav_rem = max(Decimal(0), raw_savings / (1 + K))
+            # Apply self-funding adjustment only in optimize mode
+            if apply_self_funding:
+                sav_rem = max(Decimal(0), raw_savings / (1 + K))
+            else:
+                sav_rem = raw_savings
 
             monthly_sweep_savings[(y, m)] = sav_rem
             monthly_sweep_wc_amount[(y, m)] = wc_amt
@@ -1249,7 +1330,7 @@ def get_fund_tracker(
                         sf_fund_obj = next((sf for sf in funds if sf.id == sf_fund_id), None)
                         if sf_fund_obj:
                             sf_contrib = _compute_fund_contribution(
-                                sf_fund_obj, savings_remainder, allocated_fixed_cost,
+                                sf_fund_obj, savings_remainder, budget_benchmark,
                                 override_map, y, m, amount_override_map=amount_override_map,
                             )
                             sf_pct = Decimal(str(sf_info_data["self_funding_percentage"])) / 100
@@ -1491,8 +1572,8 @@ def get_fund_tracker(
         unallocated_remainder = Decimal(0)
         for y, m in months_list:
             if y == current_year:
-                prev_y, prev_m = _prev_month(y, m)
-                net_income = _get_income_for_month(session, workspace_id, prev_y, prev_m)
+                # Pure cash basis: use current month income
+                net_income = _get_income_for_month(session, workspace_id, y, m)
                 savings_rem = net_income - budget_benchmark
                 month_allocated = Decimal(0)
                 for f in funds:
@@ -1897,11 +1978,14 @@ def get_monthly_dashboard(
         override_repo = FundAllocationOverrideRepository(session)
         all_overrides = override_repo.read_by_workspace(workspace_id)
         pct_override_map = {}
-        amount_override_map = {}
+        amount_override_map = {}  # (fund_id, year, month) -> (amount, mode)
         for o in all_overrides:
             key = (o.fund_id, o.year, o.month)
-            if o.override_amount is not None:
-                amount_override_map[key] = Decimal(str(o.override_amount))
+            if o.override_amount is not None or o.mode is not None:
+                amount_override_map[key] = (
+                    Decimal(str(o.override_amount)) if o.override_amount is not None else None,
+                    o.mode
+                )
             else:
                 pct_override_map[key] = Decimal(str(o.allocation_percentage))
 
@@ -1917,11 +2001,10 @@ def get_monthly_dashboard(
         min_wc_balance = Decimal(str(ws.min_wc_balance or 0)) if ws else Decimal(0)
 
         # ── Precompute monthly incomes for all months Jan..selected month ──
-        # (avoids redundant queries per fund)
+        # Pure cash basis: use current month income (avoids redundant queries per fund)
         monthly_incomes: Dict[int, Decimal] = {}
         for m in range(1, month + 1):
-            prev_y, prev_m = _prev_month(year, m)
-            monthly_incomes[m] = _get_income_for_month(session, workspace_id, prev_y, prev_m)
+            monthly_incomes[m] = _get_income_for_month(session, workspace_id, year, m)
 
         allocated_fixed_cost = budget_benchmark
 
@@ -1943,15 +2026,42 @@ def get_monthly_dashboard(
             wc_key = (wc_fund_id, year, m_s) if wc_fund_id else None
             net_inc = monthly_incomes[m_s]
             actual_costs = _get_expenses_for_month(session, workspace_id, year, m_s)
+            apply_self_funding = False
 
             if wc_key and wc_key in amount_override_map:
-                wc_amt = amount_override_map[wc_key]
+                override_amount, override_mode = amount_override_map[wc_key]
+
+                if override_mode == "MODEL":
+                    wc_amt = allocated_fixed_cost
+                    raw_savings = net_inc - wc_amt
+                    apply_self_funding = False
+
+                elif override_mode == "OPTIMIZE":
+                    shortfall = max(Decimal(0), min_wc_balance - wc_sweep_running)
+                    wc_amt = actual_costs + shortfall
+                    income_based_savings = net_inc - wc_amt
+                    wc_surplus = max(Decimal(0), wc_sweep_running - min_wc_balance)
+                    raw_savings = income_based_savings + wc_surplus
+                    apply_self_funding = True
+
+                else:  # manual override
+                    wc_amt = override_amount
+                    raw_savings = net_inc - wc_amt
+                    apply_self_funding = False
             else:
+                # Default: optimize mode
                 shortfall = max(Decimal(0), min_wc_balance - wc_sweep_running)
                 wc_amt = actual_costs + shortfall
+                income_based_savings = net_inc - wc_amt
+                wc_surplus = max(Decimal(0), wc_sweep_running - min_wc_balance)
+                raw_savings = income_based_savings + wc_surplus
+                apply_self_funding = True
 
-            raw_savings = net_inc - wc_amt
-            sav_rem = max(Decimal(0), raw_savings / (1 + K))
+            # Apply self-funding adjustment only in optimize mode
+            if apply_self_funding:
+                sav_rem = max(Decimal(0), raw_savings / (1 + K))
+            else:
+                sav_rem = raw_savings
 
             monthly_sweep_savings[m_s] = sav_rem
             monthly_sweep_wc_amount[m_s] = wc_amt

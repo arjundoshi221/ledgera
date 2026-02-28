@@ -318,6 +318,7 @@ class FundAllocationOverrideCreate(BaseModel):
     month: int
     allocation_percentage: Optional[Decimal] = None
     override_amount: Optional[Decimal] = None
+    mode: Optional[str] = None  # "MODEL", "OPTIMIZE", or None (manual)
 
 
 class FundAllocationOverrideResponse(BaseModel):
@@ -327,6 +328,8 @@ class FundAllocationOverrideResponse(BaseModel):
     year: int
     month: int
     allocation_percentage: Decimal
+    override_amount: Optional[Decimal] = None
+    mode: Optional[str] = None  # "MODEL", "OPTIMIZE", or None
     created_at: datetime
     updated_at: datetime
 

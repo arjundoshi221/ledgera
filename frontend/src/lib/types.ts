@@ -437,7 +437,9 @@ export interface FundAllocation {
   allocated_amount: number
   is_auto?: boolean
   override_amount?: number | null
-  model_amount?: number | null
+  mode?: "MODEL" | "OPTIMIZE" | null  // Allocation mode for WC fund
+  model_amount?: number | null  // What MODEL mode would give
+  optimize_amount?: number | null  // What OPTIMIZE mode would give
   is_self_funding?: boolean
   self_funding_percentage?: number
   self_funding_amount?: number
@@ -494,6 +496,8 @@ export interface FundAllocationOverride {
   year: number
   month: number
   allocation_percentage: number
+  override_amount?: number
+  mode?: "MODEL" | "OPTIMIZE" | null
   created_at: string
   updated_at: string
 }
@@ -504,6 +508,7 @@ export interface CreateFundAllocationOverrideRequest {
   month: number
   allocation_percentage?: number
   override_amount?: number
+  mode?: "MODEL" | "OPTIMIZE" | null
 }
 
 // ---------------------

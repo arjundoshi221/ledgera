@@ -244,6 +244,7 @@ class FundAllocationOverrideModel(Base):
     month = Column(Integer, nullable=False)  # 1-12
     allocation_percentage = Column(Numeric(5, 2), nullable=False)  # Override percentage
     override_amount = Column(Numeric(19, 4), nullable=True)  # Absolute amount override (for Working Capital)
+    mode = Column(String(20), nullable=True)  # "MODEL", "OPTIMIZE", or NULL (manual override)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 

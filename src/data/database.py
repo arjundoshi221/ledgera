@@ -224,13 +224,17 @@ def _run_migrations(engine) -> None:
                     "ALTER TABLE users ADD COLUMN login_count INTEGER NOT NULL DEFAULT 0"
                 ))
 
-    # Fund allocation overrides: add override_amount column
+    # Fund allocation overrides: add override_amount and mode columns
     if insp.has_table("fund_allocation_overrides"):
         fao_cols = {c["name"] for c in insp.get_columns("fund_allocation_overrides")}
-        if "override_amount" not in fao_cols:
-            with engine.begin() as conn:
+        with engine.begin() as conn:
+            if "override_amount" not in fao_cols:
                 conn.execute(text(
                     "ALTER TABLE fund_allocation_overrides ADD COLUMN override_amount NUMERIC(19,4)"
+                ))
+            if "mode" not in fao_cols:
+                conn.execute(text(
+                    "ALTER TABLE fund_allocation_overrides ADD COLUMN mode VARCHAR(20)"
                 ))
 
     # ── One-time data migrations (tracked in _migrations table) ──

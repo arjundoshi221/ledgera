@@ -175,8 +175,9 @@ export default function IncomeAllocationPage() {
         year,
         month,
         override_amount: newAmount,
+        mode: null,  // Manual override, no mode
       })
-      toast({ title: "Working Capital updated" })
+      toast({ title: "Working Capital updated (manual override)" })
       setEditingWcCell(null)
       await loadData(true)
     } catch (err: any) {
@@ -217,6 +218,32 @@ export default function IncomeAllocationPage() {
       await loadData(true)
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to reset", description: err.message })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  /** Switch WC allocation mode (MODEL or OPTIMIZE) */
+  async function handleModeChange(year: number, month: number, fundId: string, mode: "MODEL" | "OPTIMIZE") {
+    setSaving(true)
+    try {
+      if (mode === "OPTIMIZE") {
+        // Delete override to use default optimize mode
+        await deleteAllocationOverride(fundId, year, month)
+        toast({ title: "Switched to Optimize mode" })
+      } else if (mode === "MODEL") {
+        // Create override with mode="MODEL"
+        await createOrUpdateAllocationOverride({
+          fund_id: fundId,
+          year,
+          month,
+          mode: "MODEL"
+        })
+        toast({ title: "Switched to Model mode" })
+      }
+      await loadData(true)
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Failed to change mode", description: err.message })
     } finally {
       setSaving(false)
     }
@@ -483,20 +510,64 @@ export default function IncomeAllocationPage() {
                                         )
                                       })()}
                                       {isWc && isWcEditable && (
-                                        <div className="flex justify-end gap-1 mt-0.5">
-                                          {fa.override_amount != null && (
+                                        <div className="space-y-1 mt-1">
+                                          {/* Mode selector */}
+                                          <div className="flex justify-end gap-1">
                                             <Button
-                                              variant="outline"
+                                              variant={fa.mode === "MODEL" ? "default" : "outline"}
                                               size="sm"
-                                              className="h-5 px-1.5 text-[10px] text-blue-600 dark:text-blue-400 border-blue-300 dark:border-blue-700 whitespace-nowrap"
+                                              className={cn(
+                                                "h-5 px-2 text-[10px] whitespace-nowrap",
+                                                fa.mode === "MODEL" && "bg-blue-600 hover:bg-blue-700 text-white border-blue-700"
+                                              )}
                                               onClick={(e) => {
                                                 e.stopPropagation()
-                                                handleUseModelAmount(row.year, row.month, fa.fund_id)
+                                                handleModeChange(row.year, row.month, fa.fund_id, "MODEL")
                                               }}
                                               disabled={saving}
                                             >
-                                              Reset to Sweep
+                                              Model
                                             </Button>
+                                            <Button
+                                              variant={!fa.mode || fa.mode === "OPTIMIZE" ? "default" : "outline"}
+                                              size="sm"
+                                              className={cn(
+                                                "h-5 px-2 text-[10px] whitespace-nowrap",
+                                                (!fa.mode || fa.mode === "OPTIMIZE") && "bg-green-600 hover:bg-green-700 text-white border-green-700"
+                                              )}
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                handleModeChange(row.year, row.month, fa.fund_id, "OPTIMIZE")
+                                              }}
+                                              disabled={saving}
+                                            >
+                                              Optimize
+                                            </Button>
+                                            {fa.override_amount != null && !fa.mode && (
+                                              <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+                                                onClick={(e) => {
+                                                  e.stopPropagation()
+                                                  handleModeChange(row.year, row.month, fa.fund_id, "OPTIMIZE")
+                                                }}
+                                                disabled={saving}
+                                              >
+                                                Clear Override
+                                              </Button>
+                                            )}
+                                          </div>
+                                          {/* Alternative amounts */}
+                                          {fa.mode === "MODEL" && fa.optimize_amount != null && (
+                                            <div className="text-[9px] text-green-600 dark:text-green-400 text-right">
+                                              Optimize: {fmt(fa.optimize_amount)}
+                                            </div>
+                                          )}
+                                          {(!fa.mode || fa.mode === "OPTIMIZE") && fa.model_amount != null && (
+                                            <div className="text-[9px] text-blue-600 dark:text-blue-400 text-right">
+                                              Model: {fmt(fa.model_amount)}
+                                            </div>
                                           )}
                                         </div>
                                       )}
