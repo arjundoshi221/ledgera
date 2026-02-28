@@ -171,6 +171,9 @@ export default function TransactionsPage() {
   const filteredSubcategories = subcategories.filter((s) => s.category_id === categoryId)
   const recFilteredSubcategories = subcategories.filter((s) => s.category_id === recCategoryId)
 
+  // Filter out External account from regular account dropdowns
+  const regularAccounts = accounts.filter((a) => a.name !== "External")
+
   // Filter accounts by selected fund
   const filteredAccounts = useMemo(() => {
     if (!fundId) return regularAccounts
@@ -260,9 +263,6 @@ export default function TransactionsPage() {
 
   // Find External account
   const externalAccount = accounts.find((a) => a.name === "External")
-
-  // Filter out External account from regular account dropdowns
-  const regularAccounts = accounts.filter((a) => a.name !== "External")
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
