@@ -1,10 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { useToast } from "@/components/ui/use-toast"
-import { getSystemStats, getSignupGrowth, getDAU, getMAU } from "@/lib/admin-api"
-import type { SystemStats, TimeSeriesPoint } from "@/lib/admin-types"
+import { useSystemStats, useSignupGrowth, useDAU, useMAU } from "@/lib/hooks"
 import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar,
   XAxis, YAxis, Tooltip, CartesianGrid,
@@ -12,35 +9,14 @@ import {
 import { useChartTheme } from "@/lib/chart-theme"
 
 export default function AdminDashboardPage() {
-  const { toast } = useToast()
   const { tooltipStyle, gridStroke, tickStyle } = useChartTheme()
-  const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState<SystemStats | null>(null)
-  const [signups, setSignups] = useState<TimeSeriesPoint[]>([])
-  const [dau, setDau] = useState<TimeSeriesPoint[]>([])
-  const [mau, setMau] = useState<TimeSeriesPoint[]>([])
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const [s, sig, d, m] = await Promise.all([
-          getSystemStats(),
-          getSignupGrowth(90),
-          getDAU(30),
-          getMAU(12),
-        ])
-        setStats(s)
-        setSignups(sig)
-        setDau(d)
-        setMau(m)
-      } catch (err: any) {
-        toast({ variant: "destructive", title: "Failed to load dashboard", description: err.message })
-      } finally {
-        setLoading(false)
-      }
-    }
-    load()
-  }, [])
+  // Use SWR hooks for automatic caching
+  const { data: stats, isLoading: statsLoading } = useSystemStats()
+  const { data: signups = [], isLoading: signupsLoading } = useSignupGrowth(90)
+  const { data: dau = [], isLoading: dauLoading } = useDAU(30)
+  const { data: mau = [], isLoading: mauLoading } = useMAU(12)
+  const loading = statsLoading || signupsLoading || dauLoading || mauLoading
 
   if (loading) {
     return <div className="animate-pulse text-muted-foreground">Loading dashboard...</div>

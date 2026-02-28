@@ -6,6 +6,7 @@ import useSWR from 'swr'
 import useSWRMutation from 'swr/mutation'
 import type { SWRConfiguration } from 'swr'
 import * as api from './api'
+import * as adminApi from './admin-api'
 import type {
   Account,
   Transaction,
@@ -29,6 +30,10 @@ import type {
   PriceResponse,
   UserResponse,
 } from './types'
+import type {
+  SystemStats,
+  TimeSeriesPoint,
+} from './admin-types'
 
 // ============================================================
 // Global SWR Configuration
@@ -679,4 +684,72 @@ export function useScenarioMutations() {
       }
     ),
   }
+}
+
+// ============================================================
+// Admin Hooks
+// ============================================================
+
+/**
+ * Hook for fetching system statistics
+ */
+export function useSystemStats(config?: SWRConfiguration) {
+  return useSWR<SystemStats>(
+    '/api/v1/admin/stats',
+    adminApi.getSystemStats,
+    {
+      ...swrConfig,
+      revalidateOnFocus: false, // Stats don't change frequently
+      dedupingInterval: 30000, // 30s dedup for admin stats
+      ...config,
+    }
+  )
+}
+
+/**
+ * Hook for fetching signup growth data
+ */
+export function useSignupGrowth(days: number = 90, config?: SWRConfiguration) {
+  return useSWR<TimeSeriesPoint[]>(
+    `/api/v1/admin/growth/signups?days=${days}`,
+    () => adminApi.getSignupGrowth(days),
+    {
+      ...swrConfig,
+      revalidateOnFocus: false,
+      dedupingInterval: 30000,
+      ...config,
+    }
+  )
+}
+
+/**
+ * Hook for fetching daily active users
+ */
+export function useDAU(days: number = 30, config?: SWRConfiguration) {
+  return useSWR<TimeSeriesPoint[]>(
+    `/api/v1/admin/growth/dau?days=${days}`,
+    () => adminApi.getDAU(days),
+    {
+      ...swrConfig,
+      revalidateOnFocus: false,
+      dedupingInterval: 30000,
+      ...config,
+    }
+  )
+}
+
+/**
+ * Hook for fetching monthly active users
+ */
+export function useMAU(months: number = 12, config?: SWRConfiguration) {
+  return useSWR<TimeSeriesPoint[]>(
+    `/api/v1/admin/growth/mau?months=${months}`,
+    () => adminApi.getMAU(months),
+    {
+      ...swrConfig,
+      revalidateOnFocus: false,
+      dedupingInterval: 30000,
+      ...config,
+    }
+  )
 }
