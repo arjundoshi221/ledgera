@@ -1,13 +1,12 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { getNetWorth } from "@/lib/api"
+import { useNetWorth } from "@/lib/hooks"
 import { cn } from "@/lib/utils"
-import type { NetWorthResponse } from "@/lib/types"
 import { useChartTheme, CHART_COLORS } from "@/lib/chart-theme"
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
@@ -34,26 +33,11 @@ function fmtCcy(n: number, ccy: string): string {
 }
 
 export default function PortfolioPage() {
-  const [data, setData] = useState<NetWorthResponse | null>(null)
-  const [loading, setLoading] = useState(true)
   const [years, setYears] = useState("1")
   const { isDark, tooltipStyle, gridStroke, tickStyle } = useChartTheme()
 
-  async function loadData() {
-    setLoading(true)
-    try {
-      const result = await getNetWorth(parseInt(years))
-      setData(result)
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    loadData()
-  }, [years])
+  // Use SWR hook for automatic caching
+  const { data, isLoading: loading } = useNetWorth(parseInt(years))
 
   if (loading) {
     return <div className="animate-pulse text-muted-foreground">Loading portfolio...</div>

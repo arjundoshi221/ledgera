@@ -1,37 +1,21 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { getAccounts, getTransactions } from "@/lib/api"
-import type { Account, Transaction } from "@/lib/types"
+import { useAccounts, useTransactions } from "@/lib/hooks"
 
 export default function DashboardPage() {
-  const [accounts, setAccounts] = useState<Account[]>([])
-  const [recentTxns, setRecentTxns] = useState<Transaction[]>([])
-  const [loading, setLoading] = useState(true)
   const router = useRouter()
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const accts = await getAccounts()
-        setAccounts(accts)
-        if (accts.length > 0) {
-          const txns = await getTransactions(accts[0].id)
-          setRecentTxns(txns.slice(0, 5))
-        }
-      } catch {
-        // ignore on dashboard
-      } finally {
-        setLoading(false)
-      }
-    }
-    load()
-  }, [])
+  // Use SWR hooks for automatic caching
+  const { data: accounts = [], isLoading: accountsLoading } = useAccounts()
+  const firstAccountId = accounts.length > 0 ? accounts[0].id : undefined
+  const { data: transactions = [], isLoading: txnsLoading } = useTransactions(firstAccountId)
+  const recentTxns = transactions.slice(0, 5)
+  const loading = accountsLoading || txnsLoading
 
   const assets = accounts.filter((a) => a.type === "asset")
   const liabilities = accounts.filter((a) => a.type === "liability")

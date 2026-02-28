@@ -7,10 +7,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
-import { getMonthlyDashboard, getExpenseSplit } from "@/lib/api"
+import { useMonthlyDashboard, useExpenseSplit } from "@/lib/hooks"
 import { useToast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
-import type { MonthlyDashboardResponse, MonthlyExpenseSplit, FundDashboardAnalysis } from "@/lib/types"
+import type { FundDashboardAnalysis } from "@/lib/types"
 import { useChartTheme, CHART_COLORS } from "@/lib/chart-theme"
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
@@ -171,9 +171,6 @@ function FundExtractionDonut({
 }
 
 export default function ExpenseSplitPage() {
-  const [dashboardData, setDashboardData] = useState<MonthlyDashboardResponse | null>(null)
-  const [categoryData, setCategoryData] = useState<MonthlyExpenseSplit | null>(null)
-  const [loading, setLoading] = useState(true)
   const [year, setYear] = useState(new Date().getFullYear())
   const [month, setMonth] = useState(new Date().getMonth() + 1)
   const [tab, setTab] = useState("dashboard")
@@ -181,27 +178,17 @@ export default function ExpenseSplitPage() {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
   const { toast } = useToast()
 
-  async function loadData() {
-    try {
-      setLoading(true)
-      const [dashboard, categories] = await Promise.all([
-        getMonthlyDashboard(year, month),
-        getExpenseSplit(year, month),
-      ])
-      setDashboardData(dashboard)
-      setCategoryData(categories)
-      // Default: all funds visible
-      setVisibleFunds(new Set(dashboard.fund_analyses.map(f => f.fund_id)))
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to load data", description: err.message })
-    } finally {
-      setLoading(false)
-    }
-  }
+  // Use SWR hooks for automatic caching
+  const { data: dashboardData, isLoading: dashboardLoading } = useMonthlyDashboard(year, month)
+  const { data: categoryData, isLoading: categoryLoading } = useExpenseSplit(year, month)
+  const loading = dashboardLoading || categoryLoading
 
+  // Set visible funds when dashboard data loads
   useEffect(() => {
-    loadData()
-  }, [year, month])
+    if (dashboardData) {
+      setVisibleFunds(new Set(dashboardData.fund_analyses.map(f => f.fund_id)))
+    }
+  }, [dashboardData])
 
   function toggleFundVisibility(fundId: string) {
     setVisibleFunds(prev => {

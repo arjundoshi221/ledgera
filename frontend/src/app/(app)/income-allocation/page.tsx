@@ -1,13 +1,14 @@
 "use client"
 
-import { Fragment, useEffect, useState } from "react"
+import { Fragment, useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { getIncomeAllocation, createOrUpdateAllocationOverride, deleteAllocationOverride, getWorkspace } from "@/lib/api"
+import { useIncomeAllocation, useWorkspace, useAllocationOverrideMutations } from "@/lib/hooks"
+import { invalidateAllocationOverrides } from "@/lib/cache"
 import { useToast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
 import { Info } from "lucide-react"
@@ -17,7 +18,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import type { IncomeAllocationResponse } from "@/lib/types"
 
 const MONTH_NAMES = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -41,51 +41,28 @@ function InfoTooltip({ text, formula }: { text: string; formula?: string }) {
 }
 
 export default function IncomeAllocationPage() {
-  const [data, setData] = useState<IncomeAllocationResponse | null>(null)
-  const [loading, setLoading] = useState(true)
   const [years, setYears] = useState("1")
-  const [baseCurrency, setBaseCurrency] = useState("")
-  const [minWcBalance, setMinWcBalance] = useState(0)
   const { toast } = useToast()
+
+  // Use SWR hooks for automatic caching
+  const { data, isLoading, isValidating } = useIncomeAllocation(parseInt(years))
+  const { data: workspace } = useWorkspace()
+  const baseCurrency = workspace?.base_currency ?? ""
+  const minWcBalance = workspace?.min_wc_balance ?? 0
+  const loading = isLoading
+  const refreshing = isValidating && !isLoading
+
+  // SWR mutation hooks
+  const { createOrUpdate, delete: deleteOverride } = useAllocationOverrideMutations()
 
   // Track which cell is being edited: key = "year-month-fundId"
   const [editingCell, setEditingCell] = useState<string | null>(null)
   const [editValue, setEditValue] = useState("")
   const [saving, setSaving] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
 
   // Track WC amount editing
   const [editingWcCell, setEditingWcCell] = useState<string | null>(null)
   const [editWcValue, setEditWcValue] = useState("")
-
-  async function loadData(silent = false) {
-    try {
-      if (silent) {
-        setRefreshing(true)
-      } else {
-        setLoading(true)
-      }
-      const [result, ws] = await Promise.all([
-        getIncomeAllocation(parseInt(years)),
-        getWorkspace(),
-      ])
-      setData(result)
-      setBaseCurrency(ws.base_currency)
-      setMinWcBalance(ws.min_wc_balance ?? 0)
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to load income allocation", description: err.message })
-    } finally {
-      if (silent) {
-        setRefreshing(false)
-      } else {
-        setLoading(false)
-      }
-    }
-  }
-
-  useEffect(() => {
-    loadData()
-  }, [years])
 
   function fmt(val: number | string) {
     const n = typeof val === "string" ? parseFloat(val) : val
@@ -124,7 +101,7 @@ export default function IncomeAllocationPage() {
 
     setSaving(true)
     try {
-      await createOrUpdateAllocationOverride({
+      await createOrUpdate.trigger({
         fund_id: fundId,
         year,
         month,
@@ -132,7 +109,7 @@ export default function IncomeAllocationPage() {
       })
       toast({ title: "Allocation updated" })
       setEditingCell(null)
-      await loadData(true) // Reload to show updated values
+      await invalidateAllocationOverrides(year, month)
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to save", description: err.message })
     } finally {
@@ -173,7 +150,7 @@ export default function IncomeAllocationPage() {
 
     setSaving(true)
     try {
-      await createOrUpdateAllocationOverride({
+      await createOrUpdate.trigger({
         fund_id: fundId,
         year,
         month,
@@ -182,7 +159,7 @@ export default function IncomeAllocationPage() {
       })
       toast({ title: "Working Capital updated (manual override)" })
       setEditingWcCell(null)
-      await loadData(true)
+      await invalidateAllocationOverrides(year, month)
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to save", description: err.message })
     } finally {
@@ -202,9 +179,9 @@ export default function IncomeAllocationPage() {
   async function handleUseModelAmount(year: number, month: number, fundId: string) {
     setSaving(true)
     try {
-      await deleteAllocationOverride(fundId, year, month)
+      await deleteOverride.trigger({ fundId, year, month })
       toast({ title: "Reset to model amount" })
-      await loadData(true)
+      await invalidateAllocationOverrides(year, month)
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to reset", description: err.message })
     } finally {
@@ -216,9 +193,9 @@ export default function IncomeAllocationPage() {
   async function handleOptimize(year: number, month: number, fundId: string, _actualFixedCost: number) {
     setSaving(true)
     try {
-      await deleteAllocationOverride(fundId, year, month)
+      await deleteOverride.trigger({ fundId, year, month })
       toast({ title: "Reset to sweep default" })
-      await loadData(true)
+      await invalidateAllocationOverrides(year, month)
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to reset", description: err.message })
     } finally {
@@ -232,11 +209,11 @@ export default function IncomeAllocationPage() {
     try {
       if (mode === "OPTIMIZE") {
         // Delete override to use default optimize mode
-        await deleteAllocationOverride(fundId, year, month)
+        await deleteOverride.trigger({ fundId, year, month })
         toast({ title: "Switched to Optimize mode" })
       } else if (mode === "MODEL") {
         // Create override with mode="MODEL"
-        await createOrUpdateAllocationOverride({
+        await createOrUpdate.trigger({
           fund_id: fundId,
           year,
           month,
@@ -244,7 +221,7 @@ export default function IncomeAllocationPage() {
         })
         toast({ title: "Switched to Model mode" })
       }
-      await loadData(true)
+      await invalidateAllocationOverrides(year, month)
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to change mode", description: err.message })
     } finally {

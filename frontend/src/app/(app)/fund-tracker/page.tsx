@@ -8,10 +8,12 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { getFundTracker, createTransfer, getPrice } from "@/lib/api"
+import { useFundTracker, useTransactionMutations } from "@/lib/hooks"
+import { invalidateTransactions, invalidateFunds } from "@/lib/cache"
+import { getPrice } from "@/lib/api"
 import { useToast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
-import type { FundTrackerResponse, TransferSuggestion } from "@/lib/types"
+import type { TransferSuggestion } from "@/lib/types"
 import { useChartTheme, CHART_COLORS } from "@/lib/chart-theme"
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
@@ -27,8 +29,6 @@ const MONTH_NAMES = [
 const FUND_COLORS = CHART_COLORS
 
 export default function FundTrackerPage() {
-  const [data, setData] = useState<FundTrackerResponse | null>(null)
-  const [loading, setLoading] = useState(true)
   const [years, setYears] = useState("1")
   const [view, setView] = useState("ledger")
   const [ledgerSub, setLedgerSub] = useState("funds")
@@ -37,6 +37,10 @@ export default function FundTrackerPage() {
   const [fetchingRate, setFetchingRate] = useState(false)
   const { toast } = useToast()
   const { tooltipStyle, gridStroke, tickStyle } = useChartTheme()
+
+  // Use SWR hooks for automatic caching
+  const { data, isLoading: loading } = useFundTracker(parseInt(years))
+  const { createTransfer } = useTransactionMutations()
 
   function isCrossCurrencySuggestion(s: TransferSuggestion): boolean {
     return !!(s.from_currency && s.to_currency && s.from_currency !== s.to_currency)
@@ -79,7 +83,7 @@ export default function FundTrackerPage() {
     setFxRateInput(null)
     try {
       const isCross = isCrossCurrencySuggestion(s)
-      await createTransfer({
+      await createTransfer.trigger({
         timestamp: new Date().toISOString(),
         payee: "Fund Rebalancing",
         memo: `Transfer to ${s.to_account_name}`,
@@ -94,29 +98,13 @@ export default function FundTrackerPage() {
         dest_fund_id: s.dest_fund_id || undefined,
       })
       toast({ title: "Transfer executed", description: `${s.from_currency} ${s.amount.toFixed(2)} transferred to ${s.to_account_name}` })
-      await loadData()
+      await Promise.all([invalidateTransactions(), invalidateFunds()])
     } catch (err: any) {
       toast({ variant: "destructive", title: "Transfer failed", description: err.message })
     } finally {
       setExecutingTransfer(null)
     }
   }
-
-  async function loadData() {
-    try {
-      setLoading(true)
-      const result = await getFundTracker(parseInt(years))
-      setData(result)
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to load fund tracker", description: err.message })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    loadData()
-  }, [years])
 
   function fmt(val: number) {
     if (val === 0) return "-"
