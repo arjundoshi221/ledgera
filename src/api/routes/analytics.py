@@ -563,14 +563,16 @@ def get_income_allocation(
                 if wc_key and wc_key in amount_override_map:
                     # Manual override takes precedence
                     wc_amount = amount_override_map[wc_key]
-                    savings_remainder = net_income - wc_amount
                 else:
-                    # Sweep: surplus above min_wc_balance, adjusted for self-funding
-                    raw_surplus = wc_prev_closing + wc_cr - wc_db - min_wc_balance
-                    savings_remainder = max(Decimal(0), raw_surplus / (1 + K))
-                    wc_amount = net_income - savings_remainder
+                    # Auto-optimize: WC = actual costs + shortfall to reach minimum
+                    shortfall = max(Decimal(0), min_wc_balance - wc_prev_closing)
+                    wc_amount = actual_fixed_cost + shortfall
 
-                # Fixed cost optimization = WC - actual
+                # Savings = income - WC allocation, adjusted for self-funding
+                raw_savings = net_income - wc_amount
+                savings_remainder = max(Decimal(0), raw_savings / (1 + K))
+
+                # Fixed cost optimization = WC - actual (display-only)
                 fixed_cost_optimization = wc_amount - actual_fixed_cost
 
                 # Working capital percentages
@@ -1059,20 +1061,24 @@ def get_fund_tracker(
 
             prev_y, prev_m = _prev_month(y, m)
             net_inc = _get_income_for_month(session, workspace_id, prev_y, prev_m)
+            actual_costs = _get_expenses_for_month(session, workspace_id, y, m)
             wc_key = (wc_fund_id, y, m) if wc_fund_id else None
-            wc_cr = wc_m_credits.get((y, m), Decimal(0))
-            wc_db = wc_m_debits.get((y, m), Decimal(0))
 
             if wc_key and wc_key in amount_override_map:
                 wc_amt = amount_override_map[wc_key]
-                sav_rem = net_inc - wc_amt
             else:
-                raw_surplus = wc_sweep_running + wc_cr - wc_db - min_wc_balance
-                sav_rem = max(Decimal(0), raw_surplus / (1 + K))
-                wc_amt = net_inc - sav_rem
+                shortfall = max(Decimal(0), min_wc_balance - wc_sweep_running)
+                wc_amt = actual_costs + shortfall
+
+            raw_savings = net_inc - wc_amt
+            sav_rem = max(Decimal(0), raw_savings / (1 + K))
 
             monthly_sweep_savings[(y, m)] = sav_rem
             monthly_sweep_wc_amount[(y, m)] = wc_amt
+
+            # Advance running balance
+            wc_cr = wc_m_credits.get((y, m), Decimal(0))
+            wc_db = wc_m_debits.get((y, m), Decimal(0))
 
             # Advance running balance (self-funding deduction = sav_rem * K)
             sf_deduction = sav_rem * K
@@ -1935,20 +1941,24 @@ def get_monthly_dashboard(
                 K += pct_k * Decimal(str(sf_k["self_funding_percentage"])) / Decimal(10000)
 
             wc_key = (wc_fund_id, year, m_s) if wc_fund_id else None
-            wc_cr = wc_m_credits.get((year, m_s), Decimal(0))
-            wc_db = wc_m_debits.get((year, m_s), Decimal(0))
             net_inc = monthly_incomes[m_s]
+            actual_costs = _get_expenses_for_month(session, workspace_id, year, m_s)
 
             if wc_key and wc_key in amount_override_map:
                 wc_amt = amount_override_map[wc_key]
-                sav_rem = net_inc - wc_amt
             else:
-                raw_surplus = wc_sweep_running + wc_cr - wc_db - min_wc_balance
-                sav_rem = max(Decimal(0), raw_surplus / (1 + K))
-                wc_amt = net_inc - sav_rem
+                shortfall = max(Decimal(0), min_wc_balance - wc_sweep_running)
+                wc_amt = actual_costs + shortfall
+
+            raw_savings = net_inc - wc_amt
+            sav_rem = max(Decimal(0), raw_savings / (1 + K))
 
             monthly_sweep_savings[m_s] = sav_rem
             monthly_sweep_wc_amount[m_s] = wc_amt
+
+            # Advance running balance
+            wc_cr = wc_m_credits.get((year, m_s), Decimal(0))
+            wc_db = wc_m_debits.get((year, m_s), Decimal(0))
             sf_deduction = sav_rem * K
             wc_sweep_running = wc_sweep_running + wc_cr - wc_db - sf_deduction
 
