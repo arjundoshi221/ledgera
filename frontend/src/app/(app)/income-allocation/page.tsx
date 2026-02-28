@@ -24,14 +24,17 @@ const MONTH_NAMES = [
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
 ]
 
-function InfoTooltip({ text }: { text: string }) {
+function InfoTooltip({ text, formula }: { text: string; formula?: string }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Info className="inline-block ml-1 h-3.5 w-3.5 text-muted-foreground/60 cursor-help" />
       </TooltipTrigger>
-      <TooltipContent>
+      <TooltipContent className="max-w-xs">
         <p className="text-xs">{text}</p>
+        {formula && (
+          <p className="text-xs font-mono mt-1 text-muted-foreground">{formula}</p>
+        )}
       </TooltipContent>
     </Tooltip>
   )
@@ -357,24 +360,45 @@ export default function IncomeAllocationPage() {
                       <th className="px-3 py-2 text-left font-medium">Month</th>
                       <th className="px-3 py-2 text-right font-medium">
                         Net Income
-                        <InfoTooltip text="Only includes income assigned to Working Capital" />
+                        <InfoTooltip
+                          text="Current month's total income (pure cash basis)"
+                          formula="Total Income - Total Expenses"
+                        />
                       </th>
                       <th className="px-3 py-2 text-right font-medium">
                         Allocated Budget
-                        <InfoTooltip text="Previous month's Net Income" />
+                        <InfoTooltip
+                          text="Available funds for allocation (pure cash basis)"
+                          formula="WC Opening + Current Month Income"
+                        />
                       </th>
                       <th className="px-3 py-2 text-right font-medium">
                         Allocated Fixed Cost
-                        <InfoTooltip text="From budget model" />
+                        <InfoTooltip
+                          text="MODEL mode: Budgeted WC amount from active scenario (predictable)"
+                          formula="= Budget Benchmark (no sweep, no self-funding)"
+                        />
                       </th>
-                      <th className="px-3 py-2 text-right font-medium">Actual Fixed Costs</th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Actual Fixed Costs
+                        <InfoTooltip
+                          text="Actual Working Capital expenses for the month"
+                          formula="Total expenses categorized as fixed costs"
+                        />
+                      </th>
                       <th className="px-3 py-2 text-right font-medium">
                         Fixed Cost Opt.
-                        <InfoTooltip text="Working Capital - Actual Fixed Costs" />
+                        <InfoTooltip
+                          text="OPTIMIZE mode: Dynamic WC amount with shortfall protection"
+                          formula="Actual Costs + max(0, Min WC - Opening)"
+                        />
                       </th>
                       <th className="px-3 py-2 text-right font-medium">
                         Savings Remainder
-                        <InfoTooltip text="Surplus above minimum WC balance, adjusted for self-funding (auto-sweep)" />
+                        <InfoTooltip
+                          text="Available for allocation to funds (includes sweep in OPTIMIZE mode)"
+                          formula="OPTIMIZE: [(Income - WC) + max(0, Opening - Min)] / (1+K) | MODEL: (Income - WC)"
+                        />
                       </th>
                       {fundsHeaders.map((f) => (
                         <th key={f.fund_id} colSpan={2} className="px-3 py-2 text-center font-medium border-l">
