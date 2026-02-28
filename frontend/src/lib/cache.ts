@@ -17,8 +17,8 @@ import { mutate } from 'swr'
 /**
  * Invalidate all keys matching a pattern
  */
-export function invalidatePattern(pattern: string | RegExp) {
-  return mutate(
+export async function invalidatePattern(pattern: string | RegExp): Promise<void> {
+  await mutate(
     (key) => {
       if (typeof key === 'string') {
         if (typeof pattern === 'string') {
@@ -36,15 +36,15 @@ export function invalidatePattern(pattern: string | RegExp) {
 /**
  * Invalidate a specific key
  */
-export function invalidateKey(key: string) {
-  return mutate(key, undefined, { revalidate: true })
+export async function invalidateKey(key: string): Promise<void> {
+  await mutate(key, undefined, { revalidate: true })
 }
 
 /**
  * Clear all cache
  */
-export function clearAllCache() {
-  return mutate(() => true, undefined, { revalidate: false })
+export async function clearAllCache(): Promise<void> {
+  await mutate(() => true, undefined, { revalidate: false })
 }
 
 // ============================================================
