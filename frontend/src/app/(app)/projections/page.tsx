@@ -55,23 +55,6 @@ export default function ProjectionsPage() {
   const { data: projAllCategories = [] } = useCategories()
   const projAllSubcategories = allSubcategories
 
-  // Filter categories by transaction type for recurring dialog
-  const projFilteredCategories = useMemo(() => {
-    if (!recurringPrefill?.transaction_type) return projAllCategories
-    return projAllCategories.filter((c) => c.type === recurringPrefill.transaction_type)
-  }, [projAllCategories, recurringPrefill?.transaction_type])
-
-  // Filter accounts by selected fund for recurring dialog
-  const projFilteredAccounts = useMemo(() => {
-    if (!recurringFundId || recurringFundId === "none") return projAccounts.filter((a) => a.name !== "External")
-    const fund = funds.find((f) => f.id === recurringFundId)
-    if (!fund || !fund.linked_accounts || fund.linked_accounts.length === 0) {
-      return projAccounts.filter((a) => a.name !== "External")
-    }
-    const linkedAccountIds = fund.linked_accounts.map((la) => la.id)
-    return projAccounts.filter((a) => linkedAccountIds.includes(a.id) && a.name !== "External")
-  }, [recurringFundId, funds, projAccounts])
-
   const baseCurrency = workspace?.base_currency ?? "SGD"
   const loadingRef = categoriesLoading
 
@@ -123,6 +106,23 @@ export default function ProjectionsPage() {
   const [recurringPaymentMethodId, setRecurringPaymentMethodId] = useState("")
   const [recurringCategoryId, setRecurringCategoryId] = useState("")
   const [creatingRecurring, setCreatingRecurring] = useState(false)
+
+  // Filter categories by transaction type for recurring dialog
+  const projFilteredCategories = useMemo(() => {
+    if (!recurringPrefill?.transaction_type) return projAllCategories
+    return projAllCategories.filter((c) => c.type === recurringPrefill.transaction_type)
+  }, [projAllCategories, recurringPrefill?.transaction_type])
+
+  // Filter accounts by selected fund for recurring dialog
+  const projFilteredAccounts = useMemo(() => {
+    if (!recurringFundId || recurringFundId === "none") return projAccounts.filter((a) => a.name !== "External")
+    const fund = funds.find((f) => f.id === recurringFundId)
+    if (!fund || !fund.linked_accounts || fund.linked_accounts.length === 0) {
+      return projAccounts.filter((a) => a.name !== "External")
+    }
+    const linkedAccountIds = fund.linked_accounts.map((la) => la.id)
+    return projAccounts.filter((a) => linkedAccountIds.includes(a.id) && a.name !== "External")
+  }, [recurringFundId, funds, projAccounts])
 
   // Initialize fund weights and returns when funds load
   useEffect(() => {
