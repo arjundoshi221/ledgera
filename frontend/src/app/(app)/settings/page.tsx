@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,34 +15,27 @@ import { Separator } from "@/components/ui/separator"
 import { getCountryName } from "@/lib/countries"
 import { useToast } from "@/components/ui/use-toast"
 import {
-  getWorkspace,
-  updateWorkspace,
-  getMe,
-  getAccounts,
   createAccount,
   updateAccount,
   deleteAccount,
-  getCategories,
   createCategory,
   updateCategory,
   deleteCategory,
-  getSubcategories,
   createSubcategory,
   updateSubcategory,
   deleteSubcategory,
-  getFunds,
   createFund,
   updateFund,
   deleteFund,
-  getCards,
   createCard,
   updateCard,
   deleteCard,
-  getPaymentMethods,
   createPaymentMethod,
   updatePaymentMethod,
   deletePaymentMethod,
 } from "@/lib/api"
+import { useWorkspace, useMe, useAccounts, useCategories, useSubcategories, useFunds, useCards, usePaymentMethods, useWorkspaceMutations } from "@/lib/hooks"
+import { invalidateWorkspace, invalidateAccounts, invalidateCategories, invalidateSubcategories, invalidateFunds, invalidateCards, invalidatePaymentMethods } from "@/lib/cache"
 import { clearAuth } from "@/lib/auth"
 import { useRouter, useSearchParams } from "next/navigation"
 import { CURRENCIES, ACCOUNT_TYPES, CARD_TYPES, CARD_NETWORKS } from "@/lib/constants"
@@ -52,17 +45,37 @@ export default function SettingsPage() {
   const { toast } = useToast()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "workspace")
-  const [workspace, setWorkspace] = useState<Workspace | null>(null)
-  const [user, setUser] = useState<UserResponse | null>(null)
-  const [wsName, setWsName] = useState("")
-  const [wsCurrency, setWsCurrency] = useState("SGD")
-  const [minWcBalance, setMinWcBalance] = useState(0)
+
+  // Use SWR hooks for automatic caching
+  const { data: workspace, isLoading: workspaceLoading } = useWorkspace()
+  const { data: user, isLoading: userLoading } = useMe()
+  const { data: accounts = [] } = useAccounts()
+  const { data: categories = [] } = useCategories()
+  const { data: subcategories = [] } = useSubcategories()
+  const { data: funds = [] } = useFunds()
+  const { data: cards = [] } = useCards()
+  const { data: paymentMethods = [] } = usePaymentMethods()
+  const { update: updateWorkspaceMutation } = useWorkspaceMutations()
+
+  const loading = workspaceLoading || userLoading
+
+  // Workspace form state
+  const [wsName, setWsName] = useState(workspace?.name ?? "")
+  const [wsCurrency, setWsCurrency] = useState(workspace?.base_currency ?? "SGD")
+  const [minWcBalance, setMinWcBalance] = useState(workspace?.min_wc_balance ?? 0)
   const [saving, setSaving] = useState(false)
 
+  // Sync workspace state when data loads
+  useEffect(() => {
+    if (workspace) {
+      setWsName(workspace.name)
+      setWsCurrency(workspace.base_currency)
+      setMinWcBalance(workspace.min_wc_balance ?? 0)
+    }
+  }, [workspace])
+
   // Accounts
-  const [accounts, setAccounts] = useState<Account[]>([])
   const [deleteAccountId, setDeleteAccountId] = useState<string | null>(null)
   const [accountDialogOpen, setAccountDialogOpen] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
@@ -73,7 +86,6 @@ export default function SettingsPage() {
   const [accStartingBalance, setAccStartingBalance] = useState("")
 
   // Categories
-  const [categories, setCategories] = useState<Category[]>([])
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false)
   const [editingCategory, setEditingCategory] = useState<Category | null>(null)
   const [catName, setCatName] = useState("")
@@ -82,7 +94,6 @@ export default function SettingsPage() {
   const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null)
 
   // Subcategories
-  const [subcategories, setSubcategories] = useState<Subcategory[]>([])
   const [subcategoryDialogOpen, setSubcategoryDialogOpen] = useState(false)
   const [editingSubcategory, setEditingSubcategory] = useState<Subcategory | null>(null)
   const [subName, setSubName] = useState("")
@@ -90,7 +101,6 @@ export default function SettingsPage() {
   const [deletingSubcategoryId, setDeletingSubcategoryId] = useState<string | null>(null)
 
   // Funds
-  const [funds, setFunds] = useState<Fund[]>([])
   const [fundDialogOpen, setFundDialogOpen] = useState(false)
   const [editingFund, setEditingFund] = useState<Fund | null>(null)
   const [fundName, setFundName] = useState("")
@@ -100,7 +110,6 @@ export default function SettingsPage() {
   const [deletingFundId, setDeletingFundId] = useState<string | null>(null)
 
   // Cards
-  const [cards, setCards] = useState<CardType[]>([])
   const [cardDialogOpen, setCardDialogOpen] = useState(false)
   const [editingCard, setEditingCard] = useState<CardType | null>(null)
   const [cardName, setCardName] = useState("")
@@ -112,7 +121,6 @@ export default function SettingsPage() {
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null)
 
   // Payment Methods
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
   const [pmDialogOpen, setPmDialogOpen] = useState(false)
   const [editingPm, setEditingPm] = useState<PaymentMethod | null>(null)
   const [pmName, setPmName] = useState("")
@@ -121,40 +129,6 @@ export default function SettingsPage() {
   const [pmLinkedAccountId, setPmLinkedAccountId] = useState("")
   const [deletingPmId, setDeletingPmId] = useState<string | null>(null)
 
-  async function loadData(isInitial = false) {
-    try {
-      if (isInitial) setLoading(true)
-      const [ws, me, accts, cats, subs, fnds, crds, pms] = await Promise.all([
-        getWorkspace(),
-        getMe(),
-        getAccounts(),
-        getCategories(),
-        getSubcategories(),
-        getFunds(),
-        getCards(),
-        getPaymentMethods(),
-      ])
-      setWorkspace(ws)
-      setUser(me)
-      setWsName(ws.name)
-      setWsCurrency(ws.base_currency)
-      setMinWcBalance(ws.min_wc_balance ?? 0)
-      setAccounts(accts)
-      setCategories(cats)
-      setSubcategories(subs)
-      setFunds(fnds)
-      setCards(crds)
-      setPaymentMethods(pms)
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to load settings", description: err.message })
-    } finally {
-      if (isInitial) setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    loadData(true)
-  }, [])
 
   // ── Workspace ──
 
@@ -162,8 +136,8 @@ export default function SettingsPage() {
     e.preventDefault()
     setSaving(true)
     try {
-      const updated = await updateWorkspace({ name: wsName, base_currency: wsCurrency, min_wc_balance: minWcBalance })
-      setWorkspace(updated)
+      await updateWorkspaceMutation.trigger({ name: wsName, base_currency: wsCurrency, min_wc_balance: minWcBalance })
+      await invalidateWorkspace()
       toast({ title: "Settings saved" })
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed", description: err.message })
@@ -179,7 +153,7 @@ export default function SettingsPage() {
       await deleteAccount(accountId)
       toast({ title: "Account deleted" })
       setDeleteAccountId(null)
-      loadData()
+      await invalidateAccounts()
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to delete account", description: err.message })
     }
@@ -223,7 +197,7 @@ export default function SettingsPage() {
         toast({ title: "Account created" })
       }
       setAccountDialogOpen(false)
-      loadData()
+      await invalidateAccounts()
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed", description: err.message })
     }
@@ -259,7 +233,7 @@ export default function SettingsPage() {
         toast({ title: "Category created" })
       }
       setCategoryDialogOpen(false)
-      loadData()
+      await invalidateCategories()
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed", description: err.message })
     }
@@ -270,7 +244,7 @@ export default function SettingsPage() {
       await deleteCategory(id)
       toast({ title: "Category deleted" })
       setDeletingCategoryId(null)
-      loadData()
+      await Promise.all([invalidateCategories(), invalidateSubcategories()])
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to delete", description: err.message })
     }
@@ -304,7 +278,7 @@ export default function SettingsPage() {
         toast({ title: "Subcategory created" })
       }
       setSubcategoryDialogOpen(false)
-      loadData()
+      await invalidateSubcategories()
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed", description: err.message })
     }
@@ -315,7 +289,7 @@ export default function SettingsPage() {
       await deleteSubcategory(id)
       toast({ title: "Subcategory deleted" })
       setDeletingSubcategoryId(null)
-      loadData()
+      await invalidateSubcategories()
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to delete", description: err.message })
     }
@@ -363,7 +337,7 @@ export default function SettingsPage() {
         toast({ title: "Fund created" })
       }
       setFundDialogOpen(false)
-      loadData()
+      await invalidateFunds()
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed", description: err.message })
     }
@@ -374,7 +348,7 @@ export default function SettingsPage() {
       await deleteFund(id)
       toast({ title: "Fund deleted" })
       setDeletingFundId(null)
-      loadData()
+      await invalidateFunds()
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to delete", description: err.message })
     }
@@ -429,7 +403,7 @@ export default function SettingsPage() {
         toast({ title: "Card created" })
       }
       setCardDialogOpen(false)
-      loadData()
+      await Promise.all([invalidateCards(), invalidatePaymentMethods()])
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed", description: err.message })
     }
@@ -440,7 +414,7 @@ export default function SettingsPage() {
       await deleteCard(id)
       toast({ title: "Card deleted" })
       setDeletingCardId(null)
-      loadData()
+      await Promise.all([invalidateCards(), invalidatePaymentMethods()])
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to delete", description: err.message })
     }
@@ -483,7 +457,7 @@ export default function SettingsPage() {
         toast({ title: "Payment method created" })
       }
       setPmDialogOpen(false)
-      loadData()
+      await invalidatePaymentMethods()
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed", description: err.message })
     }
@@ -494,7 +468,7 @@ export default function SettingsPage() {
       await deletePaymentMethod(id)
       toast({ title: "Payment method deleted" })
       setDeletingPmId(null)
-      loadData()
+      await invalidatePaymentMethods()
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to delete", description: err.message })
     }

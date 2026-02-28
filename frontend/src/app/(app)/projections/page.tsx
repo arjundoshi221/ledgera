@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,20 +11,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import {
   runProjection,
-  getCategories,
-  getSubcategories,
-  getFunds,
-  getAccounts,
-  getScenarios,
   getScenario,
   saveScenario,
   updateScenario,
   activateScenario,
   deleteScenario,
   createRecurringTransaction,
-  getWorkspace,
-  getPaymentMethods,
 } from "@/lib/api"
+import { useCategories, useSubcategories, useFunds, useAccounts, useScenarios, useWorkspace, usePaymentMethods } from "@/lib/hooks"
 import { useToast } from "@/components/ui/use-toast"
 import type {
   ProjectionAssumptions,
@@ -46,8 +40,23 @@ import { YearlyResults } from "./_components/yearly-results"
 import { SaveScenarioDialog } from "./_components/save-scenario-dialog"
 
 export default function ProjectionsPage() {
-  // Workspace currency
-  const [baseCurrency, setBaseCurrency] = useState("SGD")
+  // Use SWR hooks for reference data
+  const { data: expenseCategories = [], isLoading: categoriesLoading } = useCategories("expense")
+  const { data: allSubcategories = [] } = useSubcategories()
+  const expenseSubcategories = useMemo(() =>
+    allSubcategories.filter((s: Subcategory) => expenseCategories.some((c: Category) => c.id === s.category_id)),
+    [allSubcategories, expenseCategories]
+  )
+  const { data: funds = [] } = useFunds()
+  const { data: projAccounts = [] } = useAccounts()
+  const { data: workspace } = useWorkspace()
+  const { data: scenarios = [] } = useScenarios()
+  const { data: projPaymentMethods = [] } = usePaymentMethods()
+  const { data: projAllCategories = [] } = useCategories()
+  const projAllSubcategories = allSubcategories
+
+  const baseCurrency = workspace?.base_currency ?? "SGD"
+  const loadingRef = categoriesLoading
 
   // Income & general
   const [years, setYears] = useState(5)
@@ -66,15 +75,9 @@ export default function ProjectionsPage() {
   // One-time costs
   const [oneTimeCosts, setOneTimeCosts] = useState<OneTimeCost[]>([])
 
-  // Fund allocation
-  const [fundWeights, setFundWeights] = useState<Record<string, number>>({ cash: 40, invest: 60 })
-  const [fundReturns, setFundReturns] = useState<Record<string, number>>({ cash: 2, invest: 7 })
-
-  // Reference data
-  const [expenseCategories, setExpenseCategories] = useState<Category[]>([])
-  const [expenseSubcategories, setExpenseSubcategories] = useState<Subcategory[]>([])
-  const [funds, setFunds] = useState<Fund[]>([])
-  const [loadingRef, setLoadingRef] = useState(true)
+  // Fund allocation - initialize from loaded funds
+  const [fundWeights, setFundWeights] = useState<Record<string, number>>({})
+  const [fundReturns, setFundReturns] = useState<Record<string, number>>({})
 
   // Results
   const [yearlyData, setYearlyData] = useState<AggregateResult | null>(null)
@@ -82,7 +85,6 @@ export default function ProjectionsPage() {
   const { toast } = useToast()
 
   // Scenario management
-  const [scenarios, setScenarios] = useState<ScenarioListItem[]>([])
   const [currentScenarioId, setCurrentScenarioId] = useState<string | null>(null)
   const [isDirty, setIsDirty] = useState(false)
   const [showSaveDialog, setShowSaveDialog] = useState(false)
@@ -92,7 +94,6 @@ export default function ProjectionsPage() {
   const [panelOpen, setPanelOpen] = useState(true)
 
   // Recurring transaction creation from projections
-  const [projAccounts, setProjAccounts] = useState<Account[]>([])
   const [recurringDialogOpen, setRecurringDialogOpen] = useState(false)
   const [recurringPrefill, setRecurringPrefill] = useState<Partial<CreateRecurringTransactionRequest> | null>(null)
   const [recurringAccountId, setRecurringAccountId] = useState("")
@@ -105,52 +106,20 @@ export default function ProjectionsPage() {
   const [recurringPaymentMethodId, setRecurringPaymentMethodId] = useState("")
   const [recurringCategoryId, setRecurringCategoryId] = useState("")
   const [creatingRecurring, setCreatingRecurring] = useState(false)
-  const [projPaymentMethods, setProjPaymentMethods] = useState<PaymentMethod[]>([])
-  const [projAllCategories, setProjAllCategories] = useState<Category[]>([])
-  const [projAllSubcategories, setProjAllSubcategories] = useState<Subcategory[]>([])
 
-  // Load categories, funds & scenarios on mount
+  // Initialize fund weights and returns when funds load
   useEffect(() => {
-    async function loadRefData() {
-      try {
-        const [cats, fnds, scns, accts, subs, ws, pms, allCats] = await Promise.all([
-          getCategories("expense"),
-          getFunds(),
-          getScenarios(),
-          getAccounts(),
-          getSubcategories(),
-          getWorkspace(),
-          getPaymentMethods(),
-          getCategories(),
-        ])
-        setBaseCurrency(ws.base_currency)
-        setExpenseCategories(cats)
-        setExpenseSubcategories(subs.filter((s: Subcategory) => cats.some((c: Category) => c.id === s.category_id)))
-        setFunds(fnds)
-        setScenarios(scns)
-        setProjAccounts(accts.filter((a: Account) => a.name !== "External"))
-        setProjPaymentMethods(pms.filter((pm: PaymentMethod) => pm.is_active))
-        setProjAllCategories(allCats)
-        setProjAllSubcategories(subs)
-
-        if (fnds.length > 0) {
-          const weights: Record<string, number> = {}
-          const returns: Record<string, number> = {}
-          for (const f of fnds) {
-            weights[f.name] = f.allocation_percentage ?? 0
-            returns[f.name] = 5
-          }
-          setFundWeights(weights)
-          setFundReturns(returns)
-        }
-      } catch {
-        // Silently fall back to defaults if ref data fails
-      } finally {
-        setLoadingRef(false)
+    if (funds.length > 0 && Object.keys(fundWeights).length === 0) {
+      const weights: Record<string, number> = {}
+      const returns: Record<string, number> = {}
+      for (const f of funds) {
+        weights[f.name] = f.allocation_percentage ?? 0
+        returns[f.name] = 5
       }
+      setFundWeights(weights)
+      setFundReturns(returns)
     }
-    loadRefData()
-  }, [])
+  }, [funds, fundWeights])
 
   // Unsaved changes warning
   useEffect(() => {
@@ -289,9 +258,7 @@ export default function ProjectionsPage() {
       }
       setIsDirty(false)
       setShowSaveDialog(false)
-      // Refresh scenario list
-      const scns = await getScenarios()
-      setScenarios(scns)
+      // Note: scenarios will auto-refresh via SWR
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to save", description: err.message })
     } finally {
@@ -307,8 +274,7 @@ export default function ProjectionsPage() {
         setCurrentScenarioId(null)
         setIsDirty(false)
       }
-      const scns = await getScenarios()
-      setScenarios(scns)
+      // Note: scenarios will auto-refresh via SWR
       toast({ title: "Simulation deleted" })
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to delete", description: err.message })
@@ -318,8 +284,7 @@ export default function ProjectionsPage() {
   async function handleActivate(scenarioId: string) {
     try {
       await activateScenario(scenarioId)
-      const scns = await getScenarios()
-      setScenarios(scns)
+      // Note: scenarios will auto-refresh via SWR
       toast({ title: "Budget benchmark updated" })
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed", description: err.message })

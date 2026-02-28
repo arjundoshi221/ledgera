@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,7 +11,9 @@ import { Separator } from "@/components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
-import { getAccounts, getTransactions, createTransaction, createTransfer, updateTransaction, deleteTransaction, getCategories, getSubcategories, getFunds, getPrice, getPaymentMethods, getRecurringTransactions, createRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, getPendingInstances, confirmRecurring, skipRecurring, getWorkspace } from "@/lib/api"
+import { createTransaction, createTransfer, updateTransaction, deleteTransaction, getPrice, createRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, confirmRecurring, skipRecurring } from "@/lib/api"
+import { useAccounts, useTransactions, useCategories, useSubcategories, useFunds, usePaymentMethods, useRecurringTransactions, usePendingInstances, useWorkspace, useTransactionMutations, useRecurringMutations } from "@/lib/hooks"
+import { invalidateTransactions, invalidateRecurring, invalidatePendingInstances } from "@/lib/cache"
 import { TRANSACTION_STATUSES, RECURRING_FREQUENCIES } from "@/lib/constants"
 import { useToast } from "@/components/ui/use-toast"
 import type { Account, Transaction, Posting, Category, Subcategory, Fund, PaymentMethod, RecurringTransaction, PendingInstance, RecurringFrequency } from "@/lib/types"
@@ -22,17 +24,24 @@ function toLocalDatetime(d: Date): string {
 }
 
 export default function TransactionsPage() {
-  const [accounts, setAccounts] = useState<Account[]>([])
-  const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [baseCurrency, setBaseCurrency] = useState("SGD")
 
-  // Reference data
-  const [categories, setCategories] = useState<Category[]>([])
-  const [subcategories, setSubcategories] = useState<Subcategory[]>([])
-  const [funds, setFunds] = useState<Fund[]>([])
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
+  // Use SWR hooks for automatic caching
+  const { data: accounts = [], isLoading: accountsLoading } = useAccounts()
+  const { data: rawTransactions = [], isLoading: txnsLoading, mutate: mutateTransactions } = useTransactions()
+  const { data: categories = [] } = useCategories()
+  const { data: subcategories = [] } = useSubcategories()
+  const { data: funds = [] } = useFunds()
+  const { data: paymentMethods = [] } = usePaymentMethods()
+  const { data: workspace } = useWorkspace()
+  const baseCurrency = workspace?.base_currency ?? "SGD"
+
+  // Sort transactions by timestamp descending (newest first)
+  const transactions = useMemo(() => {
+    return [...rawTransactions].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+  }, [rawTransactions])
+
+  const loading = accountsLoading || txnsLoading
 
   // Form state
   const [txType, setTxType] = useState<"income" | "expense" | "transfer">("expense")
@@ -82,9 +91,9 @@ export default function TransactionsPage() {
   // Main tab
   const [activeMainTab, setActiveMainTab] = useState<"transactions" | "recurring">("transactions")
 
-  // Recurring state
-  const [recurringTemplates, setRecurringTemplates] = useState<RecurringTransaction[]>([])
-  const [pendingInstances, setPendingInstances] = useState<PendingInstance[]>([])
+  // Recurring - use SWR hooks
+  const { data: recurringTemplates = [] } = useRecurringTransactions()
+  const { data: pendingInstances = [] } = usePendingInstances()
   const [showRecurringForm, setShowRecurringForm] = useState(false)
   const [recName, setRecName] = useState("")
   const [recTxType, setRecTxType] = useState<"income" | "expense" | "transfer">("expense")
@@ -146,49 +155,6 @@ export default function TransactionsPage() {
     setFilterPayee("")
   }
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const [accts, cats, subs, fnds, pms, ws] = await Promise.all([
-          getAccounts(),
-          getCategories(),
-          getSubcategories(),
-          getFunds(),
-          getPaymentMethods(),
-          getWorkspace(),
-        ])
-        setAccounts(accts)
-        setCategories(cats)
-        setSubcategories(subs)
-        setFunds(fnds)
-        setPaymentMethods(pms)
-        if (ws?.base_currency) setBaseCurrency(ws.base_currency)
-      } catch {
-        // ignore
-      } finally {
-        setLoading(false)
-      }
-    }
-    load()
-  }, [])
-
-  // Load all transactions from workspace (deduplicated)
-  async function loadAllTransactions() {
-    try {
-      const txs = await getTransactions() // No account ID = get all for workspace
-      // Sort by timestamp descending (newest first)
-      txs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      setTransactions(txs)
-    } catch {
-      setTransactions([])
-    }
-  }
-
-  useEffect(() => {
-    if (accounts.length > 0) {
-      loadAllTransactions()
-    }
-  }, [accounts])
 
   // Filter subcategories by selected category
   const filteredSubcategories = subcategories.filter((s) => s.category_id === categoryId)
@@ -308,7 +274,7 @@ export default function TransactionsPage() {
         toast({ title: "Transfer created" })
         setShowForm(false)
         resetForm()
-        await loadAllTransactions()
+        await invalidateTransactions()
       } catch (err: any) {
         toast({ variant: "destructive", title: "Failed", description: err.message })
       } finally {
@@ -333,8 +299,7 @@ export default function TransactionsPage() {
       toast({ title: "Transaction created" })
       setShowForm(false)
       resetForm()
-      // Reload all transactions
-      await loadAllTransactions()
+      await invalidateTransactions()
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed", description: err.message })
     } finally {
@@ -477,7 +442,7 @@ export default function TransactionsPage() {
       setEditDialogOpen(false)
       setEditingTransaction(null)
       resetForm()
-      await loadAllTransactions()
+      await invalidateTransactions()
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed", description: err.message })
     } finally {
@@ -490,7 +455,7 @@ export default function TransactionsPage() {
       await deleteTransaction(txId)
       toast({ title: "Transaction deleted" })
       setDeletingTxId(null)
-      await loadAllTransactions()
+      await invalidateTransactions()
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to delete", description: err.message })
     }
@@ -520,25 +485,6 @@ export default function TransactionsPage() {
   }
 
   // ── Recurring handlers ──
-
-  async function loadRecurringData() {
-    try {
-      const [templates, pending] = await Promise.all([
-        getRecurringTransactions(),
-        getPendingInstances(),
-      ])
-      setRecurringTemplates(templates)
-      setPendingInstances(pending)
-    } catch {
-      // ignore
-    }
-  }
-
-  useEffect(() => {
-    if (activeMainTab === "recurring" && accounts.length > 0) {
-      loadRecurringData()
-    }
-  }, [activeMainTab, accounts.length])
 
   function resetRecurringForm() {
     setRecName("")
@@ -593,7 +539,7 @@ export default function TransactionsPage() {
       toast({ title: "Recurring transaction created" })
       setShowRecurringForm(false)
       resetRecurringForm()
-      await loadRecurringData()
+      await Promise.all([invalidateRecurring(), invalidatePendingInstances()])
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed", description: err.message })
     } finally {
@@ -605,8 +551,7 @@ export default function TransactionsPage() {
     try {
       await confirmRecurring(inst.recurring_id, { occurrence_date: inst.occurrence_date })
       toast({ title: `Confirmed: ${inst.name}` })
-      await loadRecurringData()
-      await loadAllTransactions()
+      await Promise.all([invalidateRecurring(), invalidatePendingInstances(), invalidateTransactions()])
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to confirm", description: err.message })
     }
@@ -616,7 +561,7 @@ export default function TransactionsPage() {
     try {
       await skipRecurring(inst.recurring_id, { occurrence_date: inst.occurrence_date })
       toast({ title: `Skipped: ${inst.name}` })
-      await loadRecurringData()
+      await Promise.all([invalidateRecurring(), invalidatePendingInstances()])
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to skip", description: err.message })
     }
@@ -626,7 +571,7 @@ export default function TransactionsPage() {
     try {
       await updateRecurringTransaction(t.id, { is_active: !t.is_active })
       toast({ title: t.is_active ? "Paused" : "Resumed" })
-      await loadRecurringData()
+      await invalidateRecurring()
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed", description: err.message })
     }
@@ -637,7 +582,7 @@ export default function TransactionsPage() {
       await deleteRecurringTransaction(id)
       toast({ title: "Recurring transaction deleted" })
       setDeletingRecId(null)
-      await loadRecurringData()
+      await Promise.all([invalidateRecurring(), invalidatePendingInstances()])
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to delete", description: err.message })
     }

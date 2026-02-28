@@ -27,6 +27,7 @@ import type {
   ScenarioListItem,
   Scenario,
   PriceResponse,
+  UserResponse,
 } from './types'
 
 // ============================================================
@@ -309,6 +310,23 @@ export function useWorkspaceMutations() {
       }
     ),
   }
+}
+
+// ============================================================
+// User
+// ============================================================
+
+export function useMe(config?: SWRConfiguration) {
+  return useSWR<UserResponse>(
+    '/api/v1/auth/me',
+    api.getMe,
+    {
+      ...swrConfig,
+      dedupingInterval: 5000,
+      revalidateOnFocus: false, // User profile doesn't change often
+      ...config,
+    }
+  )
 }
 
 // ============================================================
