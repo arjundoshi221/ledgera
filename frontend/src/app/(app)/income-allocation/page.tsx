@@ -208,33 +208,15 @@ export default function IncomeAllocationPage() {
     }
   }
 
-  /** Compute optimized WC target using projected balance.
-   *  Projects WC balance after income & expenses. If it stays above minimum,
-   *  just cover actual costs (maximize savings). If below, add the shortfall. */
-  function computeOptimizedWcTarget(row: typeof data extends null ? never : NonNullable<typeof data>["rows"][0]) {
-    const A = Number(row.actual_fixed_cost)
-    const projected = Number(row.wc_prev_closing_balance) + Number(row.current_month_income) - A
-    const shortfall = Math.max(0, minWcBalance - projected)
-    const target = A + shortfall
-    return Math.max(Math.round(target * 100) / 100, 0)
-  }
-
-  async function handleOptimize(year: number, month: number, fundId: string, actualFixedCost: number) {
-    const row = data?.rows.find(r => r.year === year && r.month === month)
-    const target = row ? computeOptimizedWcTarget(row) : actualFixedCost + minWcBalance
-
+  /** Reset WC to sweep default (clear any manual override so backend sweep takes over). */
+  async function handleOptimize(year: number, month: number, fundId: string, _actualFixedCost: number) {
     setSaving(true)
     try {
-      await createOrUpdateAllocationOverride({
-        fund_id: fundId,
-        year,
-        month,
-        override_amount: target,
-      })
-      toast({ title: "Optimized to actual costs" })
+      await deleteAllocationOverride(fundId, year, month)
+      toast({ title: "Reset to sweep default" })
       await loadData(true)
     } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to optimize", description: err.message })
+      toast({ variant: "destructive", title: "Failed to reset", description: err.message })
     } finally {
       setSaving(false)
     }
@@ -365,7 +347,7 @@ export default function IncomeAllocationPage() {
                       </th>
                       <th className="px-3 py-2 text-right font-medium">
                         Savings Remainder
-                        <InfoTooltip text="Allocated Budget - Working Capital" />
+                        <InfoTooltip text="Surplus above minimum WC balance, adjusted for self-funding (auto-sweep)" />
                       </th>
                       {fundsHeaders.map((f) => (
                         <th key={f.fund_id} colSpan={2} className="px-3 py-2 text-center font-medium border-l">
@@ -513,21 +495,7 @@ export default function IncomeAllocationPage() {
                                               }}
                                               disabled={saving}
                                             >
-                                              Use Model
-                                            </Button>
-                                          )}
-                                          {Math.abs(Number(fa.allocated_amount) - computeOptimizedWcTarget(row)) > 0.01 && (
-                                            <Button
-                                              variant="outline"
-                                              size="sm"
-                                              className="h-5 px-1.5 text-[10px] text-green-600 dark:text-green-400 border-green-300 dark:border-green-700 whitespace-nowrap"
-                                              onClick={(e) => {
-                                                e.stopPropagation()
-                                                handleOptimize(row.year, row.month, fa.fund_id, Number(row.actual_fixed_cost))
-                                              }}
-                                              disabled={saving}
-                                            >
-                                              Optimize
+                                              Reset to Sweep
                                             </Button>
                                           )}
                                         </div>

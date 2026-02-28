@@ -195,6 +195,81 @@ def _compute_self_funding_metadata(funds, wc_fund):
     return result
 
 
+def _batch_wc_balance(session, workspace_id, wc_fund, wc_fund_id):
+    """Compute WC opening balance and per-month credits/debits from WC-fund-scoped postings.
+
+    Returns (opening: Decimal, credits: Dict[(y,m), Decimal], debits: Dict[(y,m), Decimal])
+    """
+    from sqlalchemy import extract as sa_extract
+
+    wc_account_ids = [link.account_id for link in wc_fund.account_links] if wc_fund else []
+    opening = Decimal(0)
+    credits: Dict[tuple, Decimal] = {}
+    debits: Dict[tuple, Decimal] = {}
+
+    if not (wc_fund and wc_account_ids):
+        return opening, credits, debits
+
+    for link in wc_fund.account_links:
+        acct_start = Decimal(str(link.account.starting_balance or 0))
+        alloc_pct = Decimal(str(link.allocation_percentage if link.allocation_percentage is not None else 100))
+        opening += acct_start * alloc_pct / 100
+
+    external_acc = session.query(AccountModel).filter(
+        AccountModel.workspace_id == workspace_id,
+        AccountModel.name == "External"
+    ).first()
+    ext_filter = [PostingModel.account_id != external_acc.id] if external_acc else []
+
+    # Credits: non-transfer tagged to WC fund + transfer dest to WC fund
+    wc_credits_q = session.query(
+        sa_extract('year', TransactionModel.timestamp).label('yr'),
+        sa_extract('month', TransactionModel.timestamp).label('mo'),
+        func.sum(PostingModel.base_amount),
+    ).join(
+        TransactionModel, PostingModel.transaction_id == TransactionModel.id
+    ).filter(
+        TransactionModel.workspace_id == workspace_id,
+        PostingModel.account_id.in_(wc_account_ids),
+        PostingModel.base_amount > 0,
+        *ext_filter,
+        or_(
+            and_(or_(TransactionModel.type.is_(None), TransactionModel.type != "transfer"), TransactionModel.fund_id == wc_fund_id),
+            and_(TransactionModel.type == "transfer", TransactionModel.dest_fund_id == wc_fund_id),
+        ),
+    ).group_by(
+        sa_extract('year', TransactionModel.timestamp),
+        sa_extract('month', TransactionModel.timestamp),
+    ).all()
+    for yr, mo, total in wc_credits_q:
+        credits[(int(yr), int(mo))] = Decimal(str(total))
+
+    # Debits: non-transfer tagged to WC fund + transfer source from WC fund
+    wc_debits_q = session.query(
+        sa_extract('year', TransactionModel.timestamp).label('yr'),
+        sa_extract('month', TransactionModel.timestamp).label('mo'),
+        func.sum(PostingModel.base_amount),
+    ).join(
+        TransactionModel, PostingModel.transaction_id == TransactionModel.id
+    ).filter(
+        TransactionModel.workspace_id == workspace_id,
+        PostingModel.account_id.in_(wc_account_ids),
+        PostingModel.base_amount < 0,
+        *ext_filter,
+        or_(
+            and_(or_(TransactionModel.type.is_(None), TransactionModel.type != "transfer"), TransactionModel.fund_id == wc_fund_id),
+            and_(TransactionModel.type == "transfer", TransactionModel.source_fund_id == wc_fund_id),
+        ),
+    ).group_by(
+        sa_extract('year', TransactionModel.timestamp),
+        sa_extract('month', TransactionModel.timestamp),
+    ).all()
+    for yr, mo, total in wc_debits_q:
+        debits[(int(yr), int(mo))] = abs(Decimal(str(total)))
+
+    return opening, credits, debits
+
+
 def _get_income_for_month(session: Session, workspace_id: str, year: int, month: int, fund_id: str = None) -> Decimal:
     """Sum of income-category transaction postings for a given month.
     If fund_id is provided, only includes income assigned to that fund."""
@@ -433,69 +508,14 @@ def get_income_allocation(
                     message=msg,
                 ))
 
-        # ── WC account balance: batch queries for optimizer ──
-        from sqlalchemy import extract as sa_extract
-        wc_account_ids = [link.account_id for link in wc_fund.account_links] if wc_fund else []
-        wc_opening_balance = Decimal(0)
-        wc_monthly_credits: Dict[tuple, Decimal] = {}
-        wc_monthly_debits: Dict[tuple, Decimal] = {}
-        if wc_fund and wc_account_ids:
-            for link in wc_fund.account_links:
-                acct_start = Decimal(str(link.account.starting_balance or 0))
-                alloc_pct = Decimal(str(link.allocation_percentage if link.allocation_percentage is not None else 100))
-                wc_opening_balance += acct_start * alloc_pct / 100
+        # ── Workspace minimum WC balance for sweep ──
+        workspace = session.query(WorkspaceModel).filter(WorkspaceModel.id == workspace_id).first()
+        min_wc_balance = Decimal(str(workspace.min_wc_balance or 0)) if workspace else Decimal(0)
 
-            external_acc = session.query(AccountModel).filter(
-                AccountModel.workspace_id == workspace_id,
-                AccountModel.name == "External"
-            ).first()
-            ext_filter = [PostingModel.account_id != external_acc.id] if external_acc else []
-
-            # Credits: non-transfer tagged to WC fund + transfer dest to WC fund
-            wc_credits_q = session.query(
-                sa_extract('year', TransactionModel.timestamp).label('yr'),
-                sa_extract('month', TransactionModel.timestamp).label('mo'),
-                func.sum(PostingModel.base_amount),
-            ).join(
-                TransactionModel, PostingModel.transaction_id == TransactionModel.id
-            ).filter(
-                TransactionModel.workspace_id == workspace_id,
-                PostingModel.account_id.in_(wc_account_ids),
-                PostingModel.base_amount > 0,
-                *ext_filter,
-                or_(
-                    and_(or_(TransactionModel.type.is_(None), TransactionModel.type != "transfer"), TransactionModel.fund_id == wc_fund_id),
-                    and_(TransactionModel.type == "transfer", TransactionModel.dest_fund_id == wc_fund_id),
-                ),
-            ).group_by(
-                sa_extract('year', TransactionModel.timestamp),
-                sa_extract('month', TransactionModel.timestamp),
-            ).all()
-            for yr, mo, total in wc_credits_q:
-                wc_monthly_credits[(int(yr), int(mo))] = Decimal(str(total))
-
-            # Debits: non-transfer tagged to WC fund + transfer source from WC fund
-            wc_debits_q = session.query(
-                sa_extract('year', TransactionModel.timestamp).label('yr'),
-                sa_extract('month', TransactionModel.timestamp).label('mo'),
-                func.sum(PostingModel.base_amount),
-            ).join(
-                TransactionModel, PostingModel.transaction_id == TransactionModel.id
-            ).filter(
-                TransactionModel.workspace_id == workspace_id,
-                PostingModel.account_id.in_(wc_account_ids),
-                PostingModel.base_amount < 0,
-                *ext_filter,
-                or_(
-                    and_(or_(TransactionModel.type.is_(None), TransactionModel.type != "transfer"), TransactionModel.fund_id == wc_fund_id),
-                    and_(TransactionModel.type == "transfer", TransactionModel.source_fund_id == wc_fund_id),
-                ),
-            ).group_by(
-                sa_extract('year', TransactionModel.timestamp),
-                sa_extract('month', TransactionModel.timestamp),
-            ).all()
-            for yr, mo, total in wc_debits_q:
-                wc_monthly_debits[(int(yr), int(mo))] = abs(Decimal(str(total)))
+        # ── WC account balance for sweep ──
+        wc_opening_balance, wc_monthly_credits, wc_monthly_debits = _batch_wc_balance(
+            session, workspace_id, wc_fund, wc_fund_id
+        )
 
         # Build rows for full calendar year(s): Jan-Dec
         now = datetime.utcnow()
@@ -523,15 +543,35 @@ def get_income_allocation(
                 # Allocated fixed cost from active simulation benchmark
                 allocated_fixed_cost = budget_benchmark
 
-                # Determine Working Capital amount (editable, defaults to model)
+                # WC credits/debits for this month (also used for running balance below)
+                wc_cr = wc_monthly_credits.get((y, m), Decimal(0))
+                wc_db = wc_monthly_debits.get((y, m), Decimal(0))
+
+                # Self-funding ratio K for sweep formula
+                K = Decimal(0)
+                for f_k in funds:
+                    if f_k.name == "Working Capital":
+                        continue
+                    sf_k = self_funding_map.get(f_k.id)
+                    if not sf_k:
+                        continue
+                    pct_k = pct_override_map.get((f_k.id, y, m), Decimal(str(f_k.allocation_percentage)))
+                    K += pct_k * Decimal(str(sf_k["self_funding_percentage"])) / Decimal(10000)
+
+                # Determine Working Capital amount
                 wc_key = (wc_fund_id, y, m) if wc_fund_id else None
-                wc_amount = amount_override_map.get(wc_key, allocated_fixed_cost) if wc_key else allocated_fixed_cost
+                if wc_key and wc_key in amount_override_map:
+                    # Manual override takes precedence
+                    wc_amount = amount_override_map[wc_key]
+                    savings_remainder = net_income - wc_amount
+                else:
+                    # Sweep: surplus above min_wc_balance, adjusted for self-funding
+                    raw_surplus = wc_prev_closing + wc_cr - wc_db - min_wc_balance
+                    savings_remainder = max(Decimal(0), raw_surplus / (1 + K))
+                    wc_amount = net_income - savings_remainder
 
-                # Fixed cost optimization = WC - actual (0 when optimized, positive = surplus, negative = under-allocated)
+                # Fixed cost optimization = WC - actual
                 fixed_cost_optimization = wc_amount - actual_fixed_cost
-
-                # Savings remainder = Allocated Budget - WC balance
-                savings_remainder = net_income - wc_amount
 
                 # Working capital percentages
                 if net_income > 0:
@@ -614,8 +654,6 @@ def get_income_allocation(
                 ))
 
                 # Advance WC running balance: closing = opening + credits - sf_deduction - debits
-                wc_cr = wc_monthly_credits.get((y, m), Decimal(0))
-                wc_db = wc_monthly_debits.get((y, m), Decimal(0))
                 wc_running_balance = wc_running_balance + wc_cr - Decimal(str(total_self_funding_amount)) - wc_db
 
                 rows.append(IncomeAllocationRow(
@@ -853,11 +891,14 @@ def _compute_fund_contribution(
     year: int,
     month: int,
     amount_override_map: dict | None = None,
+    default_wc_amount: Decimal | None = None,
 ) -> Decimal:
     """Compute a single fund's contribution for one month (shared logic)."""
     if fund.name == "Working Capital":
-        if amount_override_map:
-            return amount_override_map.get((fund.id, year, month), allocated_fixed_cost)
+        if amount_override_map and (fund.id, year, month) in amount_override_map:
+            return amount_override_map[(fund.id, year, month)]
+        if default_wc_amount is not None:
+            return default_wc_amount
         return allocated_fixed_cost
 
     # If savings remainder is negative, only Working Capital absorbs the deficit
@@ -993,6 +1034,50 @@ def get_fund_tracker(
         for acc_id, yr, mo, total in monthly_debits_q:
             acct_monthly_debits[(acc_id, int(yr), int(mo))] = abs(Decimal(str(total)))
 
+        # ── WC balance and sweep savings for fund contributions ──
+        wc_opening, wc_m_credits, wc_m_debits = _batch_wc_balance(
+            session, workspace_id, wc_fund, wc_fund_id
+        )
+        workspace = session.query(WorkspaceModel).filter(WorkspaceModel.id == workspace_id).first()
+        min_wc_balance = Decimal(str(workspace.min_wc_balance or 0)) if workspace else Decimal(0)
+
+        # Pre-compute sweep savings_remainder and wc_amount per month
+        monthly_sweep_savings: Dict[tuple, Decimal] = {}
+        monthly_sweep_wc_amount: Dict[tuple, Decimal] = {}
+        wc_sweep_running = wc_opening
+        for y, m in months_list:
+            # K for this month
+            K = Decimal(0)
+            for f_k in funds:
+                if f_k.name == "Working Capital":
+                    continue
+                sf_k = sf_map.get(f_k.id)
+                if not sf_k:
+                    continue
+                pct_k = override_map.get((f_k.id, y, m), Decimal(str(f_k.allocation_percentage)))
+                K += pct_k * Decimal(str(sf_k["self_funding_percentage"])) / Decimal(10000)
+
+            prev_y, prev_m = _prev_month(y, m)
+            net_inc = _get_income_for_month(session, workspace_id, prev_y, prev_m)
+            wc_key = (wc_fund_id, y, m) if wc_fund_id else None
+            wc_cr = wc_m_credits.get((y, m), Decimal(0))
+            wc_db = wc_m_debits.get((y, m), Decimal(0))
+
+            if wc_key and wc_key in amount_override_map:
+                wc_amt = amount_override_map[wc_key]
+                sav_rem = net_inc - wc_amt
+            else:
+                raw_surplus = wc_sweep_running + wc_cr - wc_db - min_wc_balance
+                sav_rem = max(Decimal(0), raw_surplus / (1 + K))
+                wc_amt = net_inc - sav_rem
+
+            monthly_sweep_savings[(y, m)] = sav_rem
+            monthly_sweep_wc_amount[(y, m)] = wc_amt
+
+            # Advance running balance (self-funding deduction = sav_rem * K)
+            sf_deduction = sav_rem * K
+            wc_sweep_running = wc_sweep_running + wc_cr - wc_db - sf_deduction
+
         # ── Per-fund ledger ──
         fund_ledgers = []
         # Track cumulative contributions per fund for account summaries
@@ -1015,18 +1100,14 @@ def get_fund_tracker(
             for y, m in months_list:
                 opening = running_balance
 
-                # Expected contribution from income allocation
-                prev_y, prev_m = _prev_month(y, m)
-                net_income = _get_income_for_month(session, workspace_id, prev_y, prev_m)
-                allocated_fixed_cost = budget_benchmark
-                # Use actual WC amount (with overrides) for savings remainder, matching income allocation
-                wc_key = (wc_fund_id, y, m) if wc_fund_id else None
-                wc_amount = amount_override_map.get(wc_key, allocated_fixed_cost) if wc_key else allocated_fixed_cost
-                savings_remainder = net_income - wc_amount
+                # Expected contribution from income allocation (sweep-based)
+                savings_remainder = monthly_sweep_savings.get((y, m), Decimal(0))
+                sweep_wc_amount = monthly_sweep_wc_amount.get((y, m), budget_benchmark)
 
                 contribution = _compute_fund_contribution(
-                    f, savings_remainder, allocated_fixed_cost, override_map, y, m,
+                    f, savings_remainder, budget_benchmark, override_map, y, m,
                     amount_override_map=amount_override_map,
+                    default_wc_amount=sweep_wc_amount,
                 )
 
                 # Store per-fund per-month contribution for account ledgers
@@ -1809,10 +1890,25 @@ def get_monthly_dashboard(
         # ── Overrides for fund allocation ──
         override_repo = FundAllocationOverrideRepository(session)
         all_overrides = override_repo.read_by_workspace(workspace_id)
-        override_map = {
-            (o.fund_id, o.year, o.month): Decimal(str(o.allocation_percentage))
-            for o in all_overrides
-        }
+        pct_override_map = {}
+        amount_override_map = {}
+        for o in all_overrides:
+            key = (o.fund_id, o.year, o.month)
+            if o.override_amount is not None:
+                amount_override_map[key] = Decimal(str(o.override_amount))
+            else:
+                pct_override_map[key] = Decimal(str(o.allocation_percentage))
+
+        # ── WC fund and balance for sweep ──
+        wc_fund = next((f for f in funds if f.name == "Working Capital"), None)
+        wc_fund_id = wc_fund.id if wc_fund else None
+        sf_map = _compute_self_funding_metadata(funds, wc_fund)
+
+        wc_opening, wc_m_credits, wc_m_debits = _batch_wc_balance(
+            session, workspace_id, wc_fund, wc_fund_id
+        )
+        ws = session.query(WorkspaceModel).filter(WorkspaceModel.id == workspace_id).first()
+        min_wc_balance = Decimal(str(ws.min_wc_balance or 0)) if ws else Decimal(0)
 
         # ── Precompute monthly incomes for all months Jan..selected month ──
         # (avoids redundant queries per fund)
@@ -1822,9 +1918,42 @@ def get_monthly_dashboard(
             monthly_incomes[m] = _get_income_for_month(session, workspace_id, prev_y, prev_m)
 
         allocated_fixed_cost = budget_benchmark
+
+        # ── Pre-compute sweep savings per month ──
+        monthly_sweep_savings: Dict[int, Decimal] = {}
+        monthly_sweep_wc_amount: Dict[int, Decimal] = {}
+        wc_sweep_running = wc_opening
+        for m_s in range(1, month + 1):
+            K = Decimal(0)
+            for f_k in funds:
+                if f_k.name == "Working Capital":
+                    continue
+                sf_k = sf_map.get(f_k.id)
+                if not sf_k:
+                    continue
+                pct_k = pct_override_map.get((f_k.id, year, m_s), Decimal(str(f_k.allocation_percentage)))
+                K += pct_k * Decimal(str(sf_k["self_funding_percentage"])) / Decimal(10000)
+
+            wc_key = (wc_fund_id, year, m_s) if wc_fund_id else None
+            wc_cr = wc_m_credits.get((year, m_s), Decimal(0))
+            wc_db = wc_m_debits.get((year, m_s), Decimal(0))
+            net_inc = monthly_incomes[m_s]
+
+            if wc_key and wc_key in amount_override_map:
+                wc_amt = amount_override_map[wc_key]
+                sav_rem = net_inc - wc_amt
+            else:
+                raw_surplus = wc_sweep_running + wc_cr - wc_db - min_wc_balance
+                sav_rem = max(Decimal(0), raw_surplus / (1 + K))
+                wc_amt = net_inc - sav_rem
+
+            monthly_sweep_savings[m_s] = sav_rem
+            monthly_sweep_wc_amount[m_s] = wc_amt
+            sf_deduction = sav_rem * K
+            wc_sweep_running = wc_sweep_running + wc_cr - wc_db - sf_deduction
+
         # Current month's values (for category spending query)
-        cur_net_income = monthly_incomes[month]
-        cur_savings_remainder = cur_net_income - allocated_fixed_cost
+        cur_savings_remainder = monthly_sweep_savings[month]
 
         # ── External account id for filtering ──
         external_acc = session.query(AccountModel).filter(
@@ -1836,8 +1965,6 @@ def get_monthly_dashboard(
         start, end = _get_month_range(year, month)
 
         # ── Workspace currency ──
-        from src.data.models import WorkspaceModel
-        ws = session.query(WorkspaceModel).filter(WorkspaceModel.id == workspace_id).first()
         currency = ws.base_currency if ws else "SGD"
 
         # ── Per-fund analysis ──
@@ -1847,8 +1974,11 @@ def get_monthly_dashboard(
             is_wc = f.name == "Working Capital"
 
             # Fund's expected contribution for selected month
+            cur_sweep_wc = monthly_sweep_wc_amount[month]
             contribution = _compute_fund_contribution(
-                f, cur_savings_remainder, allocated_fixed_cost, override_map, year, month,
+                f, cur_savings_remainder, allocated_fixed_cost, pct_override_map, year, month,
+                amount_override_map=amount_override_map,
+                default_wc_amount=cur_sweep_wc,
             )
 
             # ── Compute fund's opening balance for the selected month ──
@@ -1861,10 +1991,12 @@ def get_monthly_dashboard(
                 fund_balance += acct_start * alloc_pct / 100
             # Accumulate contributions, fund income, and debits for all prior months
             for m in range(1, month):
-                m_income = monthly_incomes[m]
-                m_savings = m_income - allocated_fixed_cost
+                m_savings = monthly_sweep_savings[m]
+                m_sweep_wc = monthly_sweep_wc_amount[m]
                 m_contrib = _compute_fund_contribution(
-                    f, m_savings, allocated_fixed_cost, override_map, year, m,
+                    f, m_savings, allocated_fixed_cost, pct_override_map, year, m,
+                    amount_override_map=amount_override_map,
+                    default_wc_amount=m_sweep_wc,
                 )
                 fund_balance += m_contrib
                 # Fund income (non-WC only)
