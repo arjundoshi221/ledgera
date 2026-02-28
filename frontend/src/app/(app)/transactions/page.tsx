@@ -156,9 +156,37 @@ export default function TransactionsPage() {
   }
 
 
+  // Filter categories by transaction type
+  const filteredCategories = useMemo(() => {
+    if (txType === "transfer") return []
+    return categories.filter((c) => c.type === txType)
+  }, [categories, txType])
+
+  const recFilteredCategories = useMemo(() => {
+    if (recTxType === "transfer") return []
+    return categories.filter((c) => c.type === recTxType)
+  }, [categories, recTxType])
+
   // Filter subcategories by selected category
   const filteredSubcategories = subcategories.filter((s) => s.category_id === categoryId)
   const recFilteredSubcategories = subcategories.filter((s) => s.category_id === recCategoryId)
+
+  // Filter accounts by selected fund
+  const filteredAccounts = useMemo(() => {
+    if (!fundId) return regularAccounts
+    const fund = funds.find((f) => f.id === fundId)
+    if (!fund || !fund.linked_accounts || fund.linked_accounts.length === 0) return regularAccounts
+    const linkedAccountIds = fund.linked_accounts.map((la) => la.id)
+    return regularAccounts.filter((a) => linkedAccountIds.includes(a.id))
+  }, [fundId, funds, regularAccounts])
+
+  const recFilteredAccounts = useMemo(() => {
+    if (!recFundId) return regularAccounts
+    const fund = funds.find((f) => f.id === recFundId)
+    if (!fund || !fund.linked_accounts || fund.linked_accounts.length === 0) return regularAccounts
+    const linkedAccountIds = fund.linked_accounts.map((la) => la.id)
+    return regularAccounts.filter((a) => linkedAccountIds.includes(a.id))
+  }, [recFundId, funds, regularAccounts])
 
   // Sync currency defaults when workspace base currency loads
   useEffect(() => {
@@ -176,6 +204,26 @@ export default function TransactionsPage() {
   useEffect(() => {
     setRecSubcategoryId("")
   }, [recCategoryId])
+
+  // Reset account when fund changes (if selected account is not in filtered list)
+  useEffect(() => {
+    if (accountId && fundId) {
+      const isAccountInFiltered = filteredAccounts.some((a) => a.id === accountId)
+      if (!isAccountInFiltered) {
+        setAccountId("")
+      }
+    }
+  }, [fundId, filteredAccounts, accountId])
+
+  // Reset recurring account when recurring fund changes
+  useEffect(() => {
+    if (recAccountId && recFundId) {
+      const isAccountInFiltered = recFilteredAccounts.some((a) => a.id === recAccountId)
+      if (!isAccountInFiltered) {
+        setRecAccountId("")
+      }
+    }
+  }, [recFundId, recFilteredAccounts, recAccountId])
 
   // Auto-detect fund for an account (returns fund id if exactly one link, else "")
   function autoDetectFund(accountId: string): string {
@@ -221,8 +269,24 @@ export default function TransactionsPage() {
 
     const amt = parseFloat(txType === "transfer" ? transferAmount : amount) || 0
     if (amt <= 0) {
-      toast({ variant: "destructive", title: "Enter a positive amount" })
+      toast({ variant: "destructive", title: "Amount must be greater than 0" })
       return
+    }
+
+    // Validate required fields for income/expense
+    if (txType !== "transfer") {
+      if (!categoryId) {
+        toast({ variant: "destructive", title: "Category is required" })
+        return
+      }
+      if (!fundId) {
+        toast({ variant: "destructive", title: "Fund is required" })
+        return
+      }
+      if (!accountId) {
+        toast({ variant: "destructive", title: "Account is required" })
+        return
+      }
     }
 
     let postings: Posting[] = []
@@ -511,8 +575,23 @@ export default function TransactionsPage() {
     e.preventDefault()
     const amt = parseFloat(recAmount) || 0
     if (amt <= 0) {
-      toast({ variant: "destructive", title: "Enter a positive amount" })
+      toast({ variant: "destructive", title: "Amount must be greater than 0" })
       return
+    }
+    // Validate required fields for income/expense
+    if (recTxType !== "transfer") {
+      if (!recCategoryId) {
+        toast({ variant: "destructive", title: "Category is required" })
+        return
+      }
+      if (!recFundId) {
+        toast({ variant: "destructive", title: "Fund is required" })
+        return
+      }
+      if (!recAccountId) {
+        toast({ variant: "destructive", title: "Account is required" })
+        return
+      }
     }
     setCreatingRecurring(true)
     try {
@@ -692,16 +771,16 @@ export default function TransactionsPage() {
               {txType !== "transfer" && (
                 <div className="grid grid-cols-4 gap-4">
                   <div className="space-y-2">
-                    <Label>Category</Label>
-                    <Select value={categoryId} onValueChange={setCategoryId}>
+                    <Label>Category *</Label>
+                    <Select value={categoryId} onValueChange={setCategoryId} required>
                       <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
                       <SelectContent>
-                        {categories.length === 0 ? (
-                          <SelectItem value="_none" disabled>No categories - create in Settings</SelectItem>
+                        {filteredCategories.length === 0 ? (
+                          <SelectItem value="_none" disabled>No {txType} categories - create in Settings</SelectItem>
                         ) : (
-                          categories.map((c) => (
+                          filteredCategories.map((c) => (
                             <SelectItem key={c.id} value={c.id}>
-                              {c.emoji} {c.name} ({c.type})
+                              {c.emoji} {c.name}
                             </SelectItem>
                           ))
                         )}
@@ -724,8 +803,8 @@ export default function TransactionsPage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Fund</Label>
-                    <Select value={fundId} onValueChange={setFundId}>
+                    <Label>Fund *</Label>
+                    <Select value={fundId} onValueChange={setFundId} required>
                       <SelectTrigger><SelectValue placeholder="Select fund" /></SelectTrigger>
                       <SelectContent>
                         {funds.length === 0 ? (
@@ -768,22 +847,27 @@ export default function TransactionsPage() {
               {txType !== "transfer" && (
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label>Account</Label>
-                    <Select value={accountId} onValueChange={setAccountId}>
-                      <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
+                    <Label>Account *</Label>
+                    <Select value={accountId} onValueChange={setAccountId} required>
+                      <SelectTrigger><SelectValue placeholder={fundId ? `Select account (${filteredAccounts.length} linked to fund)` : "Select account"} /></SelectTrigger>
                       <SelectContent>
-                        {regularAccounts.map((a) => (
-                          <SelectItem key={a.id} value={a.id}>{a.name} ({a.account_currency})</SelectItem>
-                        ))}
+                        {filteredAccounts.length === 0 ? (
+                          <SelectItem value="_none" disabled>No accounts linked to this fund</SelectItem>
+                        ) : (
+                          filteredAccounts.map((a) => (
+                            <SelectItem key={a.id} value={a.id}>{a.name} ({a.account_currency})</SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>Amount</Label>
+                      <Label>Amount *</Label>
                       <Input
                         type="number"
                         step="0.01"
+                        min="0.01"
                         placeholder="0.00"
                         value={amount}
                         onChange={(e) => setAmount(e.target.value)}
@@ -791,8 +875,8 @@ export default function TransactionsPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Currency</Label>
-                      <Input value={currency} onChange={(e) => setCurrency(e.target.value)} />
+                      <Label>Currency *</Label>
+                      <Input value={currency} onChange={(e) => setCurrency(e.target.value)} required />
                     </div>
                   </div>
                 </div>
@@ -992,16 +1076,16 @@ export default function TransactionsPage() {
             {txType !== "transfer" && (
               <div className="grid grid-cols-4 gap-4">
                 <div className="space-y-2">
-                  <Label>Category</Label>
-                  <Select value={categoryId} onValueChange={setCategoryId}>
+                  <Label>Category *</Label>
+                  <Select value={categoryId} onValueChange={setCategoryId} required>
                     <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
                     <SelectContent>
-                      {categories.length === 0 ? (
-                        <SelectItem value="_none" disabled>No categories - create in Settings</SelectItem>
+                      {filteredCategories.length === 0 ? (
+                        <SelectItem value="_none" disabled>No {txType} categories - create in Settings</SelectItem>
                       ) : (
-                        categories.map((c) => (
+                        filteredCategories.map((c) => (
                           <SelectItem key={c.id} value={c.id}>
-                            {c.emoji} {c.name} ({c.type})
+                            {c.emoji} {c.name}
                           </SelectItem>
                         ))
                       )}
@@ -1024,8 +1108,8 @@ export default function TransactionsPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Fund</Label>
-                  <Select value={fundId} onValueChange={setFundId}>
+                  <Label>Fund *</Label>
+                  <Select value={fundId} onValueChange={setFundId} required>
                     <SelectTrigger><SelectValue placeholder="Select fund" /></SelectTrigger>
                     <SelectContent>
                       {funds.length === 0 ? (
@@ -1085,22 +1169,27 @@ export default function TransactionsPage() {
             {txType !== "transfer" && (
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Account</Label>
-                  <Select value={accountId} onValueChange={setAccountId}>
-                    <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
+                  <Label>Account *</Label>
+                  <Select value={accountId} onValueChange={setAccountId} required>
+                    <SelectTrigger><SelectValue placeholder={fundId ? `Select account (${filteredAccounts.length} linked to fund)` : "Select account"} /></SelectTrigger>
                     <SelectContent>
-                      {regularAccounts.map((a) => (
-                        <SelectItem key={a.id} value={a.id}>{a.name} ({a.account_currency})</SelectItem>
-                      ))}
+                      {filteredAccounts.length === 0 ? (
+                        <SelectItem value="_none" disabled>No accounts linked to this fund</SelectItem>
+                      ) : (
+                        filteredAccounts.map((a) => (
+                          <SelectItem key={a.id} value={a.id}>{a.name} ({a.account_currency})</SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Amount</Label>
+                    <Label>Amount *</Label>
                     <Input
                       type="number"
                       step="0.01"
+                      min="0.01"
                       placeholder="0.00"
                       value={amount}
                       onChange={(e) => setAmount(e.target.value)}
@@ -1108,8 +1197,8 @@ export default function TransactionsPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Currency</Label>
-                    <Input value={currency} onChange={(e) => setCurrency(e.target.value)} />
+                    <Label>Currency *</Label>
+                    <Input value={currency} onChange={(e) => setCurrency(e.target.value)} required />
                   </div>
                 </div>
               </div>
@@ -1440,36 +1529,19 @@ export default function TransactionsPage() {
                     </TabsList>
 
                     <TabsContent value="income" className="space-y-4 pt-4">
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <Label>Account</Label>
-                          <Select value={recAccountId} onValueChange={setRecAccountId}>
-                            <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
-                            <SelectContent>
-                              {regularAccounts.map((a) => (
-                                <SelectItem key={a.id} value={a.id}>{a.name} ({a.account_currency})</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div>
-                          <Label>Amount</Label>
-                          <Input type="number" step="0.01" min="0" value={recAmount} onChange={(e) => setRecAmount(e.target.value)} placeholder="0.00" required />
-                        </div>
-                        <div>
-                          <Label>Payer</Label>
-                          <Input value={recPayee} onChange={(e) => setRecPayee(e.target.value)} placeholder="e.g. Employer" />
-                        </div>
-                      </div>
                       <div className="grid grid-cols-4 gap-4">
                         <div>
-                          <Label>Category</Label>
-                          <Select value={recCategoryId} onValueChange={setRecCategoryId}>
-                            <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                          <Label>Category *</Label>
+                          <Select value={recCategoryId} onValueChange={setRecCategoryId} required>
+                            <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
                             <SelectContent>
-                              {categories.filter((c) => c.type === "income").map((c) => (
-                                <SelectItem key={c.id} value={c.id}>{c.emoji} {c.name}</SelectItem>
-                              ))}
+                              {recFilteredCategories.length === 0 ? (
+                                <SelectItem value="_none" disabled>No income categories</SelectItem>
+                              ) : (
+                                recFilteredCategories.map((c) => (
+                                  <SelectItem key={c.id} value={c.id}>{c.emoji} {c.name}</SelectItem>
+                                ))
+                              )}
                             </SelectContent>
                           </Select>
                         </div>
@@ -1489,9 +1561,9 @@ export default function TransactionsPage() {
                           </Select>
                         </div>
                         <div>
-                          <Label>Fund</Label>
-                          <Select value={recFundId} onValueChange={setRecFundId}>
-                            <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                          <Label>Fund *</Label>
+                          <Select value={recFundId} onValueChange={setRecFundId} required>
+                            <SelectTrigger><SelectValue placeholder="Select fund" /></SelectTrigger>
                             <SelectContent>
                               {funds.filter((f) => f.is_active).map((f) => (
                                 <SelectItem key={f.id} value={f.id}>{f.emoji} {f.name}</SelectItem>
@@ -1511,39 +1583,47 @@ export default function TransactionsPage() {
                           </Select>
                         </div>
                       </div>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <Label>Account *</Label>
+                          <Select value={recAccountId} onValueChange={setRecAccountId} required>
+                            <SelectTrigger><SelectValue placeholder={recFundId ? `Select account (${recFilteredAccounts.length} linked)` : "Select account"} /></SelectTrigger>
+                            <SelectContent>
+                              {recFilteredAccounts.length === 0 ? (
+                                <SelectItem value="_none" disabled>No accounts linked to this fund</SelectItem>
+                              ) : (
+                                recFilteredAccounts.map((a) => (
+                                  <SelectItem key={a.id} value={a.id}>{a.name} ({a.account_currency})</SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>Amount *</Label>
+                          <Input type="number" step="0.01" min="0.01" value={recAmount} onChange={(e) => setRecAmount(e.target.value)} placeholder="0.00" required />
+                        </div>
+                        <div>
+                          <Label>Payer</Label>
+                          <Input value={recPayee} onChange={(e) => setRecPayee(e.target.value)} placeholder="e.g. Employer" />
+                        </div>
+                      </div>
                     </TabsContent>
 
                     <TabsContent value="expense" className="space-y-4 pt-4">
                       <div className="grid grid-cols-3 gap-4">
                         <div>
-                          <Label>Account</Label>
-                          <Select value={recAccountId} onValueChange={setRecAccountId}>
-                            <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
+                          <Label>Category *</Label>
+                          <Select value={recCategoryId} onValueChange={setRecCategoryId} required>
+                            <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
                             <SelectContent>
-                              {regularAccounts.map((a) => (
-                                <SelectItem key={a.id} value={a.id}>{a.name} ({a.account_currency})</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div>
-                          <Label>Amount</Label>
-                          <Input type="number" step="0.01" min="0" value={recAmount} onChange={(e) => setRecAmount(e.target.value)} placeholder="0.00" required />
-                        </div>
-                        <div>
-                          <Label>Payee</Label>
-                          <Input value={recPayee} onChange={(e) => setRecPayee(e.target.value)} placeholder="e.g. Landlord" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <Label>Category</Label>
-                          <Select value={recCategoryId} onValueChange={setRecCategoryId}>
-                            <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
-                            <SelectContent>
-                              {categories.filter((c) => c.type === "expense").map((c) => (
-                                <SelectItem key={c.id} value={c.id}>{c.emoji} {c.name}</SelectItem>
-                              ))}
+                              {recFilteredCategories.length === 0 ? (
+                                <SelectItem value="_none" disabled>No expense categories</SelectItem>
+                              ) : (
+                                recFilteredCategories.map((c) => (
+                                  <SelectItem key={c.id} value={c.id}>{c.emoji} {c.name}</SelectItem>
+                                ))
+                              )}
                             </SelectContent>
                           </Select>
                         </div>
@@ -1563,15 +1643,40 @@ export default function TransactionsPage() {
                           </Select>
                         </div>
                         <div>
-                          <Label>Fund</Label>
-                          <Select value={recFundId} onValueChange={setRecFundId}>
-                            <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                          <Label>Fund *</Label>
+                          <Select value={recFundId} onValueChange={setRecFundId} required>
+                            <SelectTrigger><SelectValue placeholder="Select fund" /></SelectTrigger>
                             <SelectContent>
                               {funds.filter((f) => f.is_active).map((f) => (
                                 <SelectItem key={f.id} value={f.id}>{f.emoji} {f.name}</SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <Label>Account *</Label>
+                          <Select value={recAccountId} onValueChange={setRecAccountId} required>
+                            <SelectTrigger><SelectValue placeholder={recFundId ? `Select account (${recFilteredAccounts.length} linked)` : "Select account"} /></SelectTrigger>
+                            <SelectContent>
+                              {recFilteredAccounts.length === 0 ? (
+                                <SelectItem value="_none" disabled>No accounts linked to this fund</SelectItem>
+                              ) : (
+                                recFilteredAccounts.map((a) => (
+                                  <SelectItem key={a.id} value={a.id}>{a.name} ({a.account_currency})</SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>Amount *</Label>
+                          <Input type="number" step="0.01" min="0.01" value={recAmount} onChange={(e) => setRecAmount(e.target.value)} placeholder="0.00" required />
+                        </div>
+                        <div>
+                          <Label>Payee</Label>
+                          <Input value={recPayee} onChange={(e) => setRecPayee(e.target.value)} placeholder="e.g. Landlord" />
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-4">

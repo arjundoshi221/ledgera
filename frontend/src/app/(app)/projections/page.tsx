@@ -55,6 +55,23 @@ export default function ProjectionsPage() {
   const { data: projAllCategories = [] } = useCategories()
   const projAllSubcategories = allSubcategories
 
+  // Filter categories by transaction type for recurring dialog
+  const projFilteredCategories = useMemo(() => {
+    if (!recurringPrefill?.transaction_type) return projAllCategories
+    return projAllCategories.filter((c) => c.type === recurringPrefill.transaction_type)
+  }, [projAllCategories, recurringPrefill?.transaction_type])
+
+  // Filter accounts by selected fund for recurring dialog
+  const projFilteredAccounts = useMemo(() => {
+    if (!recurringFundId || recurringFundId === "none") return projAccounts.filter((a) => a.name !== "External")
+    const fund = funds.find((f) => f.id === recurringFundId)
+    if (!fund || !fund.linked_accounts || fund.linked_accounts.length === 0) {
+      return projAccounts.filter((a) => a.name !== "External")
+    }
+    const linkedAccountIds = fund.linked_accounts.map((la) => la.id)
+    return projAccounts.filter((a) => linkedAccountIds.includes(a.id) && a.name !== "External")
+  }, [recurringFundId, funds, projAccounts])
+
   const baseCurrency = workspace?.base_currency ?? "SGD"
   const loadingRef = categoriesLoading
 
@@ -130,6 +147,16 @@ export default function ProjectionsPage() {
     window.addEventListener("beforeunload", handler)
     return () => window.removeEventListener("beforeunload", handler)
   }, [isDirty])
+
+  // Reset recurring account when recurring fund changes
+  useEffect(() => {
+    if (recurringAccountId && recurringFundId && recurringFundId !== "none") {
+      const isAccountInFiltered = projFilteredAccounts.some((a) => a.id === recurringAccountId)
+      if (!isAccountInFiltered) {
+        setRecurringAccountId("")
+      }
+    }
+  }, [recurringFundId, projFilteredAccounts, recurringAccountId])
 
   // Build current assumptions from form state
   const buildAssumptions = useCallback((): ProjectionAssumptions => {
@@ -345,7 +372,22 @@ export default function ProjectionsPage() {
   }
 
   async function handleCreateFromProjection() {
-    if (!recurringPrefill || !recurringAccountId) return
+    if (!recurringPrefill || !recurringAccountId) {
+      toast({ variant: "destructive", title: "Account is required" })
+      return
+    }
+    if (!recurringCategoryId || recurringCategoryId === "none") {
+      toast({ variant: "destructive", title: "Category is required" })
+      return
+    }
+    if (!recurringFundId || recurringFundId === "none") {
+      toast({ variant: "destructive", title: "Fund is required" })
+      return
+    }
+    if (!recurringPrefill.amount || recurringPrefill.amount <= 0) {
+      toast({ variant: "destructive", title: "Amount must be greater than 0" })
+      return
+    }
     setCreatingRecurring(true)
     try {
       await createRecurringTransaction({
@@ -708,16 +750,20 @@ export default function ProjectionsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Account *</Label>
-                  <Select value={recurringAccountId} onValueChange={setRecurringAccountId}>
+                  <Select value={recurringAccountId} onValueChange={setRecurringAccountId} required>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select account..." />
+                      <SelectValue placeholder={recurringFundId && recurringFundId !== "none" ? `Select account (${projFilteredAccounts.length} linked)` : "Select account"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {projAccounts.map((a) => (
-                        <SelectItem key={a.id} value={a.id}>
-                          {a.name} {a.institution ? `(${a.institution})` : ""}
-                        </SelectItem>
-                      ))}
+                      {projFilteredAccounts.length === 0 ? (
+                        <SelectItem value="_none" disabled>No accounts linked to this fund</SelectItem>
+                      ) : (
+                        projFilteredAccounts.map((a) => (
+                          <SelectItem key={a.id} value={a.id}>
+                            {a.name} {a.institution ? `(${a.institution})` : ""}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -734,24 +780,26 @@ export default function ProjectionsPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <Label className="text-xs">Category</Label>
+                  <Label className="text-xs">Category *</Label>
                   <Select
                     value={recurringCategoryId}
                     onValueChange={(v) => {
                       setRecurringCategoryId(v)
                       setRecurringSubcategoryId("")
                     }}
+                    required
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Optional" />
+                      <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {projAllCategories
-                        .filter((c) => c.type === recurringPrefill.transaction_type)
-                        .map((c) => (
+                      {projFilteredCategories.length === 0 ? (
+                        <SelectItem value="_none" disabled>No {recurringPrefill?.transaction_type} categories</SelectItem>
+                      ) : (
+                        projFilteredCategories.map((c) => (
                           <SelectItem key={c.id} value={c.id}>{c.emoji} {c.name}</SelectItem>
-                        ))}
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -786,18 +834,21 @@ export default function ProjectionsPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <Label className="text-xs">Fund</Label>
-                  <Select value={recurringFundId} onValueChange={setRecurringFundId}>
+                  <Label className="text-xs">Fund *</Label>
+                  <Select value={recurringFundId} onValueChange={setRecurringFundId} required>
                     <SelectTrigger>
-                      <SelectValue placeholder="None" />
+                      <SelectValue placeholder="Select fund" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {funds.map((f) => (
-                        <SelectItem key={f.id} value={f.id}>
-                          {f.emoji ? `${f.emoji} ` : ""}{f.name}
-                        </SelectItem>
-                      ))}
+                      {funds.length === 0 ? (
+                        <SelectItem value="_none" disabled>No funds - create in Settings</SelectItem>
+                      ) : (
+                        funds.map((f) => (
+                          <SelectItem key={f.id} value={f.id}>
+                            {f.emoji ? `${f.emoji} ` : ""}{f.name}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
