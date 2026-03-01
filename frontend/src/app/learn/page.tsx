@@ -93,7 +93,7 @@ export default function LearnPage() {
                   <div className="flex items-center gap-2 rounded-full border bg-card/50 px-4 py-2">
                     <LedgeAvatar className="h-6 w-6" />
                     <span className="text-sm text-muted-foreground">
-                      8 chapters
+                      9 chapters
                     </span>
                   </div>
                   <div className="text-sm text-muted-foreground">
@@ -420,17 +420,57 @@ export default function LearnPage() {
                   </div>
                 ))}
               </div>
+
+              {/* Spending vs Savings split */}
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                <div className="rounded-lg border border-muted p-4 text-center">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">
+                    Spending
+                  </p>
+                  <p className="text-2xl font-bold">50%</p>
+                  <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                    WC $2,000 + Fun $500
+                  </p>
+                </div>
+                <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.04] p-4 text-center">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 mb-1.5">
+                    Savings &amp; Goals
+                  </p>
+                  <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                    50%
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                    Invest $1,000 + Emergency $750 + Travel $750
+                  </p>
+                </div>
+              </div>
+
+              {/* The simple equation */}
+              <div className="mt-4 rounded-lg bg-muted/50 px-4 py-3 text-center">
+                <p className="text-sm text-muted-foreground">
+                  <Strong>Savings = Income &minus; Spending</Strong>
+                  {" "}&rarr;{" "}$5,000 &minus; $2,500 ={" "}
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                    $2,500/month saved
+                  </span>
+                </p>
+              </div>
             </div>
 
             <StoryText>
               That&apos;s it. Before Ledge buys a single coffee, every dollar
-              already has a destination. He didn&apos;t &ldquo;budget&rdquo; in
-              the traditional sense &mdash; he didn&apos;t list out every
-              expense. He just decided the big picture:{" "}
-              <Strong>
-                essentials, fun, and the future &mdash; in that order.
-              </Strong>
+              already has a destination. And look at that &mdash;{" "}
+              <Strong>he&apos;s saving 50% of his income</Strong>. Not because
+              he&apos;s disciplined. Because the system does it for him. The
+              savings are allocated <em>first</em>, not whatever&apos;s left over.
             </StoryText>
+
+            <Callout icon={Lightbulb} color="primary">
+              This is the key shift. Most people save whatever is left after
+              spending. Ledge flips it: he decides his savings rate upfront,
+              then spends what&apos;s left. Same income, completely different
+              outcome.
+            </Callout>
 
             <StoryText>
               This is the model. It&apos;s Ledge&apos;s plan for his money.
@@ -711,15 +751,50 @@ export default function LearnPage() {
                     </p>
                   </div>
                 </div>
+
+                {/* Savings summary */}
+                <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.04] p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 mb-1">
+                        March Savings
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        $5,000 income &minus; $2,245 spent ={" "}
+                        <strong className="text-emerald-600 dark:text-emerald-400">
+                          $2,755 saved
+                        </strong>
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        WC underspent by $280 &bull; Fun overspent by $25 &bull;
+                        Net: +$255 vs plan
+                      </p>
+                    </div>
+                    <div className="text-right pl-4">
+                      <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">
+                        55%
+                      </p>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                        savings rate
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
             <StoryText>
-              Before Ledgera, all of Ledge&apos;s spending was one number.
-              Now he can see his essentials are under control &mdash; but his
-              social life costs more than he thought. That&apos;s not a bad
-              thing. He <em>likes</em> going out. He just didn&apos;t realize
-              it was costing $525 a month until he gave it its own fund.
+              Look at that &mdash; even with Fun going $25 over, Ledge saved
+              55% of his income this month. That&apos;s <em>more</em> than the
+              50% he planned, because his essentials came in under budget.
+            </StoryText>
+
+            <StoryText>
+              Before Ledgera, all of his spending was one number. Now he can
+              see his essentials are under control &mdash; but his social life
+              costs more than he thought. That&apos;s not a bad thing. He{" "}
+              <em>likes</em> going out. He just didn&apos;t realize it was
+              costing $525 a month until he gave it its own fund.
             </StoryText>
 
             <Callout icon={Target} color="primary">
@@ -786,6 +861,10 @@ export default function LearnPage() {
                     </span>
                   </div>
                 </div>
+                <div className="mt-4 pt-3 border-t text-center">
+                  <p className="text-xs text-muted-foreground">Savings rate</p>
+                  <p className="text-xl font-bold">50%</p>
+                </div>
               </div>
 
               <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.03] p-5">
@@ -809,7 +888,7 @@ export default function LearnPage() {
                       Unused in WC
                     </span>
                     <span className="font-medium text-muted-foreground">
-                      $0 (swept out)
+                      $0 (swept to savings)
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -821,21 +900,53 @@ export default function LearnPage() {
                     </span>
                   </div>
                 </div>
+                <div className="mt-4 pt-3 border-t border-emerald-500/10 text-center">
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                    Savings rate
+                  </p>
+                  <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
+                    54%{" "}
+                    <span className="text-sm font-medium">(&uarr;4%)</span>
+                  </p>
+                </div>
               </div>
             </div>
 
             <StoryText>
-              That $200 that used to sit idle in his expenses fund? Now it
-              automatically goes to his investment and savings funds. Over a
-              year, those small sweeps add up to{" "}
-              <Strong>$2,400 in extra savings</Strong> &mdash; without
-              Ledge changing his lifestyle at all.
+              Same spending, same lifestyle &mdash; but his savings rate jumped
+              from 50% to 54%. That $200 that used to sit idle in WC? Now it
+              automatically gets swept into his investment and savings funds.
             </StoryText>
+
+            {/* Annual impact */}
+            <div className="my-8 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-sm mb-1">
+                    The annual impact
+                  </p>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    $200/month extra &times; 12 months ={" "}
+                    <Strong>$2,400 more saved per year.</Strong>
+                    {" "}Same paycheck. Same lifestyle. Just smarter allocation.
+                  </p>
+                </div>
+                <div className="text-right pl-6 shrink-0">
+                  <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                    +$2,400
+                  </p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                    per year
+                  </p>
+                </div>
+              </div>
+            </div>
 
             <Callout icon={TrendingUp} color="emerald">
               Optimize mode doesn&apos;t ask Ledge to spend less. It just
               makes sure money that wasn&apos;t used doesn&apos;t sit
               around doing nothing. Every leftover dollar gets put to work.
+              His savings rate goes up without him even noticing.
             </Callout>
           </section>
 
@@ -916,10 +1027,414 @@ export default function LearnPage() {
             </StoryText>
           </section>
 
-          {/* ─── Chapter 8: The Loop ─── */}
+          {/* ─── Chapter 8: The Projection ─── */}
           <section className="mb-20">
             <ChapterHeader
               number={8}
+              title="The Projection"
+              subtitle="Month 6 — Ledge plans ahead"
+            />
+
+            <StoryText>
+              Six months of tracking. Six months of model vs reality. Ledge&apos;s
+              spending patterns aren&apos;t a mystery anymore &mdash; they&apos;re
+              data. And now he&apos;s ready to use that data to look{" "}
+              <em>forward</em>.
+            </StoryText>
+
+            <StoryText>
+              He opens{" "}
+              <Strong>Projections</Strong>. This is where Ledgera stops being a
+              tracker and starts being a{" "}
+              <Strong>financial model</Strong>. He plugs in his numbers:
+            </StoryText>
+
+            {/* Projection inputs */}
+            <div className="my-8 rounded-xl border bg-card p-6">
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-5">
+                Ledge&apos;s projection inputs
+              </p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {[
+                  { label: "Monthly Income", value: "$5,000", note: "after tax" },
+                  { label: "Monthly Expenses", value: "$2,300", note: "WC + Fun avg" },
+                  { label: "Tax Rate", value: "15%", note: "effective rate" },
+                  { label: "Inflation", value: "3%", note: "annual estimate" },
+                  { label: "Investment Return", value: "8%", note: "expected annual" },
+                  { label: "Projection Period", value: "5 years", note: "looking ahead" },
+                ].map((input) => (
+                  <div
+                    key={input.label}
+                    className="rounded-lg border bg-muted/30 p-3"
+                  >
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">
+                      {input.label}
+                    </p>
+                    <p className="text-lg font-bold">{input.value}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {input.note}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <StoryText>
+              Here&apos;s the key: these aren&apos;t guesses anymore. His expense
+              number comes from 6 months of actual tracking. His savings rate is
+              real. Even his inflation estimate is grounded &mdash; he&apos;s seen
+              his groceries creep up 2% over the last few months.
+            </StoryText>
+
+            <Callout icon={Lightbulb} color="primary">
+              This is the convergence principle. Ledge&apos;s first model back
+              in month 1 was a rough guess &mdash; he <em>thought</em> he spent
+              $2,000 on essentials. After 6 months of comparing model vs reality,
+              he knows it&apos;s actually $1,800. Each month the model gets more
+              accurate, and so do the projections built on top of it.
+            </Callout>
+
+            <StoryText>
+              He also sets up his{" "}
+              <Strong>fund allocation weights</Strong> and{" "}
+              <Strong>expected return rates</Strong>. His investment fund assumes
+              8% annual returns. His emergency fund earns 3% in a high-yield
+              savings account. Travel is just cash &mdash; no return, just
+              accumulation.
+            </StoryText>
+
+            <StoryText>
+              Then he adds a{" "}
+              <Strong>one-time cost</Strong>: the Japan trip, $3,500 from his
+              travel fund in month 8. Ledgera factors it in automatically.
+            </StoryText>
+
+            <StoryText>
+              Ledgera runs the numbers. Here&apos;s what comes back:
+            </StoryText>
+
+            {/* Year-by-year projection table */}
+            <div className="my-8 rounded-xl border bg-card p-6">
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-5">
+                5-year projection
+              </p>
+              <div className="overflow-x-auto">
+                <div className="grid grid-cols-6 gap-px bg-muted/50 rounded-lg overflow-hidden min-w-[480px]">
+                  {/* Header */}
+                  <div className="bg-card p-3 text-xs font-bold text-muted-foreground" />
+                  {["Year 1", "Year 2", "Year 3", "Year 4", "Year 5"].map(
+                    (yr) => (
+                      <div
+                        key={yr}
+                        className="bg-card p-3 text-xs font-bold text-muted-foreground text-center"
+                      >
+                        {yr}
+                      </div>
+                    )
+                  )}
+
+                  {/* Annual savings */}
+                  <div className="bg-card p-3 text-sm font-medium">
+                    Annual Savings
+                  </div>
+                  {["$32,400", "$33,400", "$34,400", "$35,400", "$36,500"].map(
+                    (v, i) => (
+                      <div
+                        key={i}
+                        className="bg-card p-3 text-sm text-center text-emerald-600 dark:text-emerald-400 font-medium"
+                      >
+                        {v}
+                      </div>
+                    )
+                  )}
+
+                  {/* Investment balance */}
+                  <div className="bg-card p-3 text-sm font-medium">
+                    📈 Investments
+                  </div>
+                  {[
+                    "$21,200",
+                    "$35,500",
+                    "$51,700",
+                    "$69,800",
+                    "$90,000",
+                  ].map((v, i) => (
+                    <div
+                      key={i}
+                      className={`bg-card p-3 text-sm text-center ${
+                        i === 4
+                          ? "font-bold text-violet-600 dark:text-violet-400"
+                          : ""
+                      }`}
+                    >
+                      {v}
+                    </div>
+                  ))}
+
+                  {/* Emergency fund */}
+                  <div className="bg-card p-3 text-sm font-medium">
+                    🛡️ Emergency
+                  </div>
+                  {["$9,000", "$9,270", "$9,550", "$9,840", "$10,100"].map(
+                    (v, i) => (
+                      <div
+                        key={i}
+                        className={`bg-card p-3 text-sm text-center ${
+                          i === 0
+                            ? "font-semibold text-emerald-600 dark:text-emerald-400"
+                            : "text-muted-foreground"
+                        }`}
+                      >
+                        {v}
+                      </div>
+                    )
+                  )}
+
+                  {/* Net worth row */}
+                  <div className="bg-card p-3 text-sm font-bold border-t border-muted">
+                    💰 Net Worth
+                  </div>
+                  {["$44,000", "$62,000", "$82,000", "$104,000", "$128,000"].map(
+                    (v, i) => (
+                      <div
+                        key={i}
+                        className={`bg-card p-3 text-sm text-center font-bold border-t border-muted ${
+                          i === 4
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : ""
+                        }`}
+                      >
+                        {v}
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-4 text-center">
+                Includes 8% investment returns, 3% inflation on expenses, and
+                the Japan trip in month 8.
+              </p>
+            </div>
+
+            <StoryText>
+              Ledge stares at the numbers. Starting from $12,340 &mdash; in five
+              years he could be at <Strong>$128,000</Strong>. His investments
+              alone could hit $90,000, powered by compound returns. The Japan
+              trip barely makes a dent because it was planned for.
+            </StoryText>
+
+            <StoryText>
+              Then Ledge does something clever. He saves this as a{" "}
+              <Strong>scenario</Strong> called{" "}
+              <em>&ldquo;Current Plan&rdquo;</em>. Then he creates a second one:{" "}
+              <em>&ldquo;What if I get a raise?&rdquo;</em> &mdash; bumping income
+              to $6,000. And a third:{" "}
+              <em>&ldquo;Aggressive Savings&rdquo;</em> &mdash; cutting Fun from
+              10% to 5%.
+            </StoryText>
+
+            {/* Scenario comparison */}
+            <div className="my-8 grid gap-3 sm:grid-cols-3">
+              {[
+                {
+                  name: "Current Plan",
+                  income: "$5,000",
+                  savings: "54%",
+                  yr5: "$128,000",
+                  border: "border-muted",
+                  bg: "",
+                  active: true,
+                },
+                {
+                  name: "With Raise",
+                  income: "$6,000",
+                  savings: "58%",
+                  yr5: "$168,000",
+                  border: "border-emerald-500/20",
+                  bg: "bg-emerald-500/[0.03]",
+                  active: false,
+                },
+                {
+                  name: "Aggressive",
+                  income: "$5,000",
+                  savings: "59%",
+                  yr5: "$142,000",
+                  border: "border-amber-500/20",
+                  bg: "bg-amber-500/[0.03]",
+                  active: false,
+                },
+              ].map((s) => (
+                <div
+                  key={s.name}
+                  className={`rounded-xl border ${s.border} ${s.bg} p-5`}
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <p className="text-sm font-bold">{s.name}</p>
+                    {s.active && (
+                      <Badge
+                        variant="secondary"
+                        className="text-[10px] px-1.5 py-0"
+                      >
+                        active
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Income</span>
+                      <span className="font-medium">{s.income}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Savings rate</span>
+                      <span className="font-medium">{s.savings}</span>
+                    </div>
+                    <Separator />
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Year 5</span>
+                      <span className="font-bold">{s.yr5}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <StoryText>
+              Three different futures, side by side. Ledge can see exactly how each
+              decision &mdash; a raise, tighter spending, different return rates
+              &mdash; changes his trajectory. He picks{" "}
+              <em>&ldquo;Current Plan&rdquo;</em> as his active scenario and
+              makes it his benchmark.
+            </StoryText>
+
+            <StoryText>
+              Meanwhile, the <Strong>Portfolio</Strong> page shows the other
+              side of the coin: not where he&apos;s going, but where he{" "}
+              <em>is</em>. His net worth charted over time &mdash; assets,
+              liabilities, the net total. A line going up and to the right.
+              That line is proof the model works.
+            </StoryText>
+
+            {/* Net worth growth visual */}
+            <div className="my-8 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-6">
+              <p className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-4">
+                Net worth &mdash; month 1 to month 6
+              </p>
+              <div className="flex items-end gap-2 h-28">
+                {[
+                  { h: "20%", label: "M1", val: "$12k" },
+                  { h: "32%", label: "M2", val: "$15k" },
+                  { h: "46%", label: "M3", val: "$18k" },
+                  { h: "58%", label: "M4", val: "$21k" },
+                  { h: "74%", label: "M5", val: "$24k" },
+                  { h: "92%", label: "M6", val: "$28k" },
+                ].map((bar) => (
+                  <div
+                    key={bar.label}
+                    className="flex-1 flex flex-col items-center justify-end h-full"
+                  >
+                    <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mb-1">
+                      {bar.val}
+                    </p>
+                    <div
+                      className="w-full rounded-t bg-gradient-to-t from-emerald-600 to-emerald-400 dark:from-emerald-500 dark:to-emerald-300 opacity-80"
+                      style={{ height: bar.h }}
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1.5">
+                      {bar.label}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-4 text-center">
+                $12,340 &rarr; $28,000 in 6 months. The model works.
+              </p>
+            </div>
+
+            <StoryText>
+              Here&apos;s what makes this powerful: the projection and the
+              portfolio <Strong>talk to each other</Strong>. The projection says
+              &ldquo;you should be at $28,000 by month 6.&rdquo; The portfolio
+              confirms it. When they match, Ledge knows his model is dialed in.
+              When they don&apos;t, he knows exactly what to adjust.
+            </StoryText>
+
+            {/* Convergence visual */}
+            <div className="my-8 rounded-xl border bg-card p-6">
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">
+                The model gets smarter over time
+              </p>
+              <div className="space-y-3">
+                {[
+                  {
+                    month: "Month 1",
+                    model: "$2,000",
+                    actual: "$1,720",
+                    gap: "$280 off",
+                    gapColor: "text-amber-600 dark:text-amber-400",
+                    note: "First guess — Ledge overestimated expenses",
+                    bar: "72%",
+                  },
+                  {
+                    month: "Month 3",
+                    model: "$1,850",
+                    actual: "$1,810",
+                    gap: "$40 off",
+                    gapColor: "text-emerald-600 dark:text-emerald-400",
+                    note: "Getting closer — adjusted from real data",
+                    bar: "90%",
+                  },
+                  {
+                    month: "Month 6",
+                    model: "$1,800",
+                    actual: "$1,790",
+                    gap: "$10 off",
+                    gapColor: "text-emerald-600 dark:text-emerald-400",
+                    note: "Dialed in — model matches reality",
+                    bar: "97%",
+                  },
+                ].map((row) => (
+                  <div key={row.month} className="rounded-lg border p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-semibold">{row.month}</span>
+                      <span className={`text-xs font-bold ${row.gapColor}`}>
+                        {row.gap}
+                      </span>
+                    </div>
+                    <div className="flex gap-4 text-xs text-muted-foreground mb-2">
+                      <span>
+                        Model: <strong className="text-foreground">{row.model}</strong>
+                      </span>
+                      <span>
+                        Actual: <strong className="text-foreground">{row.actual}</strong>
+                      </span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-emerald-500 transition-all"
+                        style={{ width: row.bar }}
+                      />
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-2">
+                      {row.note}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <Callout icon={TrendingUp} color="emerald">
+              Your first model doesn&apos;t have to be perfect &mdash; it just
+              has to exist. A rough estimate in month 1 becomes a dialed-in
+              prediction by month 6. Every comparison between model and reality
+              makes the next projection more accurate. That&apos;s convergence:
+              the model and your life slowly meet in the middle.
+            </Callout>
+          </section>
+
+          {/* ─── Chapter 9: The Loop ─── */}
+          <section className="mb-20">
+            <ChapterHeader
+              number={9}
               title="The Loop"
               subtitle="Ledge's new monthly routine — 15 minutes"
             />
@@ -1012,13 +1527,59 @@ export default function LearnPage() {
                     , then checking if reality matched. That&apos;s it.
                   </p>
                   <p>
-                    A year later, he&apos;s saved 30% more than the year before.
-                    His emergency fund is fully built. His Japan trip is funded.
-                    His investments are growing. And he still eats out with
-                    friends every week.
+                    A year later, his savings rate sits at 54%. His emergency
+                    fund is fully built. His Japan trip happened &mdash; and
+                    was paid for months in advance. His investments are
+                    compounding. And he still goes out with friends every
+                    week &mdash; he just knows exactly what it costs.
                   </p>
-                  <p className="text-lg text-foreground font-semibold mt-6 pt-4 border-t border-primary/10">
-                    He didn&apos;t earn more. He just knew more.
+                  <p>
+                    Remember those projections he ran at month 6? The ones
+                    that said he&apos;d hit $44,000 by year&apos;s end?
+                    He&apos;s at <strong className="text-foreground">$45,200</strong>.
+                    The model wasn&apos;t a dream &mdash; it was a prediction.
+                    And it came true because he kept refining it, month after
+                    month, until the model and reality converged.
+                  </p>
+
+                  {/* Before/after summary */}
+                  <div className="grid grid-cols-3 gap-3 pt-2">
+                    <div className="rounded-lg border bg-background/60 p-3 text-center">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">
+                        Before Ledgera
+                      </p>
+                      <p className="text-lg font-bold text-foreground">~0%</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        intentional savings
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.04] p-3 text-center">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 mb-1">
+                        After Ledgera
+                      </p>
+                      <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                        54%
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        savings rate
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-violet-500/20 bg-violet-500/[0.04] p-3 text-center">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-violet-600 dark:text-violet-400 mb-1">
+                        Net Worth
+                      </p>
+                      <p className="text-lg font-bold text-violet-600 dark:text-violet-400">
+                        $45,200
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        from $12,340
+                      </p>
+                    </div>
+                  </div>
+
+                  <p className="text-lg text-foreground font-semibold mt-4 pt-4 border-t border-primary/10">
+                    He didn&apos;t earn more. He just knew more &mdash; and
+                    could see further.
                   </p>
                 </div>
               </div>
