@@ -56,34 +56,61 @@ export default function LearnPage() {
         {/* ── Hero ── */}
         <section className="relative overflow-hidden border-b">
           <div className="absolute inset-0 wiki-grid-pattern opacity-40" />
-          <div className="absolute -top-40 right-0 h-96 w-96 rounded-full bg-amber-500/5 blur-3xl" />
+          <div className="absolute -top-40 right-0 h-96 w-96 rounded-full bg-indigo-500/5 blur-3xl" />
           <div className="absolute -bottom-40 -left-20 h-80 w-80 rounded-full bg-primary/5 blur-3xl" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] rounded-full bg-violet-500/[0.03] blur-3xl" />
 
-          <div className="relative mx-auto max-w-3xl px-4 py-20 md:py-28 text-center">
+          <div className="relative mx-auto max-w-5xl px-4 py-16 md:py-24">
             <Link
               href="/wiki"
-              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-8 group"
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-10 group"
             >
               <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-0.5" />
               Back to guide
             </Link>
 
-            <Badge
-              variant="secondary"
-              className="gap-1.5 px-3 py-1 text-xs font-medium mb-6"
-            >
-              <Sparkles className="h-3 w-3" />
-              A story about your money
-            </Badge>
+            <div className="flex flex-col items-center gap-8 md:flex-row md:items-center md:justify-between md:gap-16">
+              {/* Text side */}
+              <div className="text-center md:text-left max-w-xl">
+                <Badge
+                  variant="secondary"
+                  className="gap-1.5 px-3 py-1 text-xs font-medium mb-6"
+                >
+                  <Sparkles className="h-3 w-3" />
+                  A story about your money
+                </Badge>
 
-            <h1 className="text-4xl font-bold tracking-tight md:text-6xl wiki-gradient-text pb-1">
-              Meet Ledge.
-            </h1>
-            <p className="mt-5 text-lg md:text-xl text-muted-foreground max-w-xl mx-auto leading-relaxed">
-              He makes good money. He just doesn&apos;t know where it all goes.
-              Follow his journey from &ldquo;I think I&apos;m doing okay&rdquo;
-              to actually knowing.
-            </p>
+                <h1 className="text-4xl font-bold tracking-tight md:text-6xl wiki-gradient-text pb-1">
+                  Meet Ledge.
+                </h1>
+                <p className="mt-5 text-lg md:text-xl text-muted-foreground max-w-xl leading-relaxed">
+                  He makes good money. He just doesn&apos;t know where it all
+                  goes. Follow his journey from &ldquo;I think I&apos;m doing
+                  okay&rdquo; to actually knowing.
+                </p>
+
+                <div className="mt-8 flex items-center gap-3 justify-center md:justify-start">
+                  <div className="flex items-center gap-2 rounded-full border bg-card/50 px-4 py-2">
+                    <LedgeAvatar className="h-6 w-6" />
+                    <span className="text-sm text-muted-foreground">
+                      8 chapters
+                    </span>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    &middot; 5 min read
+                  </div>
+                </div>
+              </div>
+
+              {/* Character side */}
+              <div className="learn-float w-52 md:w-64 shrink-0">
+                <div className="relative">
+                  {/* Soft glow behind character */}
+                  <div className="absolute inset-0 rounded-full bg-gradient-to-br from-indigo-400/10 to-violet-400/10 blur-2xl scale-110" />
+                  <LedgeCharacter className="relative w-full h-auto drop-shadow-lg" />
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -123,8 +150,8 @@ export default function LearnPage() {
                 </div>
               </div>
               <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
-                <div className="flex items-start gap-2">
-                  <HelpCircle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                <div className="flex items-start gap-3">
+                  <LedgeAvatar className="h-8 w-8 shrink-0 mt-0.5" />
                   <p className="text-sm text-muted-foreground leading-relaxed">
                     Ledge looks at this number and thinks:{" "}
                     <em className="text-foreground">
@@ -891,11 +918,14 @@ export default function LearnPage() {
               <div className="absolute top-0 right-0 w-40 h-40 rounded-full bg-primary/5 blur-3xl" />
               <div className="absolute bottom-0 left-0 w-32 h-32 rounded-full bg-primary/5 blur-2xl" />
               <div className="relative">
-                <div className="flex items-center gap-2 mb-4">
-                  <Sparkles className="h-5 w-5 text-primary" />
-                  <h2 className="text-xl font-bold">
-                    What changed for Ledge
-                  </h2>
+                <div className="flex items-center gap-3 mb-6">
+                  <LedgeAvatar className="h-10 w-10" />
+                  <div>
+                    <h2 className="text-xl font-bold">
+                      What changed for Ledge
+                    </h2>
+                    <p className="text-xs text-muted-foreground">Epilogue</p>
+                  </div>
                 </div>
                 <div className="space-y-4 text-[15px] text-muted-foreground leading-relaxed">
                   <p>
@@ -916,7 +946,7 @@ export default function LearnPage() {
                     His investments are growing. And he still eats out with
                     friends every week.
                   </p>
-                  <p className="text-foreground font-medium">
+                  <p className="text-lg text-foreground font-semibold mt-6 pt-4 border-t border-primary/10">
                     He didn&apos;t earn more. He just knew more.
                   </p>
                 </div>
@@ -930,6 +960,9 @@ export default function LearnPage() {
           <div className="absolute inset-0 wiki-grid-pattern opacity-30" />
           <div className="absolute -top-40 left-1/2 -translate-x-1/2 h-80 w-80 rounded-full bg-primary/5 blur-3xl" />
           <div className="relative mx-auto max-w-3xl px-4 py-24 text-center">
+            <div className="flex justify-center mb-4">
+              <LedgeAvatar className="h-16 w-16" />
+            </div>
             <h2 className="text-3xl font-bold tracking-tight">
               Be like Ledge.
             </h2>
@@ -1035,5 +1068,164 @@ function Callout({
         </p>
       </div>
     </div>
+  )
+}
+
+/* ── Character illustrations ───────────────────────────────────── */
+
+function LedgeCharacter({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 200 300" fill="none" className={className}>
+      <defs>
+        <linearGradient id="lc-skin" x1="0.3" y1="0" x2="0.7" y2="1">
+          <stop offset="0%" stopColor="#FBBE8A" />
+          <stop offset="100%" stopColor="#E8A06C" />
+        </linearGradient>
+        <linearGradient id="lc-hair" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#3E2315" />
+          <stop offset="100%" stopColor="#2A180E" />
+        </linearGradient>
+        <linearGradient id="lc-hoodie" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#818CF8" />
+          <stop offset="100%" stopColor="#6366F1" />
+        </linearGradient>
+        <linearGradient id="lc-hoodie-d" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#7275E8" />
+          <stop offset="100%" stopColor="#5558D8" />
+        </linearGradient>
+      </defs>
+
+      {/* Ground shadow */}
+      <ellipse cx="100" cy="294" rx="48" ry="6" fill="#6366F1" opacity="0.08" />
+
+      {/* ── Body ── */}
+      <path
+        d="M52 185 C52 158 76 148 100 148 C124 148 148 158 148 185 L150 275 C150 283 143 288 135 288 L65 288 C57 288 50 283 50 275Z"
+        fill="url(#lc-hoodie)"
+      />
+
+      {/* Right arm (resting) */}
+      <path d="M148 175 C162 182 170 205 166 232" stroke="url(#lc-hoodie)" strokeWidth="26" strokeLinecap="round" />
+      <circle cx="166" cy="236" r="13" fill="url(#lc-skin)" />
+
+      {/* Left arm (waving) */}
+      <g className="learn-wave">
+        <path d="M52 175 C34 166 22 148 28 126" stroke="url(#lc-hoodie)" strokeWidth="26" strokeLinecap="round" />
+        <circle cx="30" cy="120" r="13" fill="url(#lc-skin)" />
+        {/* Wave motion lines */}
+        <path d="M10 108 Q5 103 10 98" stroke="#818CF8" strokeWidth="2" strokeLinecap="round" opacity="0.5" />
+        <path d="M4 114 Q-2 107 4 100" stroke="#818CF8" strokeWidth="2" strokeLinecap="round" opacity="0.3" />
+      </g>
+
+      {/* Hoodie V-neck */}
+      <path d="M85 152 L100 170 L115 152" stroke="#A5B4FC" strokeWidth="1.5" fill="none" strokeLinejoin="round" />
+      {/* Hoodie strings */}
+      <line x1="93" y1="157" x2="90" y2="186" stroke="#A5B4FC" strokeWidth="1.5" strokeLinecap="round" opacity="0.6" />
+      <line x1="107" y1="157" x2="110" y2="186" stroke="#A5B4FC" strokeWidth="1.5" strokeLinecap="round" opacity="0.6" />
+      <circle cx="90" cy="188" r="2.5" fill="#A5B4FC" opacity="0.6" />
+      <circle cx="110" cy="188" r="2.5" fill="#A5B4FC" opacity="0.6" />
+      {/* Hoodie pocket */}
+      <rect x="72" y="230" width="56" height="22" rx="8" fill="url(#lc-hoodie-d)" opacity="0.5" />
+
+      {/* ── Neck ── */}
+      <rect x="88" y="135" width="24" height="18" rx="6" fill="url(#lc-skin)" />
+
+      {/* ── Head ── */}
+      <ellipse cx="100" cy="82" rx="56" ry="60" fill="url(#lc-skin)" />
+
+      {/* ── Hair ── */}
+      <ellipse cx="100" cy="50" rx="58" ry="42" fill="url(#lc-hair)" />
+      <path
+        d="M42 72 C42 42 68 24 100 22 C132 24 158 42 158 72 C154 56 136 42 118 45 C106 47 102 55 96 52 C84 45 62 52 42 72Z"
+        fill="url(#lc-hair)"
+      />
+      <path d="M44 72 C40 82 42 94 46 98" stroke="#2A180E" strokeWidth="6" strokeLinecap="round" fill="none" />
+      <path d="M156 72 C160 82 158 94 154 98" stroke="#2A180E" strokeWidth="6" strokeLinecap="round" fill="none" />
+      <path d="M70 38 C82 32 96 30 102 32" stroke="#4A3020" strokeWidth="2" strokeLinecap="round" opacity="0.35" />
+
+      {/* ── Ears ── */}
+      <ellipse cx="44" cy="90" rx="9" ry="13" fill="url(#lc-skin)" />
+      <ellipse cx="44" cy="90" rx="5" ry="8" fill="#E09B6A" opacity="0.3" />
+      <ellipse cx="156" cy="90" rx="9" ry="13" fill="url(#lc-skin)" />
+      <ellipse cx="156" cy="90" rx="5" ry="8" fill="#E09B6A" opacity="0.3" />
+
+      {/* ── Face ── */}
+      {/* Eyes */}
+      <ellipse cx="78" cy="88" rx="11" ry="12" fill="white" />
+      <ellipse cx="122" cy="88" rx="11" ry="12" fill="white" />
+      <ellipse cx="80" cy="90" rx="7" ry="8" fill="#1E1B2E" />
+      <ellipse cx="124" cy="90" rx="7" ry="8" fill="#1E1B2E" />
+      {/* Highlights */}
+      <circle cx="83" cy="87" r="3" fill="white" opacity="0.85" />
+      <circle cx="127" cy="87" r="3" fill="white" opacity="0.85" />
+      <circle cx="78" cy="94" r="1.5" fill="white" opacity="0.4" />
+      <circle cx="122" cy="94" r="1.5" fill="white" opacity="0.4" />
+
+      {/* Eyebrows */}
+      <path d="M64 74 C72 67 88 69 92 76" stroke="#2A180E" strokeWidth="2.8" strokeLinecap="round" fill="none" />
+      <path d="M108 76 C112 69 128 67 136 74" stroke="#2A180E" strokeWidth="2.8" strokeLinecap="round" fill="none" />
+
+      {/* Nose */}
+      <path d="M98 98 C96 104 98 108 102 108 C105 108 106 104 104 98" fill="#E09B6A" opacity="0.4" />
+
+      {/* Smile */}
+      <path d="M82 114 C90 126 110 126 118 114" stroke="#C47D5E" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+
+      {/* Cheek blush */}
+      <ellipse cx="64" cy="108" rx="10" ry="6" fill="#F09090" opacity="0.22" />
+      <ellipse cx="136" cy="108" rx="10" ry="6" fill="#F09090" opacity="0.22" />
+    </svg>
+  )
+}
+
+function LedgeAvatar({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 48 48" fill="none" className={className}>
+      <defs>
+        <linearGradient id="la-skin" x1="0.3" y1="0" x2="0.7" y2="1">
+          <stop offset="0%" stopColor="#FBBE8A" />
+          <stop offset="100%" stopColor="#E8A06C" />
+        </linearGradient>
+        <linearGradient id="la-hair" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#3E2315" />
+          <stop offset="100%" stopColor="#2A180E" />
+        </linearGradient>
+      </defs>
+
+      {/* Background */}
+      <circle cx="24" cy="24" r="23" className="fill-indigo-50 dark:fill-indigo-950/40" />
+
+      {/* Head */}
+      <ellipse cx="24" cy="27" rx="14" ry="15" fill="url(#la-skin)" />
+
+      {/* Hair */}
+      <ellipse cx="24" cy="17" rx="15" ry="11" fill="url(#la-hair)" />
+      <path
+        d="M9 24 C9 14 16 8 24 7 C32 8 39 14 39 24 C37 18 32 13 28 15 C24 16 23 19 21 17 C17 14 12 18 9 24Z"
+        fill="url(#la-hair)"
+      />
+
+      {/* Ears */}
+      <ellipse cx="10" cy="29" rx="2.5" ry="3.5" fill="url(#la-skin)" />
+      <ellipse cx="38" cy="29" rx="2.5" ry="3.5" fill="url(#la-skin)" />
+
+      {/* Eyes */}
+      <ellipse cx="19" cy="28" rx="3.2" ry="3.5" fill="white" />
+      <ellipse cx="29" cy="28" rx="3.2" ry="3.5" fill="white" />
+      <circle cx="19.8" cy="28.5" r="2.2" fill="#1E1B2E" />
+      <circle cx="29.8" cy="28.5" r="2.2" fill="#1E1B2E" />
+      <circle cx="20.5" cy="27.5" r="0.9" fill="white" opacity="0.85" />
+      <circle cx="30.5" cy="27.5" r="0.9" fill="white" opacity="0.85" />
+
+      {/* Nose */}
+      <circle cx="24" cy="32" r="1" fill="#E09B6A" opacity="0.4" />
+
+      {/* Smile */}
+      <path d="M20 34.5 C22 37 26 37 28 34.5" stroke="#C47D5E" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+
+      {/* Cheeks */}
+      <circle cx="15" cy="32" r="2.5" fill="#F09090" opacity="0.2" />
+      <circle cx="33" cy="32" r="2.5" fill="#F09090" opacity="0.2" />
+    </svg>
   )
 }
