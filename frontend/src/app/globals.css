@@ -73,3 +73,27 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Wiki page utilities */
+@layer utilities {
+  .wiki-grid-pattern {
+    background-image: radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .wiki-gradient-text {
+    background: linear-gradient(135deg, hsl(var(--foreground)) 0%, hsl(var(--muted-foreground)) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .wiki-glow {
+    background: radial-gradient(
+      600px circle at var(--glow-x, 50%) var(--glow-y, 50%),
+      hsl(var(--primary) / 0.06),
+      transparent 40%
+    );
+  }
+  .wiki-timeline-line {
+    background: linear-gradient(to bottom, hsl(var(--border)), hsl(var(--primary) / 0.3), hsl(var(--border)));
+  }
+}
