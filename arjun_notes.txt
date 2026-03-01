@@ -57,10 +57,18 @@ Editable address and phone numbers
 Re verify if phone & email change 
 Edit nationality and tax residency as well
 
-Working Capital Fund should be based on the allocation in Fund Tracker.
-
 We can also add a nice visual based on:
-
 Model Expected  Credits Debits.
-
 Count only actual debit and credit as part of the balance 
+
+Future Enhancements (Out of Scope)
+Bank-specific format templates: Pre-configured column mappings for common banks (DBS, OCBC, etc.)
+Advanced column mapping UI: Visual drag-drop interface to map any CSV format
+Duplicate detection: Use import_hash to detect and prevent duplicate imports
+Batch confirmation: Single API call to create all validated transactions at once
+Transfer support: Parse rows with two accounts as transfers
+Multi-currency handling: Auto-detect currency from CSV or account settings
+Excel (.xlsx) support: Parse Excel files in addition to CSV
+PDF parsing: Extract transactions from bank statement PDFs using OCR/text extraction
+Import history: Track and display previous CSV imports with rollback capability
+Auto-categorization: ML-based category suggestions based on payee/memo patterns

@@ -762,13 +762,13 @@ export default function TransactionsPage() {
       await createTransaction({
         timestamp: finalTx.timestamp!,
         payee: finalTx.payee,
-        memo: finalTx.memo || null,
+        memo: finalTx.memo || "",
         status: "cleared",
         source: "csv_import",
-        category_id: finalTx.category_id || null,
-        subcategory_id: finalTx.subcategory_id || null,
-        fund_id: finalTx.fund_id || null,
-        payment_method_id: finalTx.payment_method_id || null,
+        category_id: finalTx.category_id || undefined,
+        subcategory_id: finalTx.subcategory_id || undefined,
+        fund_id: finalTx.fund_id || undefined,
+        payment_method_id: finalTx.payment_method_id || undefined,
         postings: [
           {
             account_id: finalTx.account_id,
