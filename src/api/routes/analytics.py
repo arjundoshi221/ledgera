@@ -441,6 +441,7 @@ def get_income_allocation(
     Allocated fixed cost comes from the active simulation's monthly expenses.
     Fund allocation percentages are applied to savings remainder (income - fixed costs).
     Always shows complete calendar years (Jan-Dec).
+    Current month and previous month are editable; older months are locked.
     """
     try:
         # Get all active funds for this workspace
@@ -612,8 +613,17 @@ def get_income_allocation(
                     working_capital_pct_of_income = 0.0
                     savings_pct_of_income = 0.0
 
-                # Lock: only the current month is editable
-                is_locked = not (y == current_year and m == now.month)
+                # Lock: allow current month and previous month to be editable
+                previous_month = now.month - 1
+                previous_month_year = current_year
+                if previous_month == 0:
+                    previous_month = 12
+                    previous_month_year = current_year - 1
+
+                is_locked = not (
+                    (y == current_year and m == now.month) or  # current month
+                    (y == previous_month_year and m == previous_month)  # previous month
+                )
 
                 # Allocate funds from savings remainder
                 fund_allocs = []

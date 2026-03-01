@@ -52,6 +52,11 @@ export default function IncomeAllocationPage() {
   const loading = isLoading
   const refreshing = isValidating && !isLoading
 
+  // Get current year and month for badge labels
+  const now = new Date()
+  const currentYear = now.getFullYear()
+  const currentMonth = now.getMonth() + 1
+
   // SWR mutation hooks
   const { createOrUpdate, delete: deleteOverride } = useAllocationOverrideMutations()
 
@@ -234,10 +239,12 @@ export default function IncomeAllocationPage() {
   }
 
   const fundsHeaders = data?.funds_meta ?? []
-  const currentMonthRow = data?.rows.find(r => !r.is_locked)
-  const allocSumInvalid = currentMonthRow
-    ? Math.abs(Number(currentMonthRow.total_fund_allocation_pct) - 100) > 0.1
-    : false
+  // Find all editable rows (current month and previous month)
+  const editableRows = data?.rows.filter(r => !r.is_locked) ?? []
+  // Check which editable rows have invalid allocation sums
+  const invalidAllocationRows = editableRows.filter(
+    r => Math.abs(Number(r.total_fund_allocation_pct) - 100) > 0.1
+  )
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -294,15 +301,19 @@ export default function IncomeAllocationPage() {
         )}
 
         {/* 100% Validation Warning */}
-        {allocSumInvalid && currentMonthRow && (
+        {invalidAllocationRows.length > 0 && (
           <Card className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
             <CardContent className="py-3">
-              <div className="text-sm text-amber-800 dark:text-amber-200">
-                Fund allocations for {MONTH_NAMES[currentMonthRow.month - 1]} {currentMonthRow.year} sum to{" "}
-                <span className="font-semibold">
-                  {Number(currentMonthRow.total_fund_allocation_pct).toFixed(1)}%
-                </span>{" "}
-                instead of 100%. Click a fund percentage to adjust.
+              <div className="space-y-1">
+                {invalidAllocationRows.map((row) => (
+                  <div key={`${row.year}-${row.month}`} className="text-sm text-amber-800 dark:text-amber-200">
+                    Fund allocations for {MONTH_NAMES[row.month - 1]} {row.year} sum to{" "}
+                    <span className="font-semibold">
+                      {Number(row.total_fund_allocation_pct).toFixed(1)}%
+                    </span>{" "}
+                    instead of 100%. Click a fund percentage to adjust.
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>
@@ -432,7 +443,7 @@ export default function IncomeAllocationPage() {
                             {MONTH_NAMES[row.month - 1]}
                             {!row.is_locked && (
                               <Badge variant="secondary" className="ml-1 text-[10px] py-0 px-1">
-                                Current
+                                {row.year === currentYear && row.month === currentMonth ? "Current" : "Editable"}
                               </Badge>
                             )}
                           </td>
