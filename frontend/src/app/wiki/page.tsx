@@ -27,6 +27,12 @@ import {
   Globe,
   Code2,
   ArrowUpRight,
+  Target,
+  Eye,
+  RefreshCw,
+  Gauge,
+  Lock,
+  Wrench,
 } from "lucide-react"
 
 /* ── data ──────────────────────────────────────────────────────── */
@@ -163,20 +169,20 @@ const sections = [
     accentBg: "teal",
     content: [
       {
-        heading: "How it works",
-        text: "Each month, your income gets split across your funds based on the percentages you define. For example, 50% to Working Capital, 20% to Investments, 15% to Emergency Fund, 15% to Travel. This happens automatically based on your rules.",
+        heading: "The basic idea",
+        text: "Every time you get paid, that money needs to go somewhere. Instead of figuring it out as you go, you set up rules in advance. \"50% of my income goes to monthly expenses, 20% to investments, 15% to emergency fund, 15% to travel.\" Ledgera splits it for you automatically.",
       },
       {
         heading: "The allocation table",
-        text: "A spreadsheet-like grid where rows are your funds and columns are months. Click any cell to edit the allocation percentage. The current month is highlighted so you can quickly find it.",
+        text: "This page shows a grid \u2014 your funds are on the left, months are across the top. Click any cell to change the percentage for that fund in that month. The current month is highlighted so you always know where you are.",
       },
       {
-        heading: "Working Capital modes",
-        text: 'Your Working Capital fund is special. It can run in two modes: "Model" gives it a fixed predictable amount each month. "Optimize" automatically calculates what it needs based on your actual expenses and sweeps any surplus to savings. You can also manually override it for any specific month.',
+        heading: "Working Capital is special",
+        text: "Your expenses fund (Working Capital) can run in two modes. \"Model\" gives it a fixed amount you choose \u2014 simple and predictable. \"Optimize\" is smarter: it looks at what you actually spent and only allocates that much, sweeping any leftover into savings. See the \"Model vs Optimize\" section above for a detailed breakdown with examples.",
       },
       {
-        heading: "Why this matters",
-        text: "Instead of spending first and saving what's left, you allocate first. Every dollar has a destination before you spend it. This is the core idea behind Ledgera.",
+        heading: "You can always override",
+        text: "Had an unusual month? Just click the cell and type a specific number. Ledgera won't fight you \u2014 manual overrides always win. You can reset back to the automatic calculation anytime.",
       },
     ],
   },
@@ -359,6 +365,7 @@ export default function WikiPage() {
     const ids = [
       ...sections.map((s) => s.id),
       "funds-vs-accounts",
+      "model-vs-optimize",
       "concepts",
       "workflow",
       "about",
@@ -386,6 +393,7 @@ export default function WikiPage() {
   const allNavItems = [
     ...sections.map((s) => ({ id: s.id, label: s.title, icon: s.icon })),
     { id: "funds-vs-accounts", label: "Funds vs Accounts", icon: Layers },
+    { id: "model-vs-optimize", label: "Model vs Optimize", icon: Gauge },
     { id: "concepts", label: "Key Concepts", icon: BookOpen },
     { id: "workflow", label: "Monthly Workflow", icon: Zap },
     { id: "about", label: "About", icon: User },
@@ -538,24 +546,72 @@ export default function WikiPage() {
 
           {/* Content column */}
           <div className="flex-1 min-w-0 max-w-4xl">
-            {/* ── The Big Idea ── */}
+            {/* ── The Big Idea / USP ── */}
             <section className="mb-16">
               <div className="relative rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.04] to-primary/[0.08] p-8 md:p-10 overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-primary/5 blur-2xl" />
+                <div className="absolute top-0 right-0 w-40 h-40 rounded-full bg-primary/5 blur-3xl" />
+                <div className="absolute bottom-0 left-0 w-32 h-32 rounded-full bg-primary/5 blur-2xl" />
                 <div className="relative">
                   <div className="flex items-center gap-2 mb-4">
                     <Sparkles className="h-5 w-5 text-primary" />
-                    <h2 className="text-xl font-bold">The Big Idea</h2>
+                    <h2 className="text-xl font-bold">
+                      What Makes Ledgera Different
+                    </h2>
                   </div>
-                  <p className="text-muted-foreground leading-relaxed text-[15px]">
-                    Most people spend first and save whatever&apos;s left.
-                    Ledgera flips that. You decide{" "}
-                    <strong className="text-foreground">upfront</strong> how
-                    your income gets split across different purposes &mdash;
-                    expenses, savings, investments, goals. Then each month, you
-                    check how reality compared to the plan and make adjustments.
-                    It&apos;s budgeting meets portfolio rebalancing, applied to
-                    your entire financial life.
+                  <p className="text-muted-foreground leading-relaxed text-[15px] mb-8">
+                    Most finance apps look backward &mdash; you spend money,
+                    then look at charts of what happened. Ledgera works the
+                    other way around.{" "}
+                    <strong className="text-foreground">
+                      You build a model of how your money should flow first.
+                    </strong>{" "}
+                    Then you live your life and track what actually happens.
+                    At the end of each month, you compare the two. That&apos;s
+                    the whole system.
+                  </p>
+
+                  {/* The 3-step loop */}
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="rounded-xl border border-primary/10 bg-background/60 p-5 text-center">
+                      <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                        <Target className="h-5 w-5 text-primary" />
+                      </div>
+                      <h3 className="font-bold text-sm mb-1">1. Model</h3>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Set up how your income should be split. How much for
+                        expenses, how much for savings, how much for each goal.
+                        This is your plan.
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-primary/10 bg-background/60 p-5 text-center">
+                      <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                        <Eye className="h-5 w-5 text-primary" />
+                      </div>
+                      <h3 className="font-bold text-sm mb-1">2. Track</h3>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Log your transactions as you go. Every purchase, every
+                        transfer, every payment &mdash; tagged to the right
+                        fund and category.
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-primary/10 bg-background/60 p-5 text-center">
+                      <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                        <RefreshCw className="h-5 w-5 text-primary" />
+                      </div>
+                      <h3 className="font-bold text-sm mb-1">3. Compare</h3>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        See how reality matched your model. Overspent
+                        somewhere? Underspent? Adjust next month&apos;s plan.
+                        Rinse and repeat.
+                      </p>
+                    </div>
+                  </div>
+
+                  <p className="text-sm text-muted-foreground mt-6 leading-relaxed">
+                    This loop is the core of Ledgera. You&apos;re not just
+                    recording history &mdash; you&apos;re running a continuous
+                    feedback system on your financial life. Every month you get
+                    better at predicting and controlling where your money goes.
                   </p>
                 </div>
               </div>
@@ -752,6 +808,346 @@ export default function WikiPage() {
                   This separation is what makes Ledgera more than a tracker. You
                   always know <em>why</em> money is somewhere, not just{" "}
                   <em>that</em> it&apos;s there.
+                </p>
+              </div>
+
+              {/* Why funds drive the system */}
+              <div className="mt-8 relative rounded-xl border border-primary/20 bg-gradient-to-br from-primary/[0.03] to-primary/[0.06] p-6 md:p-8 overflow-hidden">
+                <div className="absolute -top-10 -right-10 w-24 h-24 rounded-full bg-primary/5 blur-2xl" />
+                <div className="relative">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    <h3 className="font-bold text-base">
+                      Why funds drive the system &mdash; not accounts
+                    </h3>
+                  </div>
+
+                  <p className="text-sm text-muted-foreground leading-relaxed mb-5">
+                    This is a deliberate design choice and it&apos;s the reason
+                    Ledgera works differently from every other finance app.
+                  </p>
+
+                  <div className="space-y-4 mb-6">
+                    <div className="flex gap-4 items-start">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500/10 mt-0.5">
+                        <span className="text-red-500 text-xs font-bold">&#10007;</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold mb-1">
+                          The account-first approach (what most apps do)
+                        </p>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          &ldquo;I have $3,500 in my DBS account.&rdquo; Okay,
+                          but how much of that can you actually spend? How much
+                          is earmarked for rent next week? How much is your
+                          emergency buffer? The account balance alone doesn&apos;t
+                          tell you. You end up spending money that was meant for
+                          something else because it all looks like one big number.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-4 items-start">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 mt-0.5">
+                        <span className="text-emerald-500 text-xs font-bold">&#10003;</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold mb-1">
+                          The fund-first approach (what Ledgera does)
+                        </p>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          &ldquo;I have $2,500 in Working Capital, $1,000 in my
+                          Emergency Fund.&rdquo; Now you know exactly what&apos;s
+                          available to spend and what&apos;s off-limits.
+                          The fact that both happen to sit in the same DBS account
+                          doesn&apos;t matter &mdash; they have different jobs.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-primary/10 bg-background/60 p-4">
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      <strong className="text-foreground">Think of it this way:</strong>{" "}
+                      accounts are just containers. They don&apos;t have opinions.
+                      A bank account doesn&apos;t know if the money in it is for
+                      groceries or retirement. Funds are the ones with purpose.
+                      They define your financial behavior &mdash; how much you
+                      spend, how much you save, what you&apos;re building toward.
+                      That&apos;s why every report, every chart, and every
+                      decision in Ledgera starts with{" "}
+                      <strong className="text-foreground">
+                        which fund
+                      </strong>
+                      , not which account.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* ── Model vs Optimize ── */}
+            <section id="model-vs-optimize" className="mb-20 scroll-mt-20">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-teal-500 to-cyan-600 text-white shadow-sm">
+                  <Gauge className="h-4 w-4" />
+                </div>
+                <h2 className="text-2xl font-bold tracking-tight">
+                  Model vs Optimize
+                </h2>
+              </div>
+              <p className="text-muted-foreground mb-8 ml-12">
+                The two ways to run your Working Capital
+              </p>
+
+              <p className="text-muted-foreground leading-relaxed mb-6">
+                Your Working Capital fund is the money you live on each month
+                &mdash; rent, groceries, bills, everything. Ledgera gives you
+                two ways to decide how much goes into it. Think of them as two
+                philosophies:
+              </p>
+
+              {/* Two-mode comparison */}
+              <div className="grid gap-5 md:grid-cols-2 mb-8">
+                {/* MODEL mode */}
+                <div className="group rounded-xl border border-violet-500/20 bg-gradient-to-b from-violet-500/[0.06] to-transparent p-6 transition-all hover:border-violet-500/30 hover:shadow-lg hover:shadow-violet-500/5">
+                  <div className="flex items-center gap-2.5 mb-1">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/10">
+                      <Lock className="h-4 w-4 text-violet-500" />
+                    </div>
+                    <h3 className="font-bold text-lg">Model Mode</h3>
+                  </div>
+                  <p className="text-xs font-medium text-violet-500 mb-4 ml-[42px]">
+                    &ldquo;I know what I need&rdquo;
+                  </p>
+
+                  <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                    You tell Ledgera a{" "}
+                    <strong className="text-foreground">
+                      fixed amount
+                    </strong>{" "}
+                    for your monthly expenses. Every month, that exact amount
+                    goes to Working Capital. The rest goes to your savings and
+                    investment funds.
+                  </p>
+
+                  <div className="rounded-lg border border-violet-500/10 bg-background/60 p-4 mb-4">
+                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">
+                      Example
+                    </p>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Income</span>
+                        <span className="font-medium">$5,000</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          WC (fixed model)
+                        </span>
+                        <span className="font-semibold text-violet-600 dark:text-violet-400">
+                          $2,800
+                        </span>
+                      </div>
+                      <Separator className="my-1" />
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          Left for savings
+                        </span>
+                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                          $2,200
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <div className="flex gap-2">
+                      <div className="h-1.5 w-1.5 rounded-full bg-violet-500 shrink-0 mt-1.5" />
+                      <span>Predictable &mdash; same amount every month</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="h-1.5 w-1.5 rounded-full bg-violet-500 shrink-0 mt-1.5" />
+                      <span>Simple &mdash; no calculation needed</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="h-1.5 w-1.5 rounded-full bg-violet-500 shrink-0 mt-1.5" />
+                      <span>
+                        Best when your expenses are steady and you just want
+                        a fixed number
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* OPTIMIZE mode */}
+                <div className="group rounded-xl border border-amber-500/20 bg-gradient-to-b from-amber-500/[0.06] to-transparent p-6 transition-all hover:border-amber-500/30 hover:shadow-lg hover:shadow-amber-500/5">
+                  <div className="flex items-center gap-2.5 mb-1">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10">
+                      <Wrench className="h-4 w-4 text-amber-500" />
+                    </div>
+                    <h3 className="font-bold text-lg">Optimize Mode</h3>
+                  </div>
+                  <p className="text-xs font-medium text-amber-500 mb-4 ml-[42px]">
+                    &ldquo;Maximize my savings automatically&rdquo;
+                  </p>
+
+                  <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                    Ledgera looks at what you{" "}
+                    <strong className="text-foreground">
+                      actually spent
+                    </strong>{" "}
+                    and gives Working Capital only what it needs. If you
+                    underspent, the surplus gets swept into savings. If you
+                    overspent, it covers the shortfall first.
+                  </p>
+
+                  <div className="rounded-lg border border-amber-500/10 bg-background/60 p-4 mb-4">
+                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">
+                      Example
+                    </p>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Income</span>
+                        <span className="font-medium">$5,000</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          Actually spent
+                        </span>
+                        <span className="font-medium">$2,400</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          WC (optimized)
+                        </span>
+                        <span className="font-semibold text-amber-600 dark:text-amber-400">
+                          $2,400
+                        </span>
+                      </div>
+                      <Separator className="my-1" />
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          Swept to savings
+                        </span>
+                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                          $2,600
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-3 pt-2 border-t border-amber-500/10">
+                      You budgeted $2,800 but only spent $2,400. The extra
+                      $400 automatically goes to savings instead of sitting
+                      idle.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <div className="flex gap-2">
+                      <div className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0 mt-1.5" />
+                      <span>
+                        Adaptive &mdash; adjusts to your real spending
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0 mt-1.5" />
+                      <span>
+                        Maximizes savings &mdash; unused money doesn&apos;t
+                        just sit there
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0 mt-1.5" />
+                      <span>
+                        Best when your expenses vary and you want to save as
+                        much as possible
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* How the comparison works */}
+              <div className="rounded-xl border bg-card p-6 md:p-8">
+                <h3 className="font-bold mb-2 text-base">
+                  How the comparison works
+                </h3>
+                <p className="text-sm text-muted-foreground leading-relaxed mb-6">
+                  Whichever mode you pick, the magic happens at the end of the
+                  month when you compare your model to reality:
+                </p>
+
+                <div className="rounded-xl border bg-muted/30 p-5 md:p-6">
+                  <div className="flex items-center gap-2 mb-5">
+                    <div className="h-5 w-5 rounded bg-primary/10 flex items-center justify-center">
+                      <Eye className="h-3 w-3 text-primary" />
+                    </div>
+                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      End-of-month check
+                    </p>
+                  </div>
+
+                  <div className="space-y-4">
+                    {/* Scenario: on track */}
+                    <div className="flex gap-4 items-start">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 mt-0.5">
+                        <span className="text-emerald-500 text-sm">&#10003;</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold mb-0.5">
+                          Spent less than planned
+                        </p>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          Great &mdash; in Optimize mode, the extra
+                          automatically goes to savings. In Model mode, it
+                          stays in your WC balance for next month.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Scenario: over */}
+                    <div className="flex gap-4 items-start">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500/10 mt-0.5">
+                        <span className="text-amber-500 text-sm">!</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold mb-0.5">
+                          Spent more than planned
+                        </p>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          No panic &mdash; Ledgera shows you exactly where you
+                          went over, in which fund and which category. You can
+                          either adjust your model for next month or try to
+                          tighten spending.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Scenario: rebalance */}
+                    <div className="flex gap-4 items-start">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-500/10 mt-0.5">
+                        <RefreshCw className="h-3.5 w-3.5 text-blue-500" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold mb-0.5">
+                          Accounts are out of balance
+                        </p>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          The Fund Tracker tells you exactly which transfers
+                          to make between your bank accounts to get everything
+                          back in line. One click to see the list, then go
+                          execute them in your real banking apps.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-sm text-muted-foreground leading-relaxed mt-6">
+                  Over time, you build an increasingly accurate model of your
+                  financial life. Month 1 might be a rough guess. By month 6,
+                  your model is dialed in and you&apos;re saving more than
+                  you thought possible &mdash; because you&apos;re not
+                  guessing anymore.
                 </p>
               </div>
             </section>
