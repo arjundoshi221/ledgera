@@ -83,6 +83,9 @@ export default function Home() {
           </Link>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" asChild>
+              <Link href="/learn">Learn</Link>
+            </Button>
+            <Button variant="ghost" size="sm" asChild>
               <Link href="/wiki">Guide</Link>
             </Button>
             <Button variant="ghost" size="sm" asChild>
@@ -272,6 +275,9 @@ export default function Home() {
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 px-4 sm:flex-row sm:justify-between">
           <div className="flex items-center gap-4">
             <p className="text-sm font-semibold">Ledgera</p>
+            <Link href="/learn" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+              Learn
+            </Link>
             <Link href="/wiki" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
               Guide
             </Link>

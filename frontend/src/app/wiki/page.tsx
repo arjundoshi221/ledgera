@@ -454,6 +454,16 @@ export default function WikiPage() {
               just a clear walkthrough of what each page does and how to use it.
             </p>
 
+            <div className="mt-6">
+              <Link
+                href="/learn"
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+              >
+                Or follow Ledge&apos;s story to see it in action
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+
             {/* Stats row */}
             <div className="flex flex-wrap gap-6 mt-10">
               <div className="flex items-center gap-2">
