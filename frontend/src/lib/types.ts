@@ -153,6 +153,7 @@ export interface CreateTransactionRequest {
   payee: string
   memo: string
   status?: string
+  source?: string
   category_id?: string
   subcategory_id?: string
   fund_id?: string
