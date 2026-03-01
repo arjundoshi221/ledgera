@@ -626,3 +626,51 @@ class PaymentMethodResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ─── Bank Statement Import schemas ───
+
+class FileHeadersResponse(BaseModel):
+    """Response from reading file headers for column mapping"""
+    headers: List[str]  # Column names from CSV/XLSX
+    preview_rows: List[Dict[str, str]]  # First 5 rows as dict
+    suggested_mapping: Dict[str, str]  # Auto-suggested column mapping
+    total_rows: int
+    file_type: str  # "csv" or "xlsx"
+    sheet_name: Optional[str] = None  # For XLSX files
+
+
+class ParsedTransaction(BaseModel):
+    """A single parsed transaction from the import file"""
+    row_number: int
+    # Original file values
+    date_str: str
+    payee: str
+    memo: Optional[str] = None
+    debit_str: Optional[str] = None
+    credit_str: Optional[str] = None
+    # Parsed values
+    timestamp: Optional[datetime] = None  # null if parse failed
+    amount: Decimal  # Positive for income/credit, negative for expense/debit
+    transaction_type: str  # "income", "expense", or "transfer"
+    # Pre-set (from selected account)
+    account_id: str
+    account_name: str
+    currency: str  # from account currency
+    # To be filled by user (manually reviewed and categorized)
+    category_id: Optional[str] = None
+    subcategory_id: Optional[str] = None
+    fund_id: Optional[str] = None
+    payment_method_id: Optional[str] = None
+    transfer_account_id: Optional[str] = None  # For transfers: the other account
+    # Validation
+    warnings: List[str] = []  # ["Invalid date format", etc.]
+    has_errors: bool = False
+
+
+class FileParseResult(BaseModel):
+    """Result from parsing a file with column mapping"""
+    total_rows: int
+    parsed_transactions: List[ParsedTransaction]
+    account_id: str
+    account_name: str

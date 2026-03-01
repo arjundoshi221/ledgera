@@ -48,6 +48,10 @@ import type {
   ConfirmRecurringRequest,
   SkipRecurringRequest,
   BugReport,
+  FileHeadersResponse,
+  ParsedTransaction,
+  FileParseResult,
+  ColumnMapping,
 } from "./types"
 
 const BASE_URL =
@@ -710,4 +714,32 @@ export async function submitBugReport(
 
 export async function getMyBugReports(): Promise<BugReport[]> {
   return apiFetch<BugReport[]>("/api/v1/bugs")
+}
+
+// ---------------------
+// Bank Statement Import
+// ---------------------
+
+export async function readFileHeaders(file: File): Promise<FileHeadersResponse> {
+  const formData = new FormData()
+  formData.append("file", file)
+  return apiUpload<FileHeadersResponse>("/api/v1/transactions/read-file-headers", formData)
+}
+
+export async function parseTransactionsFile(
+  file: File,
+  accountId: string,
+  columnMapping: ColumnMapping,
+  fileType: 'csv' | 'xlsx',
+  sheetName?: string
+): Promise<FileParseResult> {
+  const formData = new FormData()
+  formData.append("file", file)
+  formData.append("account_id", accountId)
+  formData.append("column_mapping", JSON.stringify(columnMapping))
+  formData.append("file_type", fileType)
+  if (sheetName) {
+    formData.append("sheet_name", sheetName)
+  }
+  return apiUpload<FileParseResult>("/api/v1/transactions/parse-file", formData)
 }

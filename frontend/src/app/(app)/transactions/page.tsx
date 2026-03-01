@@ -11,12 +11,14 @@ import { Separator } from "@/components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
-import { createTransaction, createTransfer, updateTransaction, deleteTransaction, getPrice, createRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, confirmRecurring, skipRecurring } from "@/lib/api"
+import { createTransaction, createTransfer, updateTransaction, deleteTransaction, getPrice, createRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, confirmRecurring, skipRecurring, readFileHeaders, parseTransactionsFile } from "@/lib/api"
 import { useAccounts, useTransactions, useCategories, useSubcategories, useFunds, usePaymentMethods, useRecurringTransactions, usePendingInstances, useWorkspace, useTransactionMutations, useRecurringMutations } from "@/lib/hooks"
 import { invalidateTransactions, invalidateRecurring, invalidatePendingInstances } from "@/lib/cache"
 import { TRANSACTION_STATUSES, RECURRING_FREQUENCIES } from "@/lib/constants"
 import { useToast } from "@/components/ui/use-toast"
-import type { Account, Transaction, Posting, Category, Subcategory, Fund, PaymentMethod, RecurringTransaction, PendingInstance, RecurringFrequency } from "@/lib/types"
+import type { Account, Transaction, Posting, Category, Subcategory, Fund, PaymentMethod, RecurringTransaction, PendingInstance, RecurringFrequency, FileHeadersResponse, ParsedTransaction, FileParseResult, ColumnMapping } from "@/lib/types"
+import { Upload, FileText, Check } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 function toLocalDatetime(d: Date): string {
   const pad = (n: number) => n.toString().padStart(2, "0")
@@ -115,6 +117,23 @@ export default function TransactionsPage() {
   const [recDestFundId, setRecDestFundId] = useState("")
   const [creatingRecurring, setCreatingRecurring] = useState(false)
   const [deletingRecId, setDeletingRecId] = useState<string | null>(null)
+
+  // Import state
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [importStep, setImportStep] = useState<1 | 2 | 3>(1)
+  const [selectedAccountId, setSelectedAccountId] = useState("")
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [fileHeaders, setFileHeaders] = useState<string[]>([])
+  const [filePreview, setFilePreview] = useState<Record<string, string>[]>([])
+  const [fileType, setFileType] = useState<'csv' | 'xlsx'>('csv')
+  const [sheetName, setSheetName] = useState<string | undefined>(undefined)
+  const [columnMapping, setColumnMapping] = useState<ColumnMapping>({})
+  const [parsedTransactions, setParsedTransactions] = useState<ParsedTransaction[]>([])
+  const [editedTransactions, setEditedTransactions] = useState<Map<number, Partial<ParsedTransaction>>>(new Map())
+  const [creatingImportTx, setCreatingImportTx] = useState<Set<number>>(new Set())
+  const [createdTx, setCreatedTx] = useState<Set<number>>(new Set())
+  const [loadingHeaders, setLoadingHeaders] = useState(false)
+  const [parsingFile, setParsingFile] = useState(false)
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
@@ -667,6 +686,140 @@ export default function TransactionsPage() {
     }
   }
 
+  // Import handlers
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setSelectedFile(file)
+    setLoadingHeaders(true)
+
+    try {
+      const result = await readFileHeaders(file)
+      setFileHeaders(result.headers)
+      setFilePreview(result.preview_rows)
+      setFileType(result.file_type)
+      setSheetName(result.sheet_name)
+      setColumnMapping(result.suggested_mapping)
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Failed to read file", description: err.message })
+      setSelectedFile(null)
+    } finally {
+      setLoadingHeaders(false)
+    }
+  }
+
+  async function handleParseFile() {
+    if (!selectedFile || !selectedAccountId) return
+
+    setParsingFile(true)
+
+    try {
+      const result = await parseTransactionsFile(
+        selectedFile,
+        selectedAccountId,
+        columnMapping,
+        fileType,
+        sheetName || undefined
+      )
+      setParsedTransactions(result.parsed_transactions)
+      setImportStep(3)
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Failed to parse file", description: err.message })
+    } finally {
+      setParsingFile(false)
+    }
+  }
+
+  async function confirmImportTransaction(rowNumber: number) {
+    const parsedTx = parsedTransactions.find(tx => tx.row_number === rowNumber)
+    if (!parsedTx || !parsedTx.timestamp) return
+
+    const edited = editedTransactions.get(rowNumber) || {}
+    const finalTx = { ...parsedTx, ...edited }
+
+    setCreatingImportTx(prev => new Set(prev).add(rowNumber))
+
+    try {
+      // Determine second account based on transaction type
+      let secondAccountId: string
+
+      if (finalTx.transaction_type === 'transfer') {
+        // For transfers, use the transfer_account_id
+        if (!finalTx.transfer_account_id) {
+          throw new Error("Transfer account must be selected for transfers")
+        }
+        secondAccountId = finalTx.transfer_account_id
+      } else {
+        // For income/expense, use External account
+        const externalAccount = accounts.find(a => a.name === "External")
+        if (!externalAccount) {
+          throw new Error("External account not found")
+        }
+        secondAccountId = externalAccount.id
+      }
+
+      await createTransaction({
+        timestamp: finalTx.timestamp!,
+        payee: finalTx.payee,
+        memo: finalTx.memo || null,
+        status: "cleared",
+        source: "csv_import",
+        category_id: finalTx.category_id || null,
+        subcategory_id: finalTx.subcategory_id || null,
+        fund_id: finalTx.fund_id || null,
+        payment_method_id: finalTx.payment_method_id || null,
+        postings: [
+          {
+            account_id: finalTx.account_id,
+            amount: finalTx.amount,
+            currency: finalTx.currency,
+            fx_rate: 1
+          },
+          {
+            account_id: secondAccountId,
+            amount: -finalTx.amount,
+            currency: finalTx.currency,
+            fx_rate: 1
+          }
+        ]
+      })
+
+      setCreatedTx(prev => new Set(prev).add(rowNumber))
+      toast({ title: "Transaction created successfully" })
+      await invalidateTransactions()
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Failed to create transaction", description: err.message })
+    } finally {
+      setCreatingImportTx(prev => {
+        const next = new Set(prev)
+        next.delete(rowNumber)
+        return next
+      })
+    }
+  }
+
+  async function confirmAllValidTransactions() {
+    const validTxs = parsedTransactions.filter(tx => !tx.has_errors && !createdTx.has(tx.row_number))
+    for (const tx of validTxs) {
+      await confirmImportTransaction(tx.row_number)
+    }
+  }
+
+  function resetImportDialog() {
+    setImportDialogOpen(false)
+    setImportStep(1)
+    setSelectedAccountId("")
+    setSelectedFile(null)
+    setFileHeaders([])
+    setFilePreview([])
+    setColumnMapping({})
+    setParsedTransactions([])
+    setEditedTransactions(new Map())
+    setCreatingImportTx(new Set())
+    setCreatedTx(new Set())
+  }
+
   if (loading) {
     return <div className="animate-pulse text-muted-foreground">Loading...</div>
   }
@@ -691,12 +844,18 @@ export default function TransactionsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Transactions</h1>
         {activeMainTab === "transactions" ? (
-          <Button onClick={() => {
-            setShowForm(!showForm)
-            if (!showForm) setTxTimestamp(toLocalDatetime(new Date()))
-          }}>
-            {showForm ? "Cancel" : "+ New Transaction"}
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+              <Upload className="w-4 h-4 mr-2" />
+              Import Bank Statement
+            </Button>
+            <Button onClick={() => {
+              setShowForm(!showForm)
+              if (!showForm) setTxTimestamp(toLocalDatetime(new Date()))
+            }}>
+              {showForm ? "Cancel" : "+ New Transaction"}
+            </Button>
+          </div>
         ) : (
           <Button onClick={() => {
             setShowRecurringForm(!showRecurringForm)
@@ -1899,6 +2058,567 @@ export default function TransactionsPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Import Bank Statement Dialog */}
+      <Dialog open={importDialogOpen} onOpenChange={(open) => {
+        if (!open) resetImportDialog()
+        setImportDialogOpen(open)
+      }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Import Bank Statement
+            </DialogTitle>
+          </DialogHeader>
+
+          {/* Visual Step Indicator */}
+          <div className="flex items-center justify-between px-4 py-4">
+            {[
+              { step: 1, name: "Account" },
+              { step: 2, name: "Upload & Map" },
+              { step: 3, name: "Review & Import" }
+            ].map(({ step, name }, idx) => (
+              <div key={step} className="flex items-center flex-1">
+                <div className="flex flex-col items-center gap-2">
+                  <div className={cn(
+                    "flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all",
+                    importStep === step
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : importStep > step
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-muted-foreground text-muted-foreground"
+                  )}>
+                    {importStep > step ? <Check className="h-5 w-5" /> : step}
+                  </div>
+                  <span className={cn(
+                    "text-xs font-medium",
+                    importStep >= step ? "text-foreground" : "text-muted-foreground"
+                  )}>
+                    {name}
+                  </span>
+                </div>
+                {idx < 2 && <div className={cn(
+                  "h-0.5 flex-1 mx-4 transition-colors",
+                  importStep > step ? "bg-primary" : "bg-border"
+                )} />}
+              </div>
+            ))}
+          </div>
+
+          {/* Step 1: Select Account */}
+          {importStep === 1 && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="import-account">Which account is this statement for?</Label>
+                <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                  <SelectTrigger id="import-account">
+                    <SelectValue placeholder="Select account..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.filter(a => a.name !== "External").map(acc => (
+                      <SelectItem key={acc.id} value={acc.id}>
+                        {acc.name} ({acc.account_currency})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <DialogFooter>
+                <Button onClick={() => setImportStep(2)} disabled={!selectedAccountId}>
+                  Next
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+
+          {/* Step 2: Upload & Map Columns */}
+          {importStep === 2 && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="import-file">Upload File</Label>
+                <Input
+                  id="import-file"
+                  type="file"
+                  accept=".csv,.xlsx"
+                  onChange={handleFileUpload}
+                />
+              </div>
+
+              {selectedFile && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <FileText className="w-4 h-4" />
+                  <span>{selectedFile.name}</span>
+                  <Badge>{fileType.toUpperCase()}</Badge>
+                  {sheetName && <span className="text-xs">Sheet: {sheetName}</span>}
+                </div>
+              )}
+
+              {loadingHeaders && (
+                <div className="text-sm text-muted-foreground">Reading file...</div>
+              )}
+
+              {fileHeaders.length > 0 && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Preview (first 5 rows)</Label>
+                    <div className="border rounded-md overflow-x-auto max-h-40 overflow-y-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            {fileHeaders.map((header, idx) => (
+                              <TableHead key={idx}>{header}</TableHead>
+                            ))}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filePreview.map((row, idx) => (
+                            <TableRow key={idx}>
+                              {fileHeaders.map((header, cellIdx) => (
+                                <TableCell key={cellIdx} className="text-xs">
+                                  {row[header]}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label>Map Columns</Label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="map-date" className="text-sm">Date Column *</Label>
+                        <Select
+                          value={columnMapping.date || ""}
+                          onValueChange={(v) => setColumnMapping({ ...columnMapping, date: v })}
+                        >
+                          <SelectTrigger id="map-date">
+                            <SelectValue placeholder="Select column..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {fileHeaders.map(h => (
+                              <SelectItem key={h} value={h}>{h}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="map-payee" className="text-sm">Description/Payee Column *</Label>
+                        <Select
+                          value={columnMapping.payee || ""}
+                          onValueChange={(v) => setColumnMapping({ ...columnMapping, payee: v })}
+                        >
+                          <SelectTrigger id="map-payee">
+                            <SelectValue placeholder="Select column..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {fileHeaders.map(h => (
+                              <SelectItem key={h} value={h}>{h}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="map-debit" className="text-sm">Debit Column (optional)</Label>
+                        <Select
+                          value={columnMapping.debit || "_none"}
+                          onValueChange={(v) => setColumnMapping({ ...columnMapping, debit: v === "_none" ? undefined : v })}
+                        >
+                          <SelectTrigger id="map-debit">
+                            <SelectValue placeholder="None" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="_none">None</SelectItem>
+                            {fileHeaders.map(h => (
+                              <SelectItem key={h} value={h}>{h}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="map-credit" className="text-sm">Credit Column (optional)</Label>
+                        <Select
+                          value={columnMapping.credit || "_none"}
+                          onValueChange={(v) => setColumnMapping({ ...columnMapping, credit: v === "_none" ? undefined : v })}
+                        >
+                          <SelectTrigger id="map-credit">
+                            <SelectValue placeholder="None" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="_none">None</SelectItem>
+                            {fileHeaders.map(h => (
+                              <SelectItem key={h} value={h}>{h}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="map-amount" className="text-sm">Amount Column (optional)</Label>
+                        <Select
+                          value={columnMapping.amount || "_none"}
+                          onValueChange={(v) => setColumnMapping({ ...columnMapping, amount: v === "_none" ? undefined : v })}
+                        >
+                          <SelectTrigger id="map-amount">
+                            <SelectValue placeholder="None" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="_none">None</SelectItem>
+                            {fileHeaders.map(h => (
+                              <SelectItem key={h} value={h}>{h}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="map-memo" className="text-sm">Memo/Reference (optional)</Label>
+                        <Select
+                          value={columnMapping.memo || "_none"}
+                          onValueChange={(v) => setColumnMapping({ ...columnMapping, memo: v === "_none" ? undefined : v })}
+                        >
+                          <SelectTrigger id="map-memo">
+                            <SelectValue placeholder="None" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="_none">None</SelectItem>
+                            {fileHeaders.map(h => (
+                              <SelectItem key={h} value={h}>{h}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => setImportStep(1)}>
+                  Back
+                </Button>
+                <Button
+                  onClick={handleParseFile}
+                  disabled={!columnMapping.date || !columnMapping.payee || (!columnMapping.debit && !columnMapping.credit && !columnMapping.amount) || parsingFile}
+                >
+                  {parsingFile ? "Parsing..." : "Parse Transactions"}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+
+          {/* Step 3: Review & Confirm */}
+          {importStep === 3 && (
+            <div className="space-y-4">
+              {/* Progress Summary Header */}
+              <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="text-sm font-medium">
+                    {parsedTransactions.length} transaction{parsedTransactions.length !== 1 ? 's' : ''} found
+                  </div>
+                  {createdTx.size > 0 && (
+                    <Badge variant="default">{createdTx.size} imported</Badge>
+                  )}
+                  {parsedTransactions.filter(tx => tx.has_errors).length > 0 && (
+                    <Badge variant="destructive">
+                      {parsedTransactions.filter(tx => tx.has_errors).length} error{parsedTransactions.filter(tx => tx.has_errors).length !== 1 ? 's' : ''}
+                    </Badge>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  onClick={confirmAllValidTransactions}
+                  disabled={parsedTransactions.filter(tx => !tx.has_errors && !createdTx.has(tx.row_number)).length === 0}
+                >
+                  Confirm Valid ({parsedTransactions.filter(tx => !tx.has_errors && !createdTx.has(tx.row_number)).length})
+                </Button>
+              </div>
+
+              <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+                {parsedTransactions.map(tx => {
+                  const currentTxType = editedTransactions.get(tx.row_number)?.transaction_type ?? tx.transaction_type
+                  const currentCategoryId = editedTransactions.get(tx.row_number)?.category_id ?? tx.category_id
+                  const selectedCategory = categories.find(c => c.id === currentCategoryId)
+                  const availableSubcategories = subcategories.filter(sc => sc.category_id === currentCategoryId)
+
+                  return (
+                    <Card key={tx.row_number} className={cn(
+                      "transition-all duration-200",
+                      createdTx.has(tx.row_number) && "opacity-50 bg-muted",
+                      tx.has_errors && "border-destructive"
+                    )}>
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Badge variant={currentTxType === "income" ? "default" : currentTxType === "expense" ? "secondary" : "outline"}>
+                              Row {tx.row_number}
+                            </Badge>
+                            {tx.has_errors && <Badge variant="destructive">Has Errors</Badge>}
+                            {createdTx.has(tx.row_number) && <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">✓ Imported</Badge>}
+                          </div>
+                          <div className="text-sm font-semibold">
+                            {Math.abs(tx.amount).toFixed(2)} {tx.currency}
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="pt-0">
+                        {/* Row 1: Basic Info */}
+                        <div className="grid grid-cols-5 gap-3 mb-3">
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Date</Label>
+                            <div className="text-sm font-medium">
+                              {(() => { if (!tx.timestamp) return tx.date_str; try { const date = new Date(tx.timestamp); return !isNaN(date.getTime()) ? date.toLocaleDateString() : tx.date_str; } catch { return tx.date_str; } })()}
+                            </div>
+                          </div>
+
+                          <div className="space-y-1 col-span-2">
+                            <Label className="text-xs text-muted-foreground">Payee / Description</Label>
+                            <Input
+                              value={editedTransactions.get(tx.row_number)?.payee ?? tx.payee}
+                              onChange={(e) => {
+                                const edited = new Map(editedTransactions)
+                                edited.set(tx.row_number, { ...edited.get(tx.row_number), payee: e.target.value })
+                                setEditedTransactions(edited)
+                              }}
+                              className="h-8 text-sm"
+                              disabled={createdTx.has(tx.row_number)}
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Transaction Type</Label>
+                            <Select
+                              value={currentTxType}
+                              onValueChange={(v) => {
+                                const edited = new Map(editedTransactions)
+                                edited.set(tx.row_number, {
+                                  ...edited.get(tx.row_number),
+                                  transaction_type: v as 'income' | 'expense' | 'transfer',
+                                  // Clear category/subcategory when switching types
+                                  category_id: undefined,
+                                  subcategory_id: undefined
+                                })
+                                setEditedTransactions(edited)
+                              }}
+                              disabled={createdTx.has(tx.row_number)}
+                            >
+                              <SelectTrigger className="h-8 text-sm">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="income">Income</SelectItem>
+                                <SelectItem value="expense">Expense</SelectItem>
+                                <SelectItem value="transfer">Transfer</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Amount</Label>
+                            <div className="text-sm font-medium flex items-center h-8">
+                              {Math.abs(tx.amount).toFixed(2)} {tx.currency}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Row 2: Categorization */}
+                        <div className="grid grid-cols-4 gap-3 mb-3">
+                          {currentTxType !== 'transfer' ? (
+                            <>
+                              <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground">Category *</Label>
+                                <Select
+                                  value={currentCategoryId ?? "_none"}
+                                  onValueChange={(v) => {
+                                    const edited = new Map(editedTransactions)
+                                    edited.set(tx.row_number, {
+                                      ...edited.get(tx.row_number),
+                                      category_id: v === "_none" ? undefined : v,
+                                      subcategory_id: undefined // Clear subcategory when category changes
+                                    })
+                                    setEditedTransactions(edited)
+                                  }}
+                                  disabled={createdTx.has(tx.row_number)}
+                                >
+                                  <SelectTrigger className="h-8 text-sm">
+                                    <SelectValue placeholder="Select..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="_none">None</SelectItem>
+                                    {categories
+                                      .filter(c => c.type === currentTxType)
+                                      .map(c => (
+                                        <SelectItem key={c.id} value={c.id}>
+                                          {c.emoji} {c.name}
+                                        </SelectItem>
+                                      ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground">Subcategory</Label>
+                                <Select
+                                  value={editedTransactions.get(tx.row_number)?.subcategory_id ?? tx.subcategory_id ?? "_none"}
+                                  onValueChange={(v) => {
+                                    const edited = new Map(editedTransactions)
+                                    edited.set(tx.row_number, { ...edited.get(tx.row_number), subcategory_id: v === "_none" ? undefined : v })
+                                    setEditedTransactions(edited)
+                                  }}
+                                  disabled={!currentCategoryId || createdTx.has(tx.row_number)}
+                                >
+                                  <SelectTrigger className="h-8 text-sm">
+                                    <SelectValue placeholder="None" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="_none">None</SelectItem>
+                                    {availableSubcategories.map(sc => (
+                                      <SelectItem key={sc.id} value={sc.id}>
+                                        {sc.emoji} {sc.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="space-y-1 col-span-2">
+                              <Label className="text-xs text-muted-foreground">Transfer To/From Account *</Label>
+                              <Select
+                                value={editedTransactions.get(tx.row_number)?.transfer_account_id ?? tx.transfer_account_id ?? "_none"}
+                                onValueChange={(v) => {
+                                  const edited = new Map(editedTransactions)
+                                  edited.set(tx.row_number, { ...edited.get(tx.row_number), transfer_account_id: v === "_none" ? undefined : v })
+                                  setEditedTransactions(edited)
+                                }}
+                                disabled={createdTx.has(tx.row_number)}
+                              >
+                                <SelectTrigger className="h-8 text-sm">
+                                  <SelectValue placeholder="Select account..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="_none">None</SelectItem>
+                                  {accounts.filter(a => a.id !== tx.account_id && a.name !== "External").map(acc => (
+                                    <SelectItem key={acc.id} value={acc.id}>
+                                      {acc.name} ({acc.account_currency})
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
+
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Fund</Label>
+                            <Select
+                              value={editedTransactions.get(tx.row_number)?.fund_id ?? tx.fund_id ?? "_none"}
+                              onValueChange={(v) => {
+                                const edited = new Map(editedTransactions)
+                                edited.set(tx.row_number, { ...edited.get(tx.row_number), fund_id: v === "_none" ? undefined : v })
+                                setEditedTransactions(edited)
+                              }}
+                              disabled={createdTx.has(tx.row_number)}
+                            >
+                              <SelectTrigger className="h-8 text-sm">
+                                <SelectValue placeholder="None" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="_none">None</SelectItem>
+                                {funds.map(f => (
+                                  <SelectItem key={f.id} value={f.id}>
+                                    {f.emoji} {f.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Payment Method</Label>
+                            <Select
+                              value={editedTransactions.get(tx.row_number)?.payment_method_id ?? tx.payment_method_id ?? "_none"}
+                              onValueChange={(v) => {
+                                const edited = new Map(editedTransactions)
+                                edited.set(tx.row_number, { ...edited.get(tx.row_number), payment_method_id: v === "_none" ? undefined : v })
+                                setEditedTransactions(edited)
+                              }}
+                              disabled={createdTx.has(tx.row_number)}
+                            >
+                              <SelectTrigger className="h-8 text-sm">
+                                <SelectValue placeholder="None" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="_none">None</SelectItem>
+                                {paymentMethods.filter(pm => pm.is_active).map(pm => (
+                                  <SelectItem key={pm.id} value={pm.id}>
+                                    {pm.icon} {pm.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        {/* Row 3: Memo */}
+                        <div className="grid grid-cols-1 gap-3 mb-3">
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Memo</Label>
+                            <Input
+                              value={editedTransactions.get(tx.row_number)?.memo ?? tx.memo ?? ""}
+                              onChange={(e) => {
+                                const edited = new Map(editedTransactions)
+                                edited.set(tx.row_number, { ...edited.get(tx.row_number), memo: e.target.value })
+                                setEditedTransactions(edited)
+                              }}
+                              className="h-8 text-sm"
+                              placeholder="Optional"
+                              disabled={createdTx.has(tx.row_number)}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Row 3: Warnings & Actions */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1">
+                            {tx.warnings.length > 0 && (
+                              <div className="text-xs text-destructive space-y-1">
+                                {tx.warnings.map((warning, idx) => (
+                                  <div key={idx}>⚠️ {warning}</div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={() => confirmImportTransaction(tx.row_number)}
+                            disabled={tx.has_errors || creatingImportTx.has(tx.row_number) || createdTx.has(tx.row_number)}
+                          >
+                            {createdTx.has(tx.row_number) ? "✓ Created" : creatingImportTx.has(tx.row_number) ? "Creating..." : "Confirm"}
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => setImportStep(2)}>
+                  Back
+                </Button>
+                <Button variant="outline" onClick={resetImportDialog}>
+                  Done
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -1,16 +1,19 @@
 """Transaction endpoints"""
 
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, List, Dict
+import io
+import pandas as pd
+from dateutil import parser as date_parser
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from datetime import datetime
 
 from src.data.database import get_session
 from src.data.repositories import TransactionRepository, AccountRepository
 from src.data.models import TransactionModel, PostingModel, FundAccountLinkModel, FundModel, AccountModel, CategoryModel
-from src.api.schemas import TransactionCreate, TransferCreate
+from src.api.schemas import TransactionCreate, TransferCreate, FileHeadersResponse, ParsedTransaction, FileParseResult
 from src.api.deps import get_workspace_id
 
 router = APIRouter()
@@ -396,3 +399,262 @@ def get_account_transactions(
     txs = repo.read_by_account(account_id, start_date, end_date)
 
     return [_serialize_tx(tx) for tx in txs]
+
+
+# ─── Bank Statement Import endpoints ───
+
+# Column name patterns for auto-detection (case-insensitive)
+DATE_PATTERNS = ["date", "transaction date", "posted date", "value date", "trans date", "posting date"]
+PAYEE_PATTERNS = ["description", "payee", "merchant", "particulars", "narration", "details"]
+DEBIT_PATTERNS = ["debit", "withdrawal", "dr", "debit amount", "withdrawals"]
+CREDIT_PATTERNS = ["credit", "deposit", "cr", "credit amount", "deposits"]
+AMOUNT_PATTERNS = ["amount", "value", "transaction amount", "amt"]
+MEMO_PATTERNS = ["memo", "reference", "ref", "remarks", "notes", "comment"]
+
+
+def _suggest_column_mapping(headers: List[str]) -> Dict[str, str]:
+    """Auto-suggest column mapping based on header names"""
+    mapping = {}
+    headers_lower = [h.lower().strip() for h in headers]
+
+    for i, header_lower in enumerate(headers_lower):
+        header_original = headers[i]
+
+        # Date column
+        if not mapping.get("date") and any(pattern in header_lower for pattern in DATE_PATTERNS):
+            mapping["date"] = header_original
+
+        # Payee/Description column
+        if not mapping.get("payee") and any(pattern in header_lower for pattern in PAYEE_PATTERNS):
+            mapping["payee"] = header_original
+
+        # Debit column
+        if not mapping.get("debit") and any(pattern in header_lower for pattern in DEBIT_PATTERNS):
+            mapping["debit"] = header_original
+
+        # Credit column
+        if not mapping.get("credit") and any(pattern in header_lower for pattern in CREDIT_PATTERNS):
+            mapping["credit"] = header_original
+
+        # Amount column (if no debit/credit found)
+        if not mapping.get("amount") and any(pattern in header_lower for pattern in AMOUNT_PATTERNS):
+            mapping["amount"] = header_original
+
+        # Memo column
+        if not mapping.get("memo") and any(pattern in header_lower for pattern in MEMO_PATTERNS):
+            mapping["memo"] = header_original
+
+    return mapping
+
+
+@router.post("/read-file-headers", response_model=FileHeadersResponse)
+async def read_file_headers(
+    file: UploadFile = File(...),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """
+    Read CSV or XLSX file headers and return preview for column mapping.
+    """
+    try:
+        # Read file content
+        content = await file.read()
+
+        # Detect file type from extension
+        filename = file.filename.lower()
+        if filename.endswith('.csv'):
+            file_type = "csv"
+            # Parse CSV
+            df = pd.read_csv(io.BytesIO(content))
+            sheet_name = None
+        elif filename.endswith('.xlsx') or filename.endswith('.xls'):
+            file_type = "xlsx"
+            # Parse XLSX (first sheet by default)
+            df = pd.read_excel(io.BytesIO(content), engine='openpyxl')
+            # Get sheet name (first sheet)
+            xls = pd.ExcelFile(io.BytesIO(content), engine='openpyxl')
+            sheet_name = xls.sheet_names[0] if xls.sheet_names else None
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Unsupported file type. Please upload a CSV or XLSX file."
+            )
+
+        # Get headers
+        headers = df.columns.tolist()
+
+        # Get preview rows (first 5)
+        preview_rows = []
+        for _, row in df.head(5).iterrows():
+            preview_rows.append({str(k): str(v) for k, v in row.items()})
+
+        # Auto-suggest column mapping
+        suggested_mapping = _suggest_column_mapping(headers)
+
+        # Total rows
+        total_rows = len(df)
+
+        return FileHeadersResponse(
+            headers=headers,
+            preview_rows=preview_rows,
+            suggested_mapping=suggested_mapping,
+            total_rows=total_rows,
+            file_type=file_type,
+            sheet_name=sheet_name
+        )
+
+    except pd.errors.EmptyDataError:
+        raise HTTPException(status_code=400, detail="File is empty")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error reading file: {str(e)}")
+
+
+@router.post("/parse-file", response_model=FileParseResult)
+async def parse_file(
+    file: UploadFile = File(...),
+    account_id: str = Form(...),
+    column_mapping: str = Form(...),  # JSON string
+    file_type: str = Form(...),
+    sheet_name: Optional[str] = Form(None),
+    workspace_id: str = Depends(get_workspace_id),
+    session: Session = Depends(get_session)
+):
+    """
+    Parse CSV or XLSX file using user-confirmed column mapping and return parsed transactions.
+    """
+    import json
+
+    try:
+        # Parse column mapping from JSON
+        mapping = json.loads(column_mapping)
+
+        # Verify account exists and belongs to workspace
+        account_repo = AccountRepository(session)
+        account = account_repo.read_for_workspace(account_id, workspace_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+
+        # Read file content
+        content = await file.read()
+
+        # Parse file based on type
+        if file_type == "csv":
+            df = pd.read_csv(io.BytesIO(content))
+        elif file_type == "xlsx":
+            if sheet_name:
+                df = pd.read_excel(io.BytesIO(content), sheet_name=sheet_name, engine='openpyxl')
+            else:
+                df = pd.read_excel(io.BytesIO(content), engine='openpyxl')
+        else:
+            raise HTTPException(status_code=400, detail="Invalid file type")
+
+        # Parse each row
+        parsed_transactions = []
+
+        for idx, row in df.iterrows():
+            row_number = idx + 1  # 1-indexed for user display
+            warnings = []
+            has_errors = False
+
+            # Extract date
+            date_str = ""
+            timestamp = None
+            if mapping.get("date"):
+                try:
+                    date_str = str(row[mapping["date"]])
+                    # Try to parse date with multiple formats
+                    timestamp = date_parser.parse(date_str, fuzzy=True)
+                except Exception:
+                    warnings.append(f"Invalid date format: {date_str}")
+                    has_errors = True
+            else:
+                warnings.append("No date column mapped")
+                has_errors = True
+
+            # Extract payee
+            payee = ""
+            if mapping.get("payee"):
+                payee = str(row[mapping["payee"]])
+            else:
+                warnings.append("No payee column mapped")
+                has_errors = True
+
+            # Extract memo
+            memo = None
+            if mapping.get("memo"):
+                memo = str(row[mapping["memo"]])
+
+            # Extract amount (handle debit/credit or single amount column)
+            amount = Decimal(0)
+            debit_str = None
+            credit_str = None
+
+            if mapping.get("debit") and mapping.get("credit"):
+                # Separate debit/credit columns
+                try:
+                    debit_val = row[mapping["debit"]]
+                    credit_val = row[mapping["credit"]]
+
+                    debit_str = str(debit_val) if pd.notna(debit_val) else None
+                    credit_str = str(credit_val) if pd.notna(credit_val) else None
+
+                    debit_amount = Decimal(str(debit_val).replace(',', '')) if pd.notna(debit_val) and str(debit_val).strip() else Decimal(0)
+                    credit_amount = Decimal(str(credit_val).replace(',', '')) if pd.notna(credit_val) and str(credit_val).strip() else Decimal(0)
+
+                    # Credit is positive, debit is negative
+                    amount = credit_amount - debit_amount
+                except Exception as e:
+                    warnings.append(f"Invalid amount values: {str(e)}")
+                    has_errors = True
+            elif mapping.get("amount"):
+                # Single amount column
+                try:
+                    amount_val = row[mapping["amount"]]
+                    amount_str = str(amount_val).replace(',', '').strip()
+
+                    # Handle parentheses as negative
+                    if amount_str.startswith('(') and amount_str.endswith(')'):
+                        amount_str = '-' + amount_str[1:-1]
+
+                    amount = Decimal(amount_str)
+                except Exception as e:
+                    warnings.append(f"Invalid amount: {str(e)}")
+                    has_errors = True
+            else:
+                warnings.append("No amount or debit/credit columns mapped")
+                has_errors = True
+
+            # Determine transaction type
+            transaction_type = "income" if amount > 0 else "expense"
+
+            parsed_tx = ParsedTransaction(
+                row_number=row_number,
+                date_str=date_str,
+                payee=payee,
+                memo=memo,
+                debit_str=debit_str,
+                credit_str=credit_str,
+                timestamp=timestamp,
+                amount=amount,
+                transaction_type=transaction_type,
+                account_id=account_id,
+                account_name=account.name,
+                currency=account.account_currency,
+                warnings=warnings,
+                has_errors=has_errors
+            )
+
+            parsed_transactions.append(parsed_tx)
+
+        return FileParseResult(
+            total_rows=len(parsed_transactions),
+            parsed_transactions=parsed_transactions,
+            account_id=account_id,
+            account_name=account.name
+        )
+
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid column mapping JSON")
+    except KeyError as e:
+        raise HTTPException(status_code=400, detail=f"Column not found in file: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error parsing file: {str(e)}")

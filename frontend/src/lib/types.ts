@@ -903,3 +903,54 @@ export interface BugReport {
   updated_at: string
   resolved_at: string | null
 }
+
+// ---------------------
+// Bank Statement Import
+// ---------------------
+
+export interface FileHeadersResponse {
+  headers: string[]
+  preview_rows: Record<string, string>[]
+  suggested_mapping: Record<string, string>
+  total_rows: number
+  file_type: 'csv' | 'xlsx'
+  sheet_name?: string
+}
+
+export interface ParsedTransaction {
+  row_number: number
+  date_str: string
+  payee: string
+  memo?: string
+  debit_str?: string
+  credit_str?: string
+  timestamp?: string
+  amount: number
+  transaction_type: 'income' | 'expense' | 'transfer'
+  account_id: string
+  account_name: string
+  currency: string
+  category_id?: string
+  subcategory_id?: string
+  fund_id?: string
+  payment_method_id?: string
+  transfer_account_id?: string  // For transfers: the other account
+  warnings: string[]
+  has_errors: boolean
+}
+
+export interface FileParseResult {
+  total_rows: number
+  parsed_transactions: ParsedTransaction[]
+  account_id: string
+  account_name: string
+}
+
+export type ColumnMapping = {
+  date?: string
+  payee?: string
+  debit?: string
+  credit?: string
+  amount?: string
+  memo?: string
+}
