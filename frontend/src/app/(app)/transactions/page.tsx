@@ -2479,7 +2479,7 @@ export default function TransactionsPage() {
                                     <SelectItem value="_none">None</SelectItem>
                                     {availableSubcategories.map(sc => (
                                       <SelectItem key={sc.id} value={sc.id}>
-                                        {sc.emoji} {sc.name}
+                                        {sc.name}
                                       </SelectItem>
                                     ))}
                                   </SelectContent>
