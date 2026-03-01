@@ -9,7 +9,6 @@ import {
   ArrowRight,
   ArrowUpRight,
   Banknote,
-  HelpCircle,
   Lightbulb,
   Target,
   Eye,
@@ -24,7 +23,8 @@ import {
 /* ── story data ────────────────────────────────────────────────── */
 
 const SALARY = 5_000
-const WC_PCT = 50
+const WC_PCT = 40
+const FUN_PCT = 10
 const INVEST_PCT = 20
 const EMERGENCY_PCT = 15
 const TRAVEL_PCT = 15
@@ -202,7 +202,7 @@ export default function LearnPage() {
 
             <StoryText>
               Not &ldquo;where is your money?&rdquo; &mdash; he already knows
-              that. But what is it <em>for</em>? Ledge creates four funds:
+              that. But what is it <em>for</em>? Ledge creates five funds:
             </StoryText>
 
             {/* Funds creation visual */}
@@ -211,9 +211,16 @@ export default function LearnPage() {
                 {
                   emoji: "🏠",
                   name: "Working Capital",
-                  desc: "Rent, food, bills, daily life",
+                  desc: "Rent, groceries, bills — the essentials",
                   pct: WC_PCT,
                   color: "violet",
+                },
+                {
+                  emoji: "🎉",
+                  name: "Fun",
+                  desc: "Dinners out, concerts, outings with friends",
+                  pct: FUN_PCT,
+                  color: "pink",
                 },
                 {
                   emoji: "📈",
@@ -270,25 +277,31 @@ export default function LearnPage() {
                 {[
                   {
                     label: "🏠 Working Capital",
-                    amt: "$6,170",
-                    note: "spendable",
+                    amt: "$5,000",
+                    note: "essentials",
                     color: "text-foreground",
                   },
                   {
+                    label: "🎉 Fun",
+                    amt: "$1,340",
+                    note: "outings & social",
+                    color: "text-pink-600 dark:text-pink-400",
+                  },
+                  {
                     label: "📈 Investments",
-                    amt: "$2,468",
+                    amt: "$2,500",
                     note: "move to brokerage",
                     color: "text-emerald-600 dark:text-emerald-400",
                   },
                   {
                     label: "🛡️ Emergency Fund",
-                    amt: "$1,851",
+                    amt: "$2,000",
                     note: "don't touch",
                     color: "text-blue-600 dark:text-blue-400",
                   },
                   {
                     label: "✈️ Travel",
-                    amt: "$1,851",
+                    amt: "$1,500",
                     note: "Japan fund",
                     color: "text-amber-600 dark:text-amber-400",
                   },
@@ -318,8 +331,8 @@ export default function LearnPage() {
 
             <Callout icon={Lightbulb} color="primary">
               Same twelve grand. Same bank account. But now Ledge can see that
-              only $6,170 is actually available to spend. The rest has a job.
-              That single insight changes everything.
+              only $5,000 is for essentials, $1,340 is his social budget, and
+              the rest has a job. That single insight changes everything.
             </Callout>
           </section>
 
@@ -351,15 +364,23 @@ export default function LearnPage() {
                 <ArrowDownToLine className="h-5 w-5 text-muted-foreground/50" />
               </div>
 
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
                 {[
                   {
                     emoji: "🏠",
                     name: "Working\nCapital",
-                    amt: "$2,500",
-                    pct: "50%",
+                    amt: "$2,000",
+                    pct: "40%",
                     border: "border-violet-500/20",
                     bg: "bg-violet-500/5",
+                  },
+                  {
+                    emoji: "🎉",
+                    name: "Fun",
+                    amt: "$500",
+                    pct: "10%",
+                    border: "border-pink-500/20",
+                    bg: "bg-pink-500/5",
                   },
                   {
                     emoji: "📈",
@@ -407,7 +428,7 @@ export default function LearnPage() {
               the traditional sense &mdash; he didn&apos;t list out every
               expense. He just decided the big picture:{" "}
               <Strong>
-                half for living, half for the future.
+                essentials, fun, and the future &mdash; in that order.
               </Strong>
             </StoryText>
 
@@ -455,8 +476,8 @@ export default function LearnPage() {
                   {
                     date: "Mar 7",
                     desc: "Dinner with friends",
-                    fund: "🏠 WC",
-                    amt: "-$62",
+                    fund: "🎉 Fun",
+                    amt: "-$75",
                   },
                   {
                     date: "Mar 10",
@@ -472,15 +493,27 @@ export default function LearnPage() {
                   },
                   {
                     date: "Mar 20",
-                    desc: "More groceries",
+                    desc: "Groceries",
                     fund: "🏠 WC",
                     amt: "-$70",
                   },
                   {
-                    date: "Mar 25",
-                    desc: "New headphones",
-                    fund: "🏠 WC",
-                    amt: "-$180",
+                    date: "Mar 22",
+                    desc: "Sam's birthday dinner",
+                    fund: "🎉 Fun",
+                    amt: "-$150",
+                  },
+                  {
+                    date: "Mar 24",
+                    desc: "Concert tickets",
+                    fund: "🎉 Fun",
+                    amt: "-$210",
+                  },
+                  {
+                    date: "Mar 26",
+                    desc: "Brunch with the crew",
+                    fund: "🎉 Fun",
+                    amt: "-$90",
                   },
                   {
                     date: "Mar 28",
@@ -516,8 +549,9 @@ export default function LearnPage() {
             </div>
 
             <StoryText>
-              Notice something? Every transaction is tagged to a fund. The
-              groceries come from Working Capital. The spontaneous trip comes
+              Notice something? Every transaction is tagged to a fund. Groceries
+              and rent come from Working Capital. Dinner with friends? That&apos;s
+              Fun &mdash; separate from essentials. The spontaneous trip comes
               from Travel. Ledge doesn&apos;t just know <em>what</em> he
               spent &mdash; he knows <em>which bucket it came out of</em>.
             </StoryText>
@@ -543,28 +577,64 @@ export default function LearnPage() {
               </p>
 
               <div className="space-y-4">
-                {/* WC */}
-                <div className="rounded-lg border p-4">
+                {/* WC — under budget */}
+                <div className="rounded-lg border border-emerald-500/20 p-4">
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-semibold text-sm">
                       🏠 Working Capital
                     </span>
                     <Badge
                       variant="outline"
-                      className="text-amber-600 border-amber-500/30 text-xs"
+                      className="text-emerald-600 border-emerald-500/30 text-xs"
                     >
-                      Over by $62
+                      Under by $280
                     </Badge>
                   </div>
                   <div className="flex gap-4 text-sm">
                     <div>
                       <p className="text-xs text-muted-foreground">Model</p>
-                      <p className="font-medium">$2,500</p>
+                      <p className="font-medium">$2,000</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Actual</p>
+                      <p className="font-medium text-emerald-600 dark:text-emerald-400">
+                        $1,720
+                      </p>
+                    </div>
+                  </div>
+                  {/* Mini bar */}
+                  <div className="mt-3 h-2 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-emerald-500"
+                      style={{ width: "86%" }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Essentials came in under. Rent and bills are predictable &mdash;
+                    that&apos;s the whole point of separating them.
+                  </p>
+                </div>
+
+                {/* Fun — over budget */}
+                <div className="rounded-lg border border-amber-500/20 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-semibold text-sm">🎉 Fun</span>
+                    <Badge
+                      variant="outline"
+                      className="text-amber-600 border-amber-500/30 text-xs"
+                    >
+                      Over by $25
+                    </Badge>
+                  </div>
+                  <div className="flex gap-4 text-sm">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Model</p>
+                      <p className="font-medium">$500</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Actual</p>
                       <p className="font-medium text-amber-600 dark:text-amber-400">
-                        $2,562
+                        $525
                       </p>
                     </div>
                   </div>
@@ -572,11 +642,13 @@ export default function LearnPage() {
                   <div className="mt-3 h-2 rounded-full bg-muted overflow-hidden">
                     <div
                       className="h-full rounded-full bg-amber-500"
-                      style={{ width: "102%" }}
+                      style={{ width: "105%" }}
                     />
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
-                    Those headphones pushed him slightly over. Not a disaster.
+                    Concert tickets and Sam&apos;s birthday pushed him $25 over.
+                    Before, this would have been invisible &mdash; buried in a
+                    single &ldquo;spending&rdquo; number.
                   </p>
                 </div>
 
@@ -586,9 +658,9 @@ export default function LearnPage() {
                     <span className="font-semibold text-sm">✈️ Travel</span>
                     <Badge
                       variant="outline"
-                      className="text-amber-600 border-amber-500/30 text-xs"
+                      className="text-blue-600 border-blue-500/30 text-xs"
                     >
-                      Over by $320
+                      $320 used
                     </Badge>
                   </div>
                   <div className="flex gap-4 text-sm">
@@ -602,15 +674,13 @@ export default function LearnPage() {
                       <p className="text-xs text-muted-foreground">
                         Spent this month
                       </p>
-                      <p className="font-medium text-amber-600 dark:text-amber-400">
-                        $320
-                      </p>
+                      <p className="font-medium">$320</p>
                     </div>
                   </div>
                   {/* Mini bar */}
                   <div className="mt-3 h-2 rounded-full bg-muted overflow-hidden">
                     <div
-                      className="h-full rounded-full bg-amber-500"
+                      className="h-full rounded-full bg-blue-500"
                       style={{ width: "43%" }}
                     />
                   </div>
@@ -645,18 +715,19 @@ export default function LearnPage() {
             </div>
 
             <StoryText>
-              Before Ledgera, Ledge had no idea he overspent on daily expenses.
-              The $62 would have just disappeared into the noise of a $12K
-              balance. Now he can see it clearly. He can also see that his
-              investments and emergency fund are on track &mdash; because the
-              money was allocated <em>before</em> he started spending.
+              Before Ledgera, all of Ledge&apos;s spending was one number.
+              Now he can see his essentials are under control &mdash; but his
+              social life costs more than he thought. That&apos;s not a bad
+              thing. He <em>likes</em> going out. He just didn&apos;t realize
+              it was costing $525 a month until he gave it its own fund.
             </StoryText>
 
             <Callout icon={Target} color="primary">
               This is the whole point. You don&apos;t need perfect discipline.
-              You need a model that shows you the gap between intention and
-              reality. The gap is small and fixable. Without it, you&apos;re
-              flying blind.
+              You need a model that shows you where the gaps are. Separating
+              Fun from essentials means Ledge can see <em>exactly</em> which
+              part of his life costs more than expected &mdash; and decide
+              if that&apos;s okay or not.
             </Callout>
           </section>
 
@@ -670,9 +741,9 @@ export default function LearnPage() {
 
             <StoryText>
               By month 3, Ledge has a pretty good sense of his spending
-              patterns. He notices something: some months he spends $2,300.
-              Other months $2,600. But his model gives Working Capital a flat
-              $2,500 every time.
+              patterns. His essentials vary &mdash; some months $1,700, other
+              months $1,900. But his model gives Working Capital a flat
+              $2,000 every time.
             </StoryText>
 
             <StoryText>
@@ -689,13 +760,13 @@ export default function LearnPage() {
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">WC budget</span>
-                    <span className="font-medium">$2,500 (fixed)</span>
+                    <span className="font-medium">$2,000 (fixed)</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">
                       Actually spent
                     </span>
-                    <span className="font-medium">$2,300</span>
+                    <span className="font-medium">$1,800</span>
                   </div>
                   <Separator />
                   <div className="flex justify-between">
@@ -724,13 +795,13 @@ export default function LearnPage() {
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">WC budget</span>
-                    <span className="font-medium">$2,300 (auto-adjusted)</span>
+                    <span className="font-medium">$1,800 (auto-adjusted)</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">
                       Actually spent
                     </span>
-                    <span className="font-medium">$2,300</span>
+                    <span className="font-medium">$1,800</span>
                   </div>
                   <Separator />
                   <div className="flex justify-between">
@@ -757,7 +828,7 @@ export default function LearnPage() {
               That $200 that used to sit idle in his expenses fund? Now it
               automatically goes to his investment and savings funds. Over a
               year, those small sweeps add up to{" "}
-              <Strong>thousands of extra dollars saved</Strong> &mdash; without
+              <Strong>$2,400 in extra savings</Strong> &mdash; without
               Ledge changing his lifestyle at all.
             </StoryText>
 
