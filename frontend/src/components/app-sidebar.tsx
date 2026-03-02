@@ -67,6 +67,25 @@ export function AppSidebar() {
       </nav>
       <Separator />
       <div className="space-y-1 p-3">
+        <Link
+          href="/wiki"
+          onClick={() => setMobileOpen(false)}
+          className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        >
+          <BookOpenIcon className="h-4 w-4" />
+          Guide
+        </Link>
+        <Link
+          href="/learn"
+          onClick={() => setMobileOpen(false)}
+          className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        >
+          <SparklesIcon className="h-4 w-4" />
+          Ledge&apos;s Story
+        </Link>
+      </div>
+      <Separator />
+      <div className="space-y-1 p-3">
         <Button
           variant="ghost"
           className="w-full justify-start gap-3 text-sidebar-foreground/70"
@@ -122,6 +141,31 @@ export function AppSidebar() {
           )
         })}
       </nav>
+      <Separator />
+      <div className="space-y-1 p-2">
+        <Link
+          href="/wiki"
+          title={collapsed ? "Guide" : undefined}
+          className={cn(
+            "flex items-center rounded-md text-sm font-medium transition-colors text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            collapsed ? "justify-center p-2" : "gap-3 px-3 py-2"
+          )}
+        >
+          <BookOpenIcon className="h-4 w-4 shrink-0" />
+          {!collapsed && "Guide"}
+        </Link>
+        <Link
+          href="/learn"
+          title={collapsed ? "Ledge's Story" : undefined}
+          className={cn(
+            "flex items-center rounded-md text-sm font-medium transition-colors text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            collapsed ? "justify-center p-2" : "gap-3 px-3 py-2"
+          )}
+        >
+          <SparklesIcon className="h-4 w-4 shrink-0" />
+          {!collapsed && "Ledge\u2019s Story"}
+        </Link>
+      </div>
       <Separator />
       <div className="space-y-1 p-2">
         <Button
@@ -346,6 +390,27 @@ function ChevronRightIcon({ className }: { className?: string }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d="m9 18 6-6-6-6" />
+    </svg>
+  )
+}
+
+function BookOpenIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+    </svg>
+  )
+}
+
+function SparklesIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+      <path d="M5 3v4" />
+      <path d="M19 17v4" />
+      <path d="M3 5h4" />
+      <path d="M17 19h4" />
     </svg>
   )
 }
