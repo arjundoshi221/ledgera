@@ -38,13 +38,42 @@ def verify_firebase_token(id_token: str) -> dict:
     return firebase_auth.verify_id_token(id_token)
 
 
-def delete_firebase_user(uid: str) -> bool:
+def create_firebase_user(email: str) -> str:
+    """Create a Firebase user with the given email. Returns the Firebase UID."""
+    _init_firebase()
+    user = firebase_auth.create_user(email=email)
+    return user.uid
+
+
+def create_custom_token(uid: str) -> str:
+    """Create a custom token for the given Firebase UID so the client can sign in."""
+    _init_firebase()
+    return firebase_auth.create_custom_token(uid).decode("utf-8")
+
+
+def delete_firebase_user_by_uid(uid: str) -> bool:
     """Delete a user from Firebase Authentication by their Firebase UID."""
     _init_firebase()
     try:
         firebase_auth.delete_user(uid)
-        logger.info("Deleted Firebase user %s", uid)
+        logger.info("Deleted Firebase user uid=%s", uid)
         return True
     except Exception:
-        logger.warning("Failed to delete Firebase user %s", uid, exc_info=True)
+        logger.warning("Failed to delete Firebase user uid=%s", uid, exc_info=True)
+        return False
+
+
+def delete_firebase_user_by_email(email: str) -> bool:
+    """Delete a user from Firebase Authentication by email (lookup then delete)."""
+    _init_firebase()
+    try:
+        fb_user = firebase_auth.get_user_by_email(email)
+        firebase_auth.delete_user(fb_user.uid)
+        logger.info("Deleted Firebase user email=%s uid=%s", email, fb_user.uid)
+        return True
+    except firebase_auth.UserNotFoundError:
+        logger.info("No Firebase user found for email=%s, nothing to delete", email)
+        return False
+    except Exception:
+        logger.warning("Failed to delete Firebase user email=%s", email, exc_info=True)
         return False

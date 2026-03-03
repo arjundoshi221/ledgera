@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 from src.data.database import get_session
 from src.data.models import UserModel
 from src.data.admin_repository import AdminRepository
-from src.services.firebase_service import delete_firebase_user
+from src.services.firebase_service import delete_firebase_user_by_uid, delete_firebase_user_by_email
 from src.data.audit_repository import AuditLogRepository
 from src.api.admin_deps import require_admin
 
@@ -402,7 +402,9 @@ def delete_user(
     )
 
     if user.firebase_uid:
-        delete_firebase_user(user.firebase_uid)
+        delete_firebase_user_by_uid(user.firebase_uid)
+    else:
+        delete_firebase_user_by_email(user.email)
 
     repo.delete_user(user_id)
     return {"message": f"User {email} permanently deleted"}

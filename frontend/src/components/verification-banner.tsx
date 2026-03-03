@@ -3,10 +3,10 @@
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/ui/use-toast"
-import { sendEmailVerification, onAuthStateChanged } from "firebase/auth"
+import { sendEmailVerification, signInWithCustomToken, onAuthStateChanged } from "firebase/auth"
 import type { User } from "firebase/auth"
 import { firebaseAuth } from "@/lib/firebase"
-import { updateVerification } from "@/lib/api"
+import { updateVerification, provisionFirebase } from "@/lib/api"
 import { useVerificationStatus } from "@/lib/hooks"
 import { AlertTriangle, CheckCircle2, Mail, Phone } from "lucide-react"
 
@@ -48,17 +48,16 @@ export function VerificationBanner() {
   async function handleResendEmail() {
     setResending(true)
     try {
-      const user = firebaseAuth.currentUser
-      if (user) {
-        await sendEmailVerification(user)
-        toast({ title: "Email sent", description: "Verification email has been resent." })
-      } else {
-        toast({
-          variant: "destructive",
-          title: "Not signed in",
-          description: "Please sign in again to resend verification email.",
-        })
+      let user = firebaseAuth.currentUser
+      if (!user) {
+        // Legacy email-only user: provision a Firebase account and sign in
+        const { custom_token } = await provisionFirebase()
+        const cred = await signInWithCustomToken(firebaseAuth, custom_token)
+        user = cred.user
+        setFirebaseUser(user)
       }
+      await sendEmailVerification(user)
+      toast({ title: "Email sent", description: "Verification email has been sent." })
     } catch (err: any) {
       toast({
         variant: "destructive",

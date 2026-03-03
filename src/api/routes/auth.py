@@ -679,3 +679,38 @@ def update_verification(
         "email_verified": user.email_verified,
         "phone_verified": user.phone_verified,
     }
+
+
+@router.post("/provision-firebase")
+def provision_firebase(
+    user_id: str = Depends(get_user_id),
+    session: Session = Depends(get_session),
+):
+    """Create a Firebase account for an existing email-only user and return a custom token."""
+    from src.services.firebase_service import create_firebase_user, create_custom_token
+
+    user_repo = UserRepository(session)
+    user = user_repo.read(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if not user.firebase_uid:
+        try:
+            firebase_uid = create_firebase_user(user.email)
+        except Exception as e:
+            # User may already exist in Firebase (e.g. created but uid never saved)
+            if "ALREADY_EXISTS" in str(e):
+                from src.services.firebase_service import verify_firebase_token
+                from firebase_admin import auth as fb_auth
+                fb_user = fb_auth.get_user_by_email(user.email)
+                firebase_uid = fb_user.uid
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Could not create Firebase account",
+                )
+        user.firebase_uid = firebase_uid
+        user_repo.update(user)
+
+    custom_token = create_custom_token(user.firebase_uid)
+    return {"custom_token": custom_token}

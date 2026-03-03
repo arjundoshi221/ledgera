@@ -168,6 +168,12 @@ export async function updateVerification(idToken: string): Promise<VerificationS
   })
 }
 
+export async function provisionFirebase(): Promise<{ custom_token: string }> {
+  return apiFetch<{ custom_token: string }>("/auth/provision-firebase", {
+    method: "POST",
+  })
+}
+
 export async function getVerificationStatus(): Promise<VerificationStatus> {
   return apiFetch<VerificationStatus>("/auth/verification-status")
 }
