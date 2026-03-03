@@ -1,17 +1,39 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/ui/use-toast"
 import { sendEmailVerification } from "firebase/auth"
 import { firebaseAuth } from "@/lib/firebase"
+import { updateVerification } from "@/lib/api"
 import { useVerificationStatus } from "@/lib/hooks"
 import { AlertTriangle, CheckCircle2, Mail, Phone } from "lucide-react"
 
 export function VerificationBanner() {
-  const { data: status } = useVerificationStatus()
+  const { data: status, mutate } = useVerificationStatus()
   const [resending, setResending] = useState(false)
   const { toast } = useToast()
+  const syncedRef = useRef(false)
+
+  // Sync Firebase email verification status to our DB
+  // Firebase caches user locally, so we reload() to get fresh emailVerified
+  useEffect(() => {
+    if (syncedRef.current || !status || status.email_verified) return
+
+    const user = firebaseAuth.currentUser
+    if (!user) return
+
+    syncedRef.current = true
+    user.reload().then(() => {
+      if (user.emailVerified) {
+        user.getIdToken(true).then((idToken) => {
+          updateVerification(idToken).then(() => mutate())
+        })
+      } else {
+        syncedRef.current = false
+      }
+    }).catch(() => { syncedRef.current = false })
+  }, [status, mutate])
 
   if (!status) return null
   // Only check email for now; phone verification requires Firebase Blaze plan
