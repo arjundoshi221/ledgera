@@ -9,6 +9,7 @@ from src.data.database import init_db
 from .schemas import HealthResponse
 from .routes import accounts, transactions, projections, prices, auth, workspace, categories, analytics, payments, recurring, admin, bugs
 from .middleware import AuthMiddleware
+from .middleware_cache import CacheControlMiddleware
 
 
 @asynccontextmanager
@@ -27,7 +28,10 @@ app = FastAPI(
     redirect_slashes=False
 )
 
-# JWT authentication middleware (inner — runs after CORS)
+# Cache headers middleware (innermost — adds Cache-Control/ETag to responses)
+app.add_middleware(CacheControlMiddleware)
+
+# JWT authentication middleware (runs after CORS, before cache)
 app.add_middleware(AuthMiddleware)
 
 # CORS configuration (outer — wraps ALL responses including auth errors)
