@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/ui/use-toast"
-import { sendEmailVerification } from "firebase/auth"
+import { sendEmailVerification, onAuthStateChanged } from "firebase/auth"
+import type { User } from "firebase/auth"
 import { firebaseAuth } from "@/lib/firebase"
 import { updateVerification } from "@/lib/api"
 import { useVerificationStatus } from "@/lib/hooks"
@@ -12,28 +13,33 @@ import { AlertTriangle, CheckCircle2, Mail, Phone } from "lucide-react"
 export function VerificationBanner() {
   const { data: status, mutate } = useVerificationStatus()
   const [resending, setResending] = useState(false)
+  const [firebaseUser, setFirebaseUser] = useState<User | null>(null)
   const { toast } = useToast()
   const syncedRef = useRef(false)
 
-  // Sync Firebase email verification status to our DB
-  // Firebase caches user locally, so we reload() to get fresh emailVerified
+  // Wait for Firebase auth to initialize
   useEffect(() => {
-    if (syncedRef.current || !status || status.email_verified) return
+    const unsub = onAuthStateChanged(firebaseAuth, (user) => {
+      setFirebaseUser(user)
+    })
+    return unsub
+  }, [])
 
-    const user = firebaseAuth.currentUser
-    if (!user) return
+  // Sync Firebase email verification status to our DB
+  useEffect(() => {
+    if (syncedRef.current || !status || status.email_verified || !firebaseUser) return
 
     syncedRef.current = true
-    user.reload().then(() => {
-      if (user.emailVerified) {
-        user.getIdToken(true).then((idToken) => {
+    firebaseUser.reload().then(() => {
+      if (firebaseUser.emailVerified) {
+        firebaseUser.getIdToken(true).then((idToken) => {
           updateVerification(idToken).then(() => mutate())
         })
       } else {
         syncedRef.current = false
       }
     }).catch(() => { syncedRef.current = false })
-  }, [status, mutate])
+  }, [status, mutate, firebaseUser])
 
   if (!status) return null
   // Only check email for now; phone verification requires Firebase Blaze plan
