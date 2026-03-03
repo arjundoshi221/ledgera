@@ -54,6 +54,9 @@ class UserRepository(BaseRepository):
     def read_by_email(self, email: str) -> Optional[UserModel]:
         return self.session.query(UserModel).filter(UserModel.email == email).first()
 
+    def read_by_firebase_uid(self, firebase_uid: str) -> Optional[UserModel]:
+        return self.session.query(UserModel).filter(UserModel.firebase_uid == firebase_uid).first()
+
     def update(self, user: UserModel) -> UserModel:
         user.updated_at = datetime.utcnow()
         self.session.commit()

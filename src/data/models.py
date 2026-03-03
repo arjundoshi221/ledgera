@@ -45,7 +45,10 @@ class UserModel(Base):
     privacy_accepted_at = Column(DateTime)
     tos_version = Column(String(10))
     profile_completed = Column(Boolean, nullable=False, default=False)
-    auth_provider = Column(String(20), default='email')  # 'email' or 'google'
+    auth_provider = Column(String(20), default='email')  # 'email', 'google', or 'firebase'
+    firebase_uid = Column(String(128), unique=True, nullable=True, index=True)
+    email_verified = Column(Boolean, nullable=False, default=False)
+    phone_verified = Column(Boolean, nullable=False, default=False)
     is_active = Column(Boolean, nullable=False, default=True)
     is_admin = Column(Boolean, nullable=False, default=False)
     is_disabled = Column(Boolean, nullable=False, default=False)

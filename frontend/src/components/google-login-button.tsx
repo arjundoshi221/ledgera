@@ -1,57 +1,48 @@
 "use client"
 
-// Google Login Button - Ready to use once @react-oauth/google is installed
-// and NEXT_PUBLIC_GOOGLE_CLIENT_ID is set.
-//
-// To enable:
-// 1. npm install @react-oauth/google
-// 2. Set NEXT_PUBLIC_GOOGLE_CLIENT_ID in .env.local
-// 3. Wrap the login page with <GoogleOAuthProvider clientId={...}>
-// 4. Render <GoogleLoginButton /> in the login page
-//
-// The backend POST /auth/google endpoint is already implemented and accepts
-// { access_token: string } — it fetches user info from Google's userinfo API.
-
 import { useRouter } from "next/navigation"
-import { useGoogleLogin } from "@react-oauth/google"
-import { googleLogin } from "@/lib/api"
+import { signInWithPopup, GoogleAuthProvider } from "firebase/auth"
+import { firebaseAuth } from "@/lib/firebase"
+import { firebaseLogin } from "@/lib/api"
 import { setAuth } from "@/lib/auth"
 import { useToast } from "@/components/ui/use-toast"
 import { Button } from "@/components/ui/button"
+
+const googleProvider = new GoogleAuthProvider()
 
 export function GoogleLoginButton() {
   const router = useRouter()
   const { toast } = useToast()
 
-  const login = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      try {
-        const res = await googleLogin({ access_token: tokenResponse.access_token })
-        setAuth(res.access_token, res.user_id, res.workspace_id, res.profile_completed, res.is_admin)
+  async function handleGoogleLogin() {
+    try {
+      const result = await signInWithPopup(firebaseAuth, googleProvider)
+      const idToken = await result.user.getIdToken()
+      const res = await firebaseLogin({ id_token: idToken })
+      setAuth(res.access_token, res.user_id, res.workspace_id, res.profile_completed, res.is_admin)
 
-        if (res.profile_completed) {
-          router.push("/dashboard")
-        } else {
-          router.push("/onboarding")
-        }
-      } catch (err: any) {
+      if (res.profile_completed) {
+        router.push("/dashboard")
+      } else {
+        router.push("/onboarding")
+      }
+    } catch (err: any) {
+      if (err.code !== "auth/popup-closed-by-user") {
         toast({
           variant: "destructive",
           title: "Google sign-in failed",
           description: err.message || "Could not authenticate with Google",
         })
       }
-    },
-    onError: () =>
-      toast({ variant: "destructive", title: "Google sign-in failed" }),
-  })
+    }
+  }
 
   return (
     <Button
       type="button"
       variant="outline"
       className="w-full"
-      onClick={() => login()}
+      onClick={handleGoogleLogin}
     >
       <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
         <path

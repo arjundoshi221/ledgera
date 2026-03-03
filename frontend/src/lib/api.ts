@@ -8,8 +8,10 @@ import type {
   SignupRequest,
   LoginRequest,
   GoogleLoginRequest,
+  FirebaseLoginRequest,
   CompleteProfileRequest,
   UserResponse,
+  VerificationStatus,
   Account,
   AccountType,
   CreateAccountRequest,
@@ -150,6 +152,24 @@ export async function completeProfile(data: CompleteProfileRequest): Promise<Use
     method: "POST",
     body: JSON.stringify(data),
   })
+}
+
+export async function firebaseLogin(data: FirebaseLoginRequest): Promise<AuthResponse> {
+  return apiFetch<AuthResponse>("/auth/firebase", {
+    method: "POST",
+    body: JSON.stringify(data),
+  })
+}
+
+export async function updateVerification(idToken: string): Promise<VerificationStatus> {
+  return apiFetch<VerificationStatus>("/auth/update-verification", {
+    method: "POST",
+    body: JSON.stringify({ id_token: idToken }),
+  })
+}
+
+export async function getVerificationStatus(): Promise<VerificationStatus> {
+  return apiFetch<VerificationStatus>("/auth/verification-status")
 }
 
 // ---------------------

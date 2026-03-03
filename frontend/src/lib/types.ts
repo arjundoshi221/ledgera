@@ -48,6 +48,15 @@ export interface GoogleLoginRequest {
   access_token: string
 }
 
+export interface FirebaseLoginRequest {
+  id_token: string
+}
+
+export interface VerificationStatus {
+  email_verified: boolean
+  phone_verified: boolean
+}
+
 export interface CompleteProfileRequest {
   first_name?: string
   last_name?: string
@@ -95,6 +104,8 @@ export interface UserResponse {
   tos_version: string | null
   profile_completed: boolean
   auth_provider: string
+  email_verified: boolean
+  phone_verified: boolean
 }
 
 // ---------------------

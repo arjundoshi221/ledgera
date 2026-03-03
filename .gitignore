@@ -49,6 +49,9 @@ env/
 .env
 .env.local
 
+# Firebase service account (secret key)
+firebase-service-account.json
+
 # Pytest
 .pytest_cache/
 .coverage

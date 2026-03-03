@@ -34,11 +34,13 @@ import {
   updatePaymentMethod,
   deletePaymentMethod,
 } from "@/lib/api"
-import { useWorkspace, useMe, useAccounts, useCategories, useSubcategories, useFunds, useCards, usePaymentMethods, useWorkspaceMutations } from "@/lib/hooks"
+import { useWorkspace, useMe, useAccounts, useCategories, useSubcategories, useFunds, useCards, usePaymentMethods, useWorkspaceMutations, useVerificationStatus } from "@/lib/hooks"
 import { invalidateWorkspace, invalidateAccounts, invalidateCategories, invalidateSubcategories, invalidateFunds, invalidateCards, invalidatePaymentMethods } from "@/lib/cache"
 import { clearAuth } from "@/lib/auth"
 import { useRouter, useSearchParams } from "next/navigation"
 import { CURRENCIES, ACCOUNT_TYPES, CARD_TYPES, CARD_NETWORKS } from "@/lib/constants"
+import { PhoneVerification } from "@/components/phone-verification"
+import { CheckCircle2, XCircle } from "lucide-react"
 import type { Workspace, UserResponse, Account, AccountType, Category, Subcategory, Fund, Card as CardType, PaymentMethod } from "@/lib/types"
 
 export default function SettingsPage() {
@@ -56,6 +58,7 @@ export default function SettingsPage() {
   const { data: funds = [] } = useFunds()
   const { data: cards = [] } = useCards()
   const { data: paymentMethods = [] } = usePaymentMethods()
+  const { data: verificationStatus, mutate: mutateVerification } = useVerificationStatus()
   const { update: updateWorkspaceMutation } = useWorkspaceMutations()
 
   const loading = workspaceLoading || userLoading
@@ -777,6 +780,40 @@ export default function SettingsPage() {
                           ? `Accepted on ${new Date(user.privacy_accepted_at).toLocaleDateString()}`
                           : "Not accepted"}
                       </p>
+                    </div>
+                    <Separator />
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Verification Status</Label>
+                      <div className="space-y-2 mt-2">
+                        <div className="flex items-center gap-2 text-sm">
+                          {verificationStatus?.email_verified ? (
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <XCircle className="h-4 w-4 text-yellow-600" />
+                          )}
+                          <span>Email {verificationStatus?.email_verified ? "verified" : "not verified"}</span>
+                        </div>
+                        {/* TODO: Re-enable phone verification once Firebase Blaze plan is activated
+                        <div className="flex items-center gap-2 text-sm">
+                          {verificationStatus?.phone_verified ? (
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <XCircle className="h-4 w-4 text-yellow-600" />
+                          )}
+                          <span>Phone {verificationStatus?.phone_verified ? "verified" : "not verified"}</span>
+                        </div>
+                        */}
+                      </div>
+                      {/* TODO: Re-enable phone verification UI once Firebase Blaze plan is activated
+                      {!verificationStatus?.phone_verified && user?.phone_country_code && user?.phone_number && (
+                        <div className="mt-4 border rounded-lg p-4">
+                          <PhoneVerification
+                            phoneNumber={`${user.phone_country_code}${user.phone_number}`}
+                            onVerified={() => mutateVerification()}
+                          />
+                        </div>
+                      )}
+                      */}
                     </div>
                     <Separator />
                     <Button variant="destructive" onClick={handleLogout} className="w-full">

@@ -19,7 +19,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         # Skip auth for public endpoints
-        skip_paths = ["/auth/signup", "/auth/login", "/health", "/docs", "/openapi.json", "/redoc"]
+        skip_paths = ["/auth/signup", "/auth/login", "/auth/firebase", "/health", "/docs", "/openapi.json", "/redoc"]
         if request.url.path in skip_paths:
             request.state.user_id = None
             request.state.workspace_id = None

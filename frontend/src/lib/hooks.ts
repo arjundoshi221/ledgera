@@ -334,6 +334,19 @@ export function useMe(config?: SWRConfiguration) {
   )
 }
 
+export function useVerificationStatus(config?: SWRConfiguration) {
+  return useSWR<{ email_verified: boolean; phone_verified: boolean }>(
+    '/api/v1/auth/verification-status',
+    api.getVerificationStatus,
+    {
+      ...swrConfig,
+      dedupingInterval: 10000,
+      revalidateOnFocus: true,
+      ...config,
+    }
+  )
+}
+
 // ============================================================
 // Analytics
 // ============================================================

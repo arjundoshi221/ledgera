@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { useAccounts, useTransactions } from "@/lib/hooks"
+import { VerificationBanner } from "@/components/verification-banner"
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -28,6 +29,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      <VerificationBanner />
       <h1 className="text-2xl font-bold">Dashboard</h1>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

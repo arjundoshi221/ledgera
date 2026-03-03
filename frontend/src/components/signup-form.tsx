@@ -7,8 +7,11 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { signup } from "@/lib/api"
+import { signup, firebaseLogin } from "@/lib/api"
+import { setAuth } from "@/lib/auth"
 import { useToast } from "@/components/ui/use-toast"
+import { createUserWithEmailAndPassword, sendEmailVerification } from "firebase/auth"
+import { firebaseAuth } from "@/lib/firebase"
 import { COUNTRIES, PHONE_CODES, searchCountries, getCountryName } from "@/lib/countries"
 import { CURRENCIES } from "@/lib/constants"
 import { ArrowLeft, ArrowRight, Check, Info } from "lucide-react"
@@ -248,6 +251,24 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
 
     setLoading(true)
     try {
+      // 1. Create user in Firebase (for email verification)
+      let firebaseCreated = false
+      try {
+        const cred = await createUserWithEmailAndPassword(firebaseAuth, email, password)
+        firebaseCreated = true
+        // 2. Send email verification
+        await sendEmailVerification(cred.user)
+        console.log("[Signup] Firebase user created and verification email sent")
+      } catch (fbErr: any) {
+        if (fbErr.code === "auth/email-already-in-use") {
+          // Firebase user already exists (from a previous attempt) — continue with backend signup
+          console.log("[Signup] Firebase user already exists, continuing with backend signup")
+        } else {
+          throw fbErr
+        }
+      }
+
+      // 3. Create full profile via existing signup endpoint (returns our custom JWT)
       await signup({
         email,
         password,
@@ -271,16 +292,23 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
         privacy_accepted: privacyAccepted,
         base_currency: baseCurrency,
       })
+
       toast({
         title: "Account created",
-        description: "You can now sign in.",
+        description: firebaseCreated
+          ? "A verification email has been sent. Please check your inbox."
+          : "You can now sign in.",
       })
       onSuccess()
     } catch (err: any) {
+      console.error("[Signup] Error:", err.code || err.status, err.message)
+      const message = err.code === "auth/email-already-in-use"
+        ? "Email already registered"
+        : err.message || "Could not create account"
       toast({
         variant: "destructive",
         title: "Signup failed",
-        description: err.message || "Could not create account",
+        description: message,
       })
     } finally {
       setLoading(false)

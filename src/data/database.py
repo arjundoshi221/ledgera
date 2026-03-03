@@ -223,6 +223,18 @@ def _run_migrations(engine) -> None:
                 conn.execute(text(
                     "ALTER TABLE users ADD COLUMN login_count INTEGER NOT NULL DEFAULT 0"
                 ))
+            if "firebase_uid" not in user_cols:
+                conn.execute(text(
+                    "ALTER TABLE users ADD COLUMN firebase_uid VARCHAR(128)"
+                ))
+            if "email_verified" not in user_cols:
+                conn.execute(text(
+                    f"ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT {BOOL_FALSE}"
+                ))
+            if "phone_verified" not in user_cols:
+                conn.execute(text(
+                    f"ALTER TABLE users ADD COLUMN phone_verified BOOLEAN NOT NULL DEFAULT {BOOL_FALSE}"
+                ))
 
     # Fund allocation overrides: add override_amount and mode columns
     if insp.has_table("fund_allocation_overrides"):

@@ -58,6 +58,10 @@ class GoogleLoginRequest(BaseModel):
     access_token: str
 
 
+class FirebaseLoginRequest(BaseModel):
+    id_token: str
+
+
 class CompleteProfileRequest(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
@@ -114,6 +118,8 @@ class UserResponse(BaseModel):
     tos_version: Optional[str] = None
     profile_completed: bool = False
     auth_provider: str = "email"
+    email_verified: bool = False
+    phone_verified: bool = False
 
 
 # ── Helpers ──
@@ -267,6 +273,8 @@ def _build_user_response(user, workspace_id: str) -> UserResponse:
         tos_version=user.tos_version,
         profile_completed=user.profile_completed or False,
         auth_provider=user.auth_provider or "email",
+        email_verified=user.email_verified if hasattr(user, 'email_verified') else False,
+        phone_verified=user.phone_verified if hasattr(user, 'phone_verified') else False,
     )
 
 
@@ -537,3 +545,137 @@ def get_me(
     workspace_id = str(workspaces[0].id) if workspaces else ""
 
     return _build_user_response(user, workspace_id)
+
+
+@router.post("/firebase", response_model=AuthResponse)
+def firebase_login(
+    req: FirebaseLoginRequest,
+    session: Session = Depends(get_session)
+):
+    """Authenticate via Firebase ID token. Creates user on first login."""
+    from src.services.firebase_service import verify_firebase_token
+
+    try:
+        decoded = verify_firebase_token(req.id_token)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Firebase token"
+        )
+
+    firebase_uid = decoded["uid"]
+    email = decoded.get("email", "")
+    email_verified = decoded.get("email_verified", False)
+    phone_number = decoded.get("phone_number")
+    display_name = decoded.get("name", "")
+
+    user_repo = UserRepository(session)
+
+    # Try to find by firebase_uid first, then by email
+    user = user_repo.read_by_firebase_uid(firebase_uid)
+    if not user and email:
+        user = user_repo.read_by_email(email)
+        if user:
+            user.firebase_uid = firebase_uid
+
+    if user:
+        # Existing user — update verification status
+        if email_verified:
+            user.email_verified = True
+        if phone_number:
+            user.phone_verified = True
+
+        if user.is_disabled:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account is disabled. Contact support."
+            )
+
+        workspace_repo = WorkspaceRepository(session)
+        workspaces = workspace_repo.read_by_owner(user.id)
+        if not workspaces:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="User has no workspace"
+            )
+        workspace = workspaces[0]
+
+        user.last_login_at = datetime.utcnow()
+        user.login_count = (user.login_count or 0) + 1
+        user_repo.update(user)
+    else:
+        # New user — create with Firebase info
+        names = display_name.split(" ", 1) if display_name else ["", ""]
+        user = UserModel(
+            email=email,
+            firebase_uid=firebase_uid,
+            first_name=names[0],
+            last_name=names[1] if len(names) > 1 else "",
+            display_name=display_name,
+            email_verified=email_verified,
+            phone_verified=bool(phone_number),
+            profile_completed=False,
+            auth_provider="firebase",
+        )
+        user = user_repo.create(user)
+        workspace = _create_workspace_and_defaults(session, user.id)
+
+    token = auth_service.create_access_token(user.id, workspace.id)
+
+    return AuthResponse(
+        user_id=str(user.id),
+        workspace_id=str(workspace.id),
+        access_token=token,
+        profile_completed=user.profile_completed or False,
+        is_admin=user.is_admin or False,
+    )
+
+
+@router.get("/verification-status")
+def get_verification_status(
+    user_id: str = Depends(get_user_id),
+    session: Session = Depends(get_session)
+):
+    """Get current email and phone verification status."""
+    user_repo = UserRepository(session)
+    user = user_repo.read(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return {
+        "email_verified": user.email_verified if hasattr(user, 'email_verified') else False,
+        "phone_verified": user.phone_verified if hasattr(user, 'phone_verified') else False,
+    }
+
+
+@router.post("/update-verification")
+def update_verification(
+    req: FirebaseLoginRequest,
+    user_id: str = Depends(get_user_id),
+    session: Session = Depends(get_session)
+):
+    """After user verifies email or phone in Firebase, update our DB."""
+    from src.services.firebase_service import verify_firebase_token
+
+    try:
+        decoded = verify_firebase_token(req.id_token)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Firebase token"
+        )
+
+    user_repo = UserRepository(session)
+    user = user_repo.read(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if decoded.get("email_verified"):
+        user.email_verified = True
+    if decoded.get("phone_number"):
+        user.phone_verified = True
+    user_repo.update(user)
+
+    return {
+        "email_verified": user.email_verified,
+        "phone_verified": user.phone_verified,
+    }
