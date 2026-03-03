@@ -118,6 +118,7 @@ export default function AdminUsersPage() {
                   <TableHead>Email</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Provider</TableHead>
+                  <TableHead>Verified</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Joined</TableHead>
                   <TableHead>Last Login</TableHead>
@@ -137,6 +138,20 @@ export default function AdminUsersPage() {
                       <Badge variant="secondary" className="text-xs">
                         {user.auth_provider}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        {user.email_verified ? (
+                          <Badge variant="outline" className="text-xs text-green-600 border-green-300">Email</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs text-muted-foreground">Email</Badge>
+                        )}
+                        {user.phone_verified ? (
+                          <Badge variant="outline" className="text-xs text-green-600 border-green-300">Phone</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs text-muted-foreground">Phone</Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">

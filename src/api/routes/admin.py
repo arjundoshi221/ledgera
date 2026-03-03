@@ -31,6 +31,8 @@ class AdminUserListItem(BaseModel):
     profile_completed: bool
     is_admin: bool
     is_disabled: bool
+    email_verified: bool = False
+    phone_verified: bool = False
     address_country: Optional[str] = None
     created_at: str
     last_login_at: Optional[str] = None
@@ -151,6 +153,8 @@ def _user_to_list_item(user: UserModel) -> AdminUserListItem:
         profile_completed=user.profile_completed or False,
         is_admin=user.is_admin or False,
         is_disabled=user.is_disabled or False,
+        email_verified=user.email_verified if hasattr(user, 'email_verified') else False,
+        phone_verified=user.phone_verified if hasattr(user, 'phone_verified') else False,
         address_country=user.address_country,
         created_at=user.created_at.isoformat() if user.created_at else "",
         last_login_at=user.last_login_at.isoformat() if user.last_login_at else None,

@@ -7,6 +7,8 @@ export interface AdminUserListItem {
   profile_completed: boolean
   is_admin: boolean
   is_disabled: boolean
+  email_verified: boolean
+  phone_verified: boolean
   address_country: string | null
   created_at: string
   last_login_at: string | null
