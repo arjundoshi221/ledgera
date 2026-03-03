@@ -1,9 +1,12 @@
-"""Firebase Admin SDK service for token verification."""
+"""Firebase Admin SDK service for token verification and user management."""
 
+import logging
 import os
 import json
 import firebase_admin
 from firebase_admin import auth as firebase_auth, credentials
+
+logger = logging.getLogger(__name__)
 
 _app = None
 
@@ -33,3 +36,15 @@ def verify_firebase_token(id_token: str) -> dict:
     """
     _init_firebase()
     return firebase_auth.verify_id_token(id_token)
+
+
+def delete_firebase_user(uid: str) -> bool:
+    """Delete a user from Firebase Authentication by their Firebase UID."""
+    _init_firebase()
+    try:
+        firebase_auth.delete_user(uid)
+        logger.info("Deleted Firebase user %s", uid)
+        return True
+    except Exception:
+        logger.warning("Failed to delete Firebase user %s", uid, exc_info=True)
+        return False
