@@ -35,7 +35,7 @@ import {
   deletePaymentMethod,
 } from "@/lib/api"
 import { useWorkspace, useMe, useAccounts, useCategories, useSubcategories, useFunds, useCards, usePaymentMethods, useWorkspaceMutations, useVerificationStatus } from "@/lib/hooks"
-import { invalidateWorkspace, invalidateAccounts, invalidateCategories, invalidateSubcategories, invalidateFunds, invalidateCards, invalidatePaymentMethods } from "@/lib/cache"
+import { invalidateWorkspace, invalidateAccounts, invalidateCategories, invalidateSubcategories, invalidateFunds, invalidateCards, invalidatePaymentMethods, clearCacheOnLogout } from "@/lib/cache"
 import { clearAuth } from "@/lib/auth"
 import { useRouter, useSearchParams } from "next/navigation"
 import { CURRENCIES, ACCOUNT_TYPES, CARD_TYPES, CARD_NETWORKS } from "@/lib/constants"
@@ -479,6 +479,7 @@ export default function SettingsPage() {
 
   function handleLogout() {
     clearAuth()
+    clearCacheOnLogout()
     toast({ title: "Logged out successfully" })
     router.push("/")
   }

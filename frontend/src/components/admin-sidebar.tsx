@@ -5,6 +5,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { clearAuth } from "@/lib/auth"
+import { clearCacheOnLogout } from "@/lib/cache"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
@@ -24,6 +25,7 @@ export function AdminSidebar() {
 
   function handleLogout() {
     clearAuth()
+    clearCacheOnLogout()
     router.push("/login")
   }
 

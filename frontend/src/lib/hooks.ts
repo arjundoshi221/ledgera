@@ -6,6 +6,7 @@ import useSWR from 'swr'
 import useSWRMutation from 'swr/mutation'
 import type { SWRConfiguration } from 'swr'
 import * as api from './api'
+import { clearCacheOnLogout } from './cache'
 import * as adminApi from './admin-api'
 import type {
   Account,
@@ -51,8 +52,8 @@ export const swrConfig: SWRConfiguration = {
   onError: (error) => {
     if (error.status === 401) {
       // Clear all cache on auth error
+      clearCacheOnLogout()
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('token')
         window.location.href = '/login'
       }
     }
