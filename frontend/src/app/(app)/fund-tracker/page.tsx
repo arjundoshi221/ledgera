@@ -39,7 +39,7 @@ export default function FundTrackerPage() {
   const { tooltipStyle, gridStroke, tickStyle } = useChartTheme()
 
   // Use SWR hooks for automatic caching
-  const { data, isLoading: loading } = useFundTracker(parseInt(years))
+  const { data, error, isLoading: loading } = useFundTracker(parseInt(years))
   const { createTransfer } = useTransactionMutations()
 
   function isCrossCurrencySuggestion(s: TransferSuggestion): boolean {
@@ -744,7 +744,9 @@ export default function FundTrackerPage() {
       {!data && !loading && (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
-            No data available. Create funds and link accounts in Settings to get started.
+            {error
+              ? `Failed to load fund tracker: ${error.message || "Unknown error"}`
+              : "No data available. Create funds and link accounts in Settings to get started."}
           </CardContent>
         </Card>
       )}

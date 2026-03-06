@@ -958,7 +958,10 @@ def _compute_fund_contribution(
     """Compute a single fund's contribution for one month (shared logic)."""
     if fund.name == "Working Capital":
         if amount_override_map and (fund.id, year, month) in amount_override_map:
-            return amount_override_map[(fund.id, year, month)]
+            override_amount, _mode = amount_override_map[(fund.id, year, month)]
+            if override_amount is not None:
+                return override_amount
+            # mode-only override (MODEL/OPTIMIZE): fall through to default_wc_amount
         if default_wc_amount is not None:
             return default_wc_amount
         return allocated_fixed_cost
