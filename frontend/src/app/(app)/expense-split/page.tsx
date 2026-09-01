@@ -87,7 +87,7 @@ function FundCategoryChart({ fund, currency }: { fund: FundDashboardAnalysis; cu
           tick={tickStyle}
         />
         <Tooltip
-          formatter={(value: number) => fmt(value, currency)}
+          formatter={(value) => fmt(Number(value), currency)}
           contentStyle={tooltipStyle}
         />
         <Legend />
@@ -155,8 +155,8 @@ function FundExtractionDonut({
             ))}
           </Pie>
           <Tooltip
-            formatter={(value: number, _name: string, props: any) => [
-              fmt(value, currency),
+            formatter={(value, _name, props: any) => [
+              fmt(Number(value), currency),
               props.payload.name,
             ]}
             contentStyle={tooltipStyle}

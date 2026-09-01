@@ -692,7 +692,7 @@ export default function FundTrackerPage() {
                       <XAxis dataKey="label" tick={tickStyle} />
                       <YAxis tickFormatter={fmtCompact} tick={tickStyle} />
                       <Tooltip
-                        formatter={(value: number) => fmt(value)}
+                        formatter={(value) => fmt(Number(value))}
                         contentStyle={tooltipStyle}
                       />
                       <Legend />
@@ -726,7 +726,7 @@ export default function FundTrackerPage() {
                       <XAxis dataKey="name" tick={tickStyle} />
                       <YAxis tickFormatter={fmtCompact} tick={tickStyle} />
                       <Tooltip
-                        formatter={(value: number) => fmt(value)}
+                        formatter={(value) => fmt(Number(value))}
                         contentStyle={tooltipStyle}
                       />
                       <Legend />

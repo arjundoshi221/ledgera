@@ -137,7 +137,7 @@ export default function PortfolioPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
                 <XAxis dataKey="label" tick={tickStyle} />
                 <YAxis tick={tickStyle} tickFormatter={(v) => fmt(v)} />
-                <Tooltip formatter={(v: number) => fmtCcy(v, base)} contentStyle={tooltipStyle} />
+                <Tooltip formatter={(v) => fmtCcy(Number(v), base)} contentStyle={tooltipStyle} />
                 <Legend />
                 <Area
                   type="monotone"
@@ -266,7 +266,7 @@ export default function PortfolioPage() {
                         <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(v: number) => fmtCcy(v, base)} contentStyle={tooltipStyle} />
+                    <Tooltip formatter={(v) => fmtCcy(Number(v), base)} contentStyle={tooltipStyle} />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="mt-4 space-y-2">

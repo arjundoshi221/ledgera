@@ -224,7 +224,7 @@ export default function AdminAnalyticsPage() {
                     <XAxis dataKey="stage" tick={tickStyle} />
                     <YAxis allowDecimals={false} tick={tickStyle} />
                     <Tooltip
-                      formatter={(value: number, name: string) => [value, "Users"]}
+                      formatter={(value) => [Number(value), "Users"]}
                       labelFormatter={(label) => {
                         const item = funnelChartData.find((d) => d.stage === label)
                         return `${label} (${item?.rate || ""})`
@@ -269,7 +269,7 @@ export default function AdminAnalyticsPage() {
                     <XAxis dataKey="feature" tick={tickStyle} />
                     <YAxis allowDecimals={false} tick={tickStyle} />
                     <Tooltip
-                      formatter={(value: number, name: string) => [value, "Users"]}
+                      formatter={(value) => [Number(value), "Users"]}
                       labelFormatter={(label) => {
                         const item = adoptionChartData.find((d) => d.feature === label)
                         return `${label} (${item?.rate || 0}%)`
