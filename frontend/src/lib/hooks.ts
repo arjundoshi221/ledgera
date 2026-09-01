@@ -339,7 +339,7 @@ export function useWorkspaceMutations() {
 
 export function useMe(config?: SWRConfiguration) {
   return useSWR<UserResponse>(
-    '/api/v1/auth/me',
+    '/auth/me',
     api.getMe,
     {
       ...swrStatic,
@@ -352,7 +352,7 @@ export function useVerificationStatus(config?: SWRConfiguration) {
   // Live preset: verification state can flip during a session (user clicks
   // magic link in another tab) — keep focus revalidation on.
   return useSWR<{ email_verified: boolean; phone_verified: boolean }>(
-    '/api/v1/auth/verification-status',
+    '/auth/verification-status',
     api.getVerificationStatus,
     {
       ...swrLive,

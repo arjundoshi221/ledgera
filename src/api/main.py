@@ -1,5 +1,6 @@
 """FastAPI application and routes"""
 
+import logging
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -15,12 +16,25 @@ from .middleware import AuthMiddleware
 from .middleware_cache import CacheControlMiddleware
 from .rate_limit import limiter
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize database on startup"""
     db_url = os.environ.get("DATABASE_URL", "sqlite:///./ledgera.db")
     init_db(db_url)
+
+    # Log CORS config so a browser-side "Failed to fetch" is diagnosable from
+    # backend logs alone. Also flag the common footgun of running on a hosted
+    # env with the localhost default still in place.
+    logger.info("CORS allowed_origins=%s", settings.allowed_origins)
+    if settings.allowed_origins == ["http://localhost:3000"] and os.environ.get("RAILWAY_ENVIRONMENT"):
+        logger.warning(
+            "ALLOWED_ORIGINS not set on Railway — CORS will reject every browser "
+            "request from the deployed frontend. Set ALLOWED_ORIGINS env var to "
+            "the frontend's public URL (comma-separated for multiple)."
+        )
     yield
 
 
