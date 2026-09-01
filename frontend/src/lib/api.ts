@@ -59,6 +59,14 @@ import type {
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
+// Per-session ETag cache: sends If-None-Match on repeat GETs and returns the
+// last body on 304. Cleared on logout to avoid cross-user leakage.
+const etagCache = new Map<string, { etag: string; body: unknown }>()
+
+export function clearEtagCache(): void {
+  etagCache.clear()
+}
+
 // ---------------------
 // Base fetcher
 // ---------------------
@@ -90,6 +98,7 @@ async function apiFetch<T>(
   options?: RequestInit
 ): Promise<T> {
   const token = getToken()
+  const method = (options?.method ?? "GET").toUpperCase()
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -100,10 +109,23 @@ async function apiFetch<T>(
     headers["Authorization"] = `Bearer ${token}`
   }
 
+  if (method === "GET") {
+    const cached = etagCache.get(path)
+    if (cached) {
+      headers["If-None-Match"] = cached.etag
+    }
+  }
+
   const response = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers,
   })
+
+  if (method === "GET" && response.status === 304) {
+    const cached = etagCache.get(path)
+    if (cached) return cached.body as T
+    throw new ApiError(304, { detail: "Received 304 without cached body" })
+  }
 
   if (!response.ok) {
     let body: unknown
@@ -115,7 +137,14 @@ async function apiFetch<T>(
     throw new ApiError(response.status, body)
   }
 
-  return response.json() as Promise<T>
+  const body = (await response.json()) as T
+
+  if (method === "GET") {
+    const etag = response.headers.get("ETag")
+    if (etag) etagCache.set(path, { etag, body })
+  }
+
+  return body
 }
 
 // ---------------------

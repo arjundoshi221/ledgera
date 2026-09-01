@@ -4,12 +4,16 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
+from config.settings import settings
 from src.data.database import init_db
 from .schemas import HealthResponse
 from .routes import accounts, transactions, projections, prices, auth, workspace, categories, analytics, payments, recurring, admin, bugs
 from .middleware import AuthMiddleware
 from .middleware_cache import CacheControlMiddleware
+from .rate_limit import limiter
 
 
 @asynccontextmanager
@@ -28,6 +32,10 @@ app = FastAPI(
     redirect_slashes=False
 )
 
+# Rate limiter (in-memory backend; resets on container restart)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # Cache headers middleware (innermost — adds Cache-Control/ETag to responses)
 app.add_middleware(CacheControlMiddleware)
 
@@ -35,12 +43,16 @@ app.add_middleware(CacheControlMiddleware)
 app.add_middleware(AuthMiddleware)
 
 # CORS configuration (outer — wraps ALL responses including auth errors)
+# Origins are enumerated explicitly via ALLOWED_ORIGINS env var. Wildcard +
+# credentials is spec-invalid and browsers ignore credentials in that combo.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "If-None-Match"],
+    expose_headers=["ETag"],
+    max_age=600,
 )
 
 

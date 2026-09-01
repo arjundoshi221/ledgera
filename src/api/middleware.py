@@ -1,13 +1,16 @@
 """Authentication middleware"""
 
-import os
+import logging
+
 from fastapi import Request, status
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
+from config.settings import settings
 from src.services.auth_service import AuthService
 
-JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret-key-change-in-production")
+logger = logging.getLogger(__name__)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -15,7 +18,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app):
         super().__init__(app)
-        self.auth_service = AuthService(secret_key=JWT_SECRET)
+        self.auth_service = AuthService(
+            secret_key=settings.jwt_secret,
+            algorithm=settings.jwt_algorithm,
+            token_expiry_hours=settings.jwt_expiry_hours,
+        )
 
     async def dispatch(self, request: Request, call_next):
         # Skip auth for public endpoints
@@ -47,26 +54,36 @@ class AuthMiddleware(BaseHTTPMiddleware):
         request.state.user_id = str(user_id)
         request.state.workspace_id = str(workspace_id)
 
-        # Block disabled users from accessing any endpoint
+        # Block disabled users from accessing any endpoint. Fail closed:
+        # if the DB check itself errors we cannot verify account state, so
+        # refuse the request rather than let a disabled user slip through.
+        from src.data.database import get_session as _get_session
+        from src.data.models import UserModel
+
+        gen = _get_session()
         try:
-            from src.data.database import get_session as _get_session
-            from src.data.models import UserModel
-            gen = _get_session()
             db = next(gen)
-            disabled = db.query(UserModel.id).filter(
-                UserModel.id == str(user_id),
-                UserModel.is_disabled == True  # noqa: E712
-            ).first()
+            try:
+                disabled = db.query(UserModel.id).filter(
+                    UserModel.id == str(user_id),
+                    UserModel.is_disabled == True,  # noqa: E712
+                ).first()
+            except SQLAlchemyError:
+                logger.exception("disabled-user check failed for user_id=%s", user_id)
+                return JSONResponse(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    content={"detail": "auth check unavailable"},
+                )
+        finally:
             try:
                 gen.close()
             except StopIteration:
                 pass
-            if disabled:
-                return JSONResponse(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    content={"detail": "Account is disabled. Contact support."},
-                )
-        except Exception:
-            pass  # Don't block requests if check fails
+
+        if disabled:
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                content={"detail": "Account is disabled. Contact support."},
+            )
 
         return await call_next(request)

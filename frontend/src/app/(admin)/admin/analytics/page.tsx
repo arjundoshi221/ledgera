@@ -15,7 +15,7 @@ import type {
 import {
   ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar,
   XAxis, YAxis, Tooltip, CartesianGrid, Legend,
-} from "recharts"
+} from "@/lib/recharts-dynamic"
 import { useChartTheme, CHART_COLORS } from "@/lib/chart-theme"
 
 const COLORS = CHART_COLORS

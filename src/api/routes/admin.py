@@ -733,8 +733,8 @@ def serve_bug_media(
     The query-param path allows fetch() without the Authorization header,
     avoiding CORS preflight issues on cross-origin deployments.
     """
-    import os
     from fastapi.responses import Response
+    from config.settings import settings
     from src.data.bug_repository import BugReportRepository
     from src.data.repositories import UserRepository
     from src.services.auth_service import AuthService
@@ -744,8 +744,11 @@ def serve_bug_media(
         user_id = getattr(request.state, "user_id", None)
 
         if not user_id and token:
-            secret = os.environ.get("JWT_SECRET", "dev-secret-key-change-in-production")
-            auth_svc = AuthService(secret_key=secret)
+            auth_svc = AuthService(
+                secret_key=settings.jwt_secret,
+                algorithm=settings.jwt_algorithm,
+                token_expiry_hours=settings.jwt_expiry_hours,
+            )
             result = auth_svc.decode_access_token(token)
             if result:
                 user_id = str(result[0])

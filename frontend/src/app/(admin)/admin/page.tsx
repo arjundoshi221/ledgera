@@ -5,7 +5,7 @@ import { useSystemStats, useSignupGrowth, useDAU, useMAU } from "@/lib/hooks"
 import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar,
   XAxis, YAxis, Tooltip, CartesianGrid,
-} from "recharts"
+} from "@/lib/recharts-dynamic"
 import { useChartTheme } from "@/lib/chart-theme"
 
 export default function AdminDashboardPage() {

@@ -40,24 +40,51 @@ import type {
 // Global SWR Configuration
 // ============================================================
 
+// Base config. `revalidateOnFocus` is off by default because focus events on the
+// dashboard were kicking off 8+ parallel refetches; the ETag pipeline (B5) makes
+// revalidation cheap on the wire but the CPU/render cost still hurts. Reconnect
+// is a distinct event (network came back) and worth keeping on.
 export const swrConfig: SWRConfiguration = {
-  dedupingInterval: 2000, // Dedupe identical requests within 2s
-  revalidateOnFocus: true, // Refresh when user returns to tab
-  revalidateOnReconnect: true, // Refresh when reconnected
-  refreshInterval: 0, // No automatic polling by default
-  errorRetryInterval: 5000, // Retry failed requests every 5s
-  errorRetryCount: 3, // Max 3 retries
+  dedupingInterval: 10000,
+  revalidateOnFocus: false,
+  revalidateOnReconnect: true,
+  refreshInterval: 0,
+  errorRetryInterval: 5000,
+  errorRetryCount: 3,
   shouldRetryOnError: true,
-  // Clear cache on 401 (unauthorized)
   onError: (error) => {
     if (error.status === 401) {
-      // Clear all cache on auth error
       clearCacheOnLogout()
       if (typeof window !== 'undefined') {
         window.location.href = '/login'
       }
     }
   },
+}
+
+// Preset for data that rarely changes (accounts, categories, workspace, funds,
+// cards, payment methods, users). Long dedupe window, no focus refetch.
+export const swrStatic: SWRConfiguration = {
+  ...swrConfig,
+  dedupingInterval: 60000,
+  revalidateOnFocus: false,
+}
+
+// Preset for expensive computed data that is invalidated explicitly via
+// `mutate()` after user actions (dashboards, splits, allocations, net worth,
+// fund tracker). No auto-revalidation on focus — mutations own freshness.
+export const swrAnalytics: SWRConfiguration = {
+  ...swrConfig,
+  dedupingInterval: 60000,
+  revalidateOnFocus: false,
+}
+
+// Preset for user-facing "live" data (pending instances, transactions,
+// recurring queue). Short dedupe, focus refetch on, callers may add polling.
+export const swrLive: SWRConfiguration = {
+  ...swrConfig,
+  dedupingInterval: 5000,
+  revalidateOnFocus: true,
 }
 
 // ============================================================
@@ -79,9 +106,7 @@ export function useAccounts(config?: SWRConfiguration) {
     '/api/v1/accounts',
     api.getAccounts,
     {
-      ...swrConfig,
-      dedupingInterval: 2000,
-      revalidateOnFocus: true,
+      ...swrStatic,
       ...config,
     }
   )
@@ -125,9 +150,7 @@ export function useTransactions(accountId?: string, config?: SWRConfiguration) {
     key,
     () => api.getTransactions(accountId),
     {
-      ...swrConfig,
-      dedupingInterval: 2000,
-      revalidateOnFocus: true,
+      ...swrLive,
       ...config,
     }
   )
@@ -175,9 +198,7 @@ export function useCategories(type?: 'expense' | 'income', config?: SWRConfigura
     key,
     () => api.getCategories(type),
     {
-      ...swrConfig,
-      dedupingInterval: 2000,
-      revalidateOnFocus: false, // Categories rarely change
+      ...swrStatic,
       ...config,
     }
   )
@@ -219,9 +240,7 @@ export function useSubcategories(categoryId?: string, config?: SWRConfiguration)
     key,
     () => api.getSubcategories(categoryId),
     {
-      ...swrConfig,
-      dedupingInterval: 2000,
-      revalidateOnFocus: false,
+      ...swrStatic,
       ...config,
     }
   )
@@ -259,9 +278,7 @@ export function useFunds(config?: SWRConfiguration) {
     '/api/v1/categories/funds',
     api.getFunds,
     {
-      ...swrConfig,
-      dedupingInterval: 2000,
-      revalidateOnFocus: false,
+      ...swrStatic,
       ...config,
     }
   )
@@ -299,9 +316,7 @@ export function useWorkspace(config?: SWRConfiguration) {
     '/api/v1/workspace',
     api.getWorkspace,
     {
-      ...swrConfig,
-      dedupingInterval: 10000, // 10s
-      revalidateOnFocus: false,
+      ...swrStatic,
       ...config,
     }
   )
@@ -327,22 +342,21 @@ export function useMe(config?: SWRConfiguration) {
     '/api/v1/auth/me',
     api.getMe,
     {
-      ...swrConfig,
-      dedupingInterval: 5000,
-      revalidateOnFocus: false, // User profile doesn't change often
+      ...swrStatic,
       ...config,
     }
   )
 }
 
 export function useVerificationStatus(config?: SWRConfiguration) {
+  // Live preset: verification state can flip during a session (user clicks
+  // magic link in another tab) — keep focus revalidation on.
   return useSWR<{ email_verified: boolean; phone_verified: boolean }>(
     '/api/v1/auth/verification-status',
     api.getVerificationStatus,
     {
-      ...swrConfig,
+      ...swrLive,
       dedupingInterval: 10000,
-      revalidateOnFocus: true,
       ...config,
     }
   )
@@ -357,9 +371,7 @@ export function useExpenseSplit(year: number, month: number, config?: SWRConfigu
     cacheKey('/api/v1/analytics/expense-split', { year, month }),
     () => api.getExpenseSplit(year, month),
     {
-      ...swrConfig,
-      dedupingInterval: 5000,
-      revalidateOnFocus: true,
+      ...swrAnalytics,
       ...config,
     }
   )
@@ -370,9 +382,7 @@ export function useIncomeSplit(year: number, month: number, config?: SWRConfigur
     cacheKey('/api/v1/analytics/income-split', { year, month }),
     () => api.getIncomeSplit(year, month),
     {
-      ...swrConfig,
-      dedupingInterval: 5000,
-      revalidateOnFocus: true,
+      ...swrAnalytics,
       ...config,
     }
   )
@@ -383,9 +393,7 @@ export function useIncomeAllocation(years: number = 1, config?: SWRConfiguration
     cacheKey('/api/v1/analytics/income-allocation', { years }),
     () => api.getIncomeAllocation(years),
     {
-      ...swrConfig,
-      dedupingInterval: 5000,
-      revalidateOnFocus: true,
+      ...swrAnalytics,
       ...config,
     }
   )
@@ -400,9 +408,7 @@ export function useAllocationOverrides(year?: number, month?: number, config?: S
     key,
     () => api.getAllocationOverrides(year, month),
     {
-      ...swrConfig,
-      dedupingInterval: 5000,
-      revalidateOnFocus: true,
+      ...swrAnalytics,
       ...config,
     }
   )
@@ -430,9 +436,7 @@ export function useFundTracker(years: number = 1, config?: SWRConfiguration) {
     cacheKey('/api/v1/analytics/fund-tracker', { years }),
     () => api.getFundTracker(years),
     {
-      ...swrConfig,
-      dedupingInterval: 5000,
-      revalidateOnFocus: true,
+      ...swrAnalytics,
       ...config,
     }
   )
@@ -443,9 +447,7 @@ export function useMonthlyDashboard(year: number, month: number, config?: SWRCon
     cacheKey('/api/v1/analytics/monthly-dashboard', { year, month }),
     () => api.getMonthlyDashboard(year, month),
     {
-      ...swrConfig,
-      dedupingInterval: 5000,
-      revalidateOnFocus: true,
+      ...swrAnalytics,
       ...config,
     }
   )
@@ -456,9 +458,7 @@ export function useNetWorth(years: number = 1, config?: SWRConfiguration) {
     cacheKey('/api/v1/analytics/net-worth', { years }),
     () => api.getNetWorth(years),
     {
-      ...swrConfig,
-      dedupingInterval: 5000,
-      revalidateOnFocus: true,
+      ...swrAnalytics,
       ...config,
     }
   )
@@ -469,14 +469,14 @@ export function useNetWorth(years: number = 1, config?: SWRConfiguration) {
 // ============================================================
 
 export function usePrice(base: string, quote: string, config?: SWRConfiguration) {
+  // Static preset + 5-minute background poll — FX rate is the one piece of
+  // static-ish data where slow drift matters, so keep the timer.
   return useSWR<PriceResponse>(
     cacheKey('/api/v1/prices/fx', { base, quote }),
     () => api.getPrice(base, quote),
     {
-      ...swrConfig,
-      dedupingInterval: 30000, // 30s
-      revalidateOnFocus: false,
-      refreshInterval: 300000, // Poll every 5 minutes
+      ...swrStatic,
+      refreshInterval: 300000,
       ...config,
     }
   )
@@ -491,9 +491,7 @@ export function useCards(config?: SWRConfiguration) {
     '/api/v1/payments/cards',
     api.getCards,
     {
-      ...swrConfig,
-      dedupingInterval: 2000,
-      revalidateOnFocus: false,
+      ...swrStatic,
       ...config,
     }
   )
@@ -531,9 +529,7 @@ export function usePaymentMethods(config?: SWRConfiguration) {
     '/api/v1/payments/methods',
     api.getPaymentMethods,
     {
-      ...swrConfig,
-      dedupingInterval: 2000,
-      revalidateOnFocus: false,
+      ...swrStatic,
       ...config,
     }
   )
@@ -571,23 +567,23 @@ export function useRecurringTransactions(config?: SWRConfiguration) {
     '/api/v1/recurring',
     api.getRecurringTransactions,
     {
-      ...swrConfig,
-      dedupingInterval: 2000,
-      revalidateOnFocus: true,
+      ...swrLive,
       ...config,
     }
   )
 }
 
 export function usePendingInstances(config?: SWRConfiguration) {
+  // Live preset + background polling — pending instances materialize on a
+  // server-side schedule, so timer-driven refresh is the only way to notice
+  // them without a user action. Bumped 60s -> 120s now that focus refetch
+  // still catches most cases.
   return useSWR<PendingInstance[]>(
     '/api/v1/recurring/pending',
     api.getPendingInstances,
     {
-      ...swrConfig,
-      dedupingInterval: 2000,
-      revalidateOnFocus: true,
-      refreshInterval: 60000, // Poll every minute for pending instances
+      ...swrLive,
+      refreshInterval: 120000,
       ...config,
     }
   )
@@ -637,9 +633,7 @@ export function useScenarios(config?: SWRConfiguration) {
     '/api/v1/projections/scenarios',
     api.getScenarios,
     {
-      ...swrConfig,
-      dedupingInterval: 2000,
-      revalidateOnFocus: false,
+      ...swrStatic,
       ...config,
     }
   )
@@ -650,9 +644,7 @@ export function useScenario(scenarioId: string | null, config?: SWRConfiguration
     scenarioId ? `/api/v1/projections/scenarios/${scenarioId}` : null,
     scenarioId ? () => api.getScenario(scenarioId) : null,
     {
-      ...swrConfig,
-      dedupingInterval: 2000,
-      revalidateOnFocus: false,
+      ...swrStatic,
       ...config,
     }
   )
@@ -663,9 +655,7 @@ export function useActiveScenario(config?: SWRConfiguration) {
     '/api/v1/projections/scenarios/active',
     api.getActiveScenario,
     {
-      ...swrConfig,
-      dedupingInterval: 5000,
-      revalidateOnFocus: false,
+      ...swrStatic,
       ...config,
     }
   )
@@ -712,9 +702,7 @@ export function useSystemStats(config?: SWRConfiguration) {
     '/api/v1/admin/stats',
     adminApi.getSystemStats,
     {
-      ...swrConfig,
-      revalidateOnFocus: false, // Stats don't change frequently
-      dedupingInterval: 30000, // 30s dedup for admin stats
+      ...swrStatic,
       ...config,
     }
   )
@@ -728,9 +716,7 @@ export function useSignupGrowth(days: number = 90, config?: SWRConfiguration) {
     `/api/v1/admin/growth/signups?days=${days}`,
     () => adminApi.getSignupGrowth(days),
     {
-      ...swrConfig,
-      revalidateOnFocus: false,
-      dedupingInterval: 30000,
+      ...swrStatic,
       ...config,
     }
   )
@@ -744,9 +730,7 @@ export function useDAU(days: number = 30, config?: SWRConfiguration) {
     `/api/v1/admin/growth/dau?days=${days}`,
     () => adminApi.getDAU(days),
     {
-      ...swrConfig,
-      revalidateOnFocus: false,
-      dedupingInterval: 30000,
+      ...swrStatic,
       ...config,
     }
   )
@@ -760,9 +744,7 @@ export function useMAU(months: number = 12, config?: SWRConfiguration) {
     `/api/v1/admin/growth/mau?months=${months}`,
     () => adminApi.getMAU(months),
     {
-      ...swrConfig,
-      revalidateOnFocus: false,
-      dedupingInterval: 30000,
+      ...swrStatic,
       ...config,
     }
   )

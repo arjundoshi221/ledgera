@@ -15,7 +15,7 @@ import { useChartTheme, CHART_COLORS } from "@/lib/chart-theme"
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell,
-} from "recharts"
+} from "@/lib/recharts-dynamic"
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",

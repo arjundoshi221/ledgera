@@ -72,3 +72,5 @@ Excel (.xlsx) support: Parse Excel files in addition to CSV
 PDF parsing: Extract transactions from bank statement PDFs using OCR/text extraction
 Import history: Track and display previous CSV imports with rollback capability
 Auto-categorization: ML-based category suggestions based on payee/memo patterns
+
+

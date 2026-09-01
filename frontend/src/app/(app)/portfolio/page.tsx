@@ -12,7 +12,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell,
-} from "recharts"
+} from "@/lib/recharts-dynamic"
 
 const MONTH_NAMES = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",

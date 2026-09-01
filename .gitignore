@@ -31,6 +31,11 @@ venv/
 ENV/
 env/
 .venv
+.conda/
+.nodeenv/
+
+# Local dev-cycle tracking (bugs, sprints, checks) — not shared
+development/
 
 # IDE
 .vscode/

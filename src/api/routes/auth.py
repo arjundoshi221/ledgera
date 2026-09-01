@@ -4,21 +4,26 @@ import os
 import json
 from datetime import datetime, date
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, Request, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
+from config.settings import settings
 from src.data.database import get_session
 from src.data.repositories import UserRepository, WorkspaceRepository, FundRepository, CategoryRepository, PaymentMethodRepository
 from src.data.models import UserModel, WorkspaceModel, FundModel, CategoryModel, PaymentMethodModel
 from src.services.auth_service import AuthService
 from src.api.deps import get_user_id
+from src.api.rate_limit import limiter
 
 router = APIRouter()
 
-JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret-key-change-in-production")
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
-auth_service = AuthService(secret_key=JWT_SECRET)
+auth_service = AuthService(
+    secret_key=settings.jwt_secret,
+    algorithm=settings.jwt_algorithm,
+    token_expiry_hours=settings.jwt_expiry_hours,
+)
 
 CURRENT_TOS_VERSION = "1.0"
 
@@ -281,7 +286,9 @@ def _build_user_response(user, workspace_id: str) -> UserResponse:
 # ── Endpoints ──
 
 @router.post("/signup", response_model=AuthResponse, status_code=201)
+@limiter.limit("3/hour")
 def signup(
+    request: Request,
     req: SignupRequest,
     session: Session = Depends(get_session)
 ):
@@ -342,7 +349,9 @@ def signup(
 
 
 @router.post("/login", response_model=AuthResponse)
+@limiter.limit("5/minute")
 def login(
+    request: Request,
     req: LoginRequest,
     session: Session = Depends(get_session)
 ):
@@ -389,7 +398,9 @@ def login(
 
 
 @router.post("/google", response_model=AuthResponse)
+@limiter.limit("5/minute")
 def google_login(
+    request: Request,
     req: GoogleLoginRequest,
     session: Session = Depends(get_session)
 ):
@@ -548,7 +559,9 @@ def get_me(
 
 
 @router.post("/firebase", response_model=AuthResponse)
+@limiter.limit("5/minute")
 def firebase_login(
+    request: Request,
     req: FirebaseLoginRequest,
     session: Session = Depends(get_session)
 ):
@@ -648,7 +661,9 @@ def get_verification_status(
 
 
 @router.post("/update-verification")
+@limiter.limit("10/hour")
 def update_verification(
+    request: Request,
     req: FirebaseLoginRequest,
     user_id: str = Depends(get_user_id),
     session: Session = Depends(get_session)
@@ -682,7 +697,9 @@ def update_verification(
 
 
 @router.post("/provision-firebase")
+@limiter.limit("3/hour")
 def provision_firebase(
+    request: Request,
     user_id: str = Depends(get_user_id),
     session: Session = Depends(get_session),
 ):

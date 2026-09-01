@@ -3,8 +3,11 @@
 from decimal import Decimal
 from typing import Optional, List, Dict
 import io
-import pandas as pd
 from dateutil import parser as date_parser
+
+# pandas is imported lazily inside the two file-upload handlers below.
+# Cold-import of pandas is 1.5-2s; deferring it keeps FastAPI startup fast
+# (see B4). Do NOT reintroduce a module-level `import pandas as pd`.
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
@@ -455,6 +458,7 @@ async def read_file_headers(
     """
     Read CSV or XLSX file headers and return preview for column mapping.
     """
+    import pandas as pd  # lazy: see B4
     try:
         # Read file content
         content = await file.read()
@@ -522,6 +526,7 @@ async def parse_file(
     Parse CSV or XLSX file using user-confirmed column mapping and return parsed transactions.
     """
     import json
+    import pandas as pd  # lazy: see B4
 
     try:
         # Parse column mapping from JSON

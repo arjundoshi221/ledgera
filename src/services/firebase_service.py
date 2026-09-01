@@ -1,29 +1,47 @@
 """Firebase Admin SDK service for token verification and user management."""
 
-import logging
-import os
 import json
+import logging
+from pathlib import Path
+
 import firebase_admin
 from firebase_admin import auth as firebase_auth, credentials
 
+from config.settings import settings
+
 logger = logging.getLogger(__name__)
 
-_app = None
+_app: firebase_admin.App | None = None
+_LOCAL_DEV_CRED_PATH = Path("firebase-service-account.json")
 
 
-def _init_firebase():
+def _load_credentials() -> credentials.Certificate:
+    """Env-var-first credential loader with a local-dev file fallback.
+
+    Prod/preview MUST provide FIREBASE_SERVICE_ACCOUNT_JSON. The file fallback
+    exists solely so local devs can drop a JSON file in the repo root without
+    exporting env vars.
+    """
+    if settings.firebase_service_account_json:
+        info = json.loads(settings.firebase_service_account_json)
+        return credentials.Certificate(info)
+
+    if _LOCAL_DEV_CRED_PATH.is_file():
+        return credentials.Certificate(str(_LOCAL_DEV_CRED_PATH))
+
+    raise RuntimeError(
+        "Firebase credentials not configured. "
+        "Set FIREBASE_SERVICE_ACCOUNT_JSON env var (prod/preview) or place "
+        "firebase-service-account.json in repo root (local dev)."
+    )
+
+
+def _init_firebase() -> None:
     """Initialize the Firebase Admin SDK (once)."""
     global _app
     if _app is not None:
         return
-
-    cred_path = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON", "firebase-service-account.json")
-    if os.path.isfile(cred_path):
-        cred = credentials.Certificate(cred_path)
-    else:
-        cred = credentials.Certificate(json.loads(cred_path))
-
-    _app = firebase_admin.initialize_app(cred)
+    _app = firebase_admin.initialize_app(_load_credentials())
 
 
 def verify_firebase_token(id_token: str) -> dict:
@@ -58,7 +76,10 @@ def delete_firebase_user_by_uid(uid: str) -> bool:
         firebase_auth.delete_user(uid)
         logger.info("Deleted Firebase user uid=%s", uid)
         return True
-    except Exception:
+    except firebase_auth.UserNotFoundError:
+        logger.info("No Firebase user found for uid=%s, nothing to delete", uid)
+        return False
+    except firebase_auth.FirebaseError:
         logger.warning("Failed to delete Firebase user uid=%s", uid, exc_info=True)
         return False
 
@@ -74,6 +95,6 @@ def delete_firebase_user_by_email(email: str) -> bool:
     except firebase_auth.UserNotFoundError:
         logger.info("No Firebase user found for email=%s, nothing to delete", email)
         return False
-    except Exception:
+    except firebase_auth.FirebaseError:
         logger.warning("Failed to delete Firebase user email=%s", email, exc_info=True)
         return False

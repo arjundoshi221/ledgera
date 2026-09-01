@@ -5,13 +5,28 @@ from abc import ABC, abstractmethod
 from decimal import Decimal
 from datetime import datetime, date
 from typing import Optional, Dict, List, Tuple
-import yfinance as yf
 from sqlalchemy.orm import Session
 
 from src.data.models import PriceModel
 from src.data.repositories import PriceRepository
 
 logger = logging.getLogger(__name__)
+
+
+# yfinance cold-import pulls in pandas + requests (~1-1.5s). Load on first use
+# so backend startup stays fast (see B4). Cached at module level after first
+# call — CPython's import cache makes repeated calls effectively free, but the
+# singleton avoids repeated attribute lookups in hot paths.
+_yf = None
+
+
+def _get_yf():
+    """Lazy accessor for the yfinance module."""
+    global _yf
+    if _yf is None:
+        import yfinance as _yf_mod
+        _yf = _yf_mod
+    return _yf
 
 
 class PriceProvider(ABC):
@@ -63,7 +78,7 @@ class YahooFinancePriceProvider(PriceProvider):
         symbol = f"{base_ccy}{quote_ccy}=X"
 
         try:
-            ticker = yf.Ticker(symbol)
+            ticker = _get_yf().Ticker(symbol)
             data = ticker.history(period="5d")
 
             if data.empty:
@@ -82,7 +97,7 @@ class YahooFinancePriceProvider(PriceProvider):
         as_of: datetime = None
     ) -> Optional[Decimal]:
         try:
-            ticker = yf.Ticker(symbol)
+            ticker = _get_yf().Ticker(symbol)
             data = ticker.history(period="5d")
 
             if data.empty:
@@ -108,7 +123,7 @@ class YahooFinancePriceProvider(PriceProvider):
         result = {}
 
         try:
-            ticker = yf.Ticker(symbol)
+            ticker = _get_yf().Ticker(symbol)
             data = ticker.history(
                 start=start_date.isoformat(),
                 end=end_date.isoformat()

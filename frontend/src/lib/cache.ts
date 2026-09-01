@@ -3,6 +3,7 @@
 // ============================================================
 
 import { mutate } from 'swr'
+import { clearEtagCache } from './api'
 
 /**
  * Cache invalidation utilities for Ledgera
@@ -216,6 +217,7 @@ export function invalidateScenarios() {
  */
 export function clearCacheOnLogout() {
   clearAllCache()
+  clearEtagCache()
   if (typeof window !== 'undefined') {
     localStorage.removeItem('token')
     // Clear cache version to force fresh data on next login
