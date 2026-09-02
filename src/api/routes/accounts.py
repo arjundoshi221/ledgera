@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.data.database import get_session
-from src.data.repositories import AccountRepository
+from src.data.repositories import AccountRepository, TransferPostingsExistError
 from src.data.models import AccountModel
 from src.api.schemas import AccountCreate, AccountResponse
 from src.api.deps import get_workspace_id
@@ -141,6 +141,14 @@ def delete_account(
 
     try:
         repo.delete(account_id)
+    except TransferPostingsExistError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"This account is part of {exc.count} transfer transaction(s) "
+                "with other accounts. Delete those transfers first, then retry."
+            ),
+        )
     except IntegrityError:
         raise HTTPException(
             status_code=409,

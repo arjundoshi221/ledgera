@@ -881,7 +881,7 @@ export default function SettingsPage() {
                                 <DialogTitle>Delete Account?</DialogTitle>
                               </DialogHeader>
                               <p className="text-sm text-muted-foreground">
-                                Are you sure? This will delete &quot;{acc.name}&quot; and all associated transactions.
+                                Are you sure? This will delete &quot;{acc.name}&quot; and all its non-transfer transactions. If &quot;{acc.name}&quot; is part of any transfer transactions, delete those separately first.
                               </p>
                               <DialogFooter>
                                 <Button variant="outline" onClick={() => setDeleteAccountId(null)}>Cancel</Button>

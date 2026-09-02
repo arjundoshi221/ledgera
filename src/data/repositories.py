@@ -98,6 +98,23 @@ class WorkspaceRepository(BaseRepository):
             self.session.commit()
 
 
+class TransferPostingsExistError(Exception):
+    """Raised when deleting an account that participates in transfer transactions.
+
+    B31's ON DELETE CASCADE on postings.account_id works cleanly for
+    income/expense (both postings live on the same account and vanish together)
+    but for transfers the two postings live on two accounts — cascading only
+    the deleted account's posting would silently orphan the surviving half and
+    corrupt the double-entry balance invariant on the other account. See B35.
+    """
+
+    def __init__(self, count: int):
+        self.count = count
+        super().__init__(
+            f"Account participates in {count} transfer transaction(s) with other accounts"
+        )
+
+
 class AccountRepository(BaseRepository):
     """Repository for Account entities"""
 
@@ -132,6 +149,19 @@ class AccountRepository(BaseRepository):
         account = self.read(account_id)
         if not account:
             return
+
+        # B35: block delete if the account participates in any transfer.
+        # Cascading only this account's posting would leave the paired posting
+        # on the other account orphaned, silently breaking double-entry balance.
+        transfer_count = self.session.query(TransactionModel).join(
+            PostingModel, TransactionModel.id == PostingModel.transaction_id
+        ).filter(
+            PostingModel.account_id == str(account_id),
+            TransactionModel.type == 'transfer',
+        ).distinct().count()
+        if transfer_count > 0:
+            raise TransferPostingsExistError(transfer_count)
+
         try:
             self.session.delete(account)
             self.session.commit()
