@@ -1,16 +1,28 @@
 """Repository pattern implementations for data access"""
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
-from uuid import UUID
 from datetime import datetime
+from uuid import UUID
+
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from .models import (
-    UserModel, WorkspaceModel, AccountModel, TransactionModel, PostingModel,
-    CategoryModel, SubcategoryModel, FundModel, FundAccountLinkModel, FundAllocationOverrideModel, TagModel, PriceModel, ScenarioModel,
-    CardModel, PaymentMethodModel, RecurringTransactionModel,
+    AccountModel,
+    CardModel,
+    CategoryModel,
+    FundAccountLinkModel,
+    FundAllocationOverrideModel,
+    FundModel,
+    PaymentMethodModel,
+    PostingModel,
+    PriceModel,
+    RecurringTransactionModel,
+    ScenarioModel,
+    SubcategoryModel,
+    TransactionModel,
+    UserModel,
+    WorkspaceModel,
     _utcnow_naive,
 )
 
@@ -50,13 +62,13 @@ class UserRepository(BaseRepository):
         self.session.commit()
         return user
 
-    def read(self, user_id) -> Optional[UserModel]:
+    def read(self, user_id) -> UserModel | None:
         return self.session.query(UserModel).filter(UserModel.id == str(user_id)).first()
 
-    def read_by_email(self, email: str) -> Optional[UserModel]:
+    def read_by_email(self, email: str) -> UserModel | None:
         return self.session.query(UserModel).filter(UserModel.email == email).first()
 
-    def read_by_firebase_uid(self, firebase_uid: str) -> Optional[UserModel]:
+    def read_by_firebase_uid(self, firebase_uid: str) -> UserModel | None:
         return self.session.query(UserModel).filter(UserModel.firebase_uid == firebase_uid).first()
 
     def update(self, user: UserModel) -> UserModel:
@@ -79,10 +91,10 @@ class WorkspaceRepository(BaseRepository):
         self.session.commit()
         return workspace
 
-    def read(self, workspace_id) -> Optional[WorkspaceModel]:
+    def read(self, workspace_id) -> WorkspaceModel | None:
         return self.session.query(WorkspaceModel).filter(WorkspaceModel.id == str(workspace_id)).first()
 
-    def read_by_owner(self, owner_user_id) -> List[WorkspaceModel]:
+    def read_by_owner(self, owner_user_id) -> list[WorkspaceModel]:
         return self.session.query(WorkspaceModel).filter(
             WorkspaceModel.owner_user_id == str(owner_user_id)
         ).all()
@@ -124,18 +136,18 @@ class AccountRepository(BaseRepository):
         self.session.commit()
         return account
 
-    def read(self, account_id) -> Optional[AccountModel]:
+    def read(self, account_id) -> AccountModel | None:
         return self.session.query(AccountModel).filter(AccountModel.id == str(account_id)).first()
 
-    def read_all(self) -> List[AccountModel]:
+    def read_all(self) -> list[AccountModel]:
         return self.session.query(AccountModel).all()
 
-    def read_by_workspace(self, workspace_id: str) -> List[AccountModel]:
+    def read_by_workspace(self, workspace_id: str) -> list[AccountModel]:
         return self.session.query(AccountModel).filter(
             AccountModel.workspace_id == workspace_id
         ).all()
 
-    def read_for_workspace(self, account_id, workspace_id: str) -> Optional[AccountModel]:
+    def read_for_workspace(self, account_id, workspace_id: str) -> AccountModel | None:
         return self.session.query(AccountModel).filter(
             AccountModel.id == str(account_id),
             AccountModel.workspace_id == workspace_id
@@ -182,7 +194,7 @@ class TransactionRepository(BaseRepository):
         self.session.commit()
         return transaction
 
-    def read(self, transaction_id) -> Optional[TransactionModel]:
+    def read(self, transaction_id) -> TransactionModel | None:
         return self.session.query(TransactionModel).filter(TransactionModel.id == str(transaction_id)).first()
 
     def read_by_account(
@@ -190,7 +202,7 @@ class TransactionRepository(BaseRepository):
         account_id,
         start_date: datetime = None,
         end_date: datetime = None
-    ) -> List[TransactionModel]:
+    ) -> list[TransactionModel]:
         """Get transactions for an account in date range"""
         query = self.session.query(TransactionModel).join(
             PostingModel,
@@ -224,21 +236,21 @@ class CategoryRepository(BaseRepository):
         self.session.commit()
         return category
 
-    def read(self, category_id: str) -> Optional[CategoryModel]:
+    def read(self, category_id: str) -> CategoryModel | None:
         return self.session.query(CategoryModel).filter(CategoryModel.id == str(category_id)).first()
 
-    def read_by_workspace(self, workspace_id: str) -> List[CategoryModel]:
+    def read_by_workspace(self, workspace_id: str) -> list[CategoryModel]:
         return self.session.query(CategoryModel).filter(
             CategoryModel.workspace_id == workspace_id
         ).all()
 
-    def read_by_workspace_and_type(self, workspace_id: str, category_type: str) -> List[CategoryModel]:
+    def read_by_workspace_and_type(self, workspace_id: str, category_type: str) -> list[CategoryModel]:
         return self.session.query(CategoryModel).filter(
             CategoryModel.workspace_id == workspace_id,
             CategoryModel.type == category_type
         ).all()
 
-    def read_by_name(self, name: str) -> Optional[CategoryModel]:
+    def read_by_name(self, name: str) -> CategoryModel | None:
         return self.session.query(CategoryModel).filter(CategoryModel.name == name).first()
 
     def update(self, category: CategoryModel) -> CategoryModel:
@@ -269,14 +281,14 @@ class PriceRepository(BaseRepository):
         self.session.commit()
         return price
 
-    def read(self, price_id: UUID) -> Optional[PriceModel]:
+    def read(self, price_id: UUID) -> PriceModel | None:
         return self.session.query(PriceModel).filter(PriceModel.id == price_id).first()
 
     def read_latest_rate(
         self,
         base_ccy: str,
         quote_ccy: str
-    ) -> Optional[PriceModel]:
+    ) -> PriceModel | None:
         """Get latest FX rate between two currencies"""
         return self.session.query(PriceModel).filter(
             PriceModel.base_ccy == base_ccy,
@@ -288,7 +300,7 @@ class PriceRepository(BaseRepository):
         base_ccy: str,
         quote_ccy: str,
         max_age_hours: int = 24
-    ) -> Optional[PriceModel]:
+    ) -> PriceModel | None:
         """Get latest FX rate only if it's within max_age_hours of now"""
         from datetime import timedelta
         cutoff = _utcnow_naive() - timedelta(hours=max_age_hours)
@@ -303,7 +315,7 @@ class PriceRepository(BaseRepository):
         base_ccy: str,
         quote_ccy: str,
         target_date: datetime
-    ) -> Optional[PriceModel]:
+    ) -> PriceModel | None:
         """Get closest rate on or before target_date"""
         return self.session.query(PriceModel).filter(
             PriceModel.base_ccy == base_ccy,
@@ -311,7 +323,7 @@ class PriceRepository(BaseRepository):
             PriceModel.timestamp <= target_date,
         ).order_by(PriceModel.timestamp.desc()).first()
 
-    def bulk_create(self, prices: List[PriceModel]) -> None:
+    def bulk_create(self, prices: list[PriceModel]) -> None:
         """Batch insert price records"""
         for p in prices:
             self.session.add(p)
@@ -336,31 +348,31 @@ class ScenarioRepository(BaseRepository):
         self.session.commit()
         return scenario
 
-    def read(self, scenario_id) -> Optional[ScenarioModel]:
+    def read(self, scenario_id) -> ScenarioModel | None:
         return self.session.query(ScenarioModel).filter(ScenarioModel.id == str(scenario_id)).first()
 
-    def read_all(self) -> List[ScenarioModel]:
+    def read_all(self) -> list[ScenarioModel]:
         return self.session.query(ScenarioModel).all()
 
-    def read_by_workspace(self, workspace_id: str) -> List[ScenarioModel]:
+    def read_by_workspace(self, workspace_id: str) -> list[ScenarioModel]:
         return self.session.query(ScenarioModel).filter(
             ScenarioModel.workspace_id == workspace_id
         ).order_by(ScenarioModel.updated_at.desc()).all()
 
-    def read_active(self, workspace_id: str) -> Optional[ScenarioModel]:
+    def read_active(self, workspace_id: str) -> ScenarioModel | None:
         return self.session.query(ScenarioModel).filter(
             ScenarioModel.workspace_id == workspace_id,
-            ScenarioModel.is_active == True
+            ScenarioModel.is_active.is_(True)
         ).first()
 
     def deactivate_all(self, workspace_id: str) -> None:
         self.session.query(ScenarioModel).filter(
             ScenarioModel.workspace_id == workspace_id,
-            ScenarioModel.is_active == True
+            ScenarioModel.is_active.is_(True)
         ).update({"is_active": False, "updated_at": _utcnow_naive()})
         self.session.flush()
 
-    def activate(self, scenario_id: str, workspace_id: str) -> Optional[ScenarioModel]:
+    def activate(self, scenario_id: str, workspace_id: str) -> ScenarioModel | None:
         self.deactivate_all(workspace_id)
         scenario = self.session.query(ScenarioModel).filter(
             ScenarioModel.id == scenario_id,
@@ -392,12 +404,12 @@ class SubcategoryRepository(BaseRepository):
         self.session.commit()
         return subcategory
 
-    def read(self, subcategory_id: str) -> Optional[SubcategoryModel]:
+    def read(self, subcategory_id: str) -> SubcategoryModel | None:
         return self.session.query(SubcategoryModel).filter(
             SubcategoryModel.id == str(subcategory_id)
         ).first()
 
-    def read_by_category(self, category_id: str) -> List[SubcategoryModel]:
+    def read_by_category(self, category_id: str) -> list[SubcategoryModel]:
         return self.session.query(SubcategoryModel).filter(
             SubcategoryModel.category_id == category_id
         ).all()
@@ -428,18 +440,18 @@ class FundRepository(BaseRepository):
         self.session.commit()
         return fund
 
-    def read(self, fund_id: str) -> Optional[FundModel]:
+    def read(self, fund_id: str) -> FundModel | None:
         return self.session.query(FundModel).filter(FundModel.id == str(fund_id)).first()
 
-    def read_by_workspace(self, workspace_id: str) -> List[FundModel]:
+    def read_by_workspace(self, workspace_id: str) -> list[FundModel]:
         return self.session.query(FundModel).options(
             joinedload(FundModel.account_links).joinedload(FundAccountLinkModel.account)
         ).filter(
             FundModel.workspace_id == workspace_id,
-            FundModel.is_active == True
+            FundModel.is_active.is_(True)
         ).all()
 
-    def read_all_by_workspace(self, workspace_id: str) -> List[FundModel]:
+    def read_all_by_workspace(self, workspace_id: str) -> list[FundModel]:
         return self.session.query(FundModel).filter(
             FundModel.workspace_id == workspace_id
         ).all()
@@ -463,7 +475,7 @@ class FundRepository(BaseRepository):
             self.session.rollback()
             raise
 
-    def set_account_links(self, fund: FundModel, account_allocations: List[dict], workspace_id: str) -> FundModel:
+    def set_account_links(self, fund: FundModel, account_allocations: list[dict], workspace_id: str) -> FundModel:
         """Replace all account links for a fund with the given allocations.
 
         account_allocations: [{"account_id": "...", "allocation_percentage": 60}, ...]
@@ -535,7 +547,7 @@ class FundAllocationOverrideRepository(BaseRepository):
         self.session.commit()
         return override
 
-    def read(self, override_id: str) -> Optional[FundAllocationOverrideModel]:
+    def read(self, override_id: str) -> FundAllocationOverrideModel | None:
         return self.session.query(FundAllocationOverrideModel).filter(
             FundAllocationOverrideModel.id == str(override_id)
         ).first()
@@ -546,7 +558,7 @@ class FundAllocationOverrideRepository(BaseRepository):
         fund_id: str,
         year: int,
         month: int
-    ) -> Optional[FundAllocationOverrideModel]:
+    ) -> FundAllocationOverrideModel | None:
         """Get override for specific fund and month"""
         return self.session.query(FundAllocationOverrideModel).filter(
             FundAllocationOverrideModel.workspace_id == workspace_id,
@@ -560,7 +572,7 @@ class FundAllocationOverrideRepository(BaseRepository):
         workspace_id: str,
         year: int,
         month: int
-    ) -> List[FundAllocationOverrideModel]:
+    ) -> list[FundAllocationOverrideModel]:
         """Get all overrides for a specific month"""
         return self.session.query(FundAllocationOverrideModel).filter(
             FundAllocationOverrideModel.workspace_id == workspace_id,
@@ -568,7 +580,7 @@ class FundAllocationOverrideRepository(BaseRepository):
             FundAllocationOverrideModel.month == month
         ).all()
 
-    def read_by_workspace(self, workspace_id: str) -> List[FundAllocationOverrideModel]:
+    def read_by_workspace(self, workspace_id: str) -> list[FundAllocationOverrideModel]:
         """Get all overrides for a workspace"""
         return self.session.query(FundAllocationOverrideModel).filter(
             FundAllocationOverrideModel.workspace_id == workspace_id
@@ -607,19 +619,19 @@ class CardRepository(BaseRepository):
         self.session.commit()
         return card
 
-    def read(self, card_id: str) -> Optional[CardModel]:
+    def read(self, card_id: str) -> CardModel | None:
         return self.session.query(CardModel).filter(CardModel.id == str(card_id)).first()
 
-    def read_by_workspace(self, workspace_id: str) -> List[CardModel]:
+    def read_by_workspace(self, workspace_id: str) -> list[CardModel]:
         return self.session.query(CardModel).filter(
             CardModel.workspace_id == workspace_id,
-            CardModel.is_active == True
+            CardModel.is_active.is_(True)
         ).all()
 
-    def read_by_account(self, account_id: str) -> List[CardModel]:
+    def read_by_account(self, account_id: str) -> list[CardModel]:
         return self.session.query(CardModel).filter(
             CardModel.account_id == account_id,
-            CardModel.is_active == True
+            CardModel.is_active.is_(True)
         ).all()
 
     def update(self, card: CardModel) -> CardModel:
@@ -642,23 +654,23 @@ class PaymentMethodRepository(BaseRepository):
         self.session.commit()
         return pm
 
-    def read(self, pm_id: str) -> Optional[PaymentMethodModel]:
+    def read(self, pm_id: str) -> PaymentMethodModel | None:
         return self.session.query(PaymentMethodModel).filter(
             PaymentMethodModel.id == str(pm_id)
         ).first()
 
-    def read_by_workspace(self, workspace_id: str) -> List[PaymentMethodModel]:
+    def read_by_workspace(self, workspace_id: str) -> list[PaymentMethodModel]:
         return self.session.query(PaymentMethodModel).filter(
             PaymentMethodModel.workspace_id == workspace_id
         ).all()
 
-    def read_active_by_workspace(self, workspace_id: str) -> List[PaymentMethodModel]:
+    def read_active_by_workspace(self, workspace_id: str) -> list[PaymentMethodModel]:
         return self.session.query(PaymentMethodModel).filter(
             PaymentMethodModel.workspace_id == workspace_id,
-            PaymentMethodModel.is_active == True
+            PaymentMethodModel.is_active.is_(True)
         ).all()
 
-    def read_by_card(self, card_id: str) -> Optional[PaymentMethodModel]:
+    def read_by_card(self, card_id: str) -> PaymentMethodModel | None:
         return self.session.query(PaymentMethodModel).filter(
             PaymentMethodModel.card_id == card_id
         ).first()
@@ -683,27 +695,27 @@ class RecurringTransactionRepository(BaseRepository):
         self.session.commit()
         return recurring
 
-    def read(self, recurring_id: str) -> Optional[RecurringTransactionModel]:
+    def read(self, recurring_id: str) -> RecurringTransactionModel | None:
         return self.session.query(RecurringTransactionModel).filter(
             RecurringTransactionModel.id == str(recurring_id)
         ).first()
 
-    def read_by_workspace(self, workspace_id: str) -> List[RecurringTransactionModel]:
+    def read_by_workspace(self, workspace_id: str) -> list[RecurringTransactionModel]:
         return self.session.query(RecurringTransactionModel).filter(
             RecurringTransactionModel.workspace_id == workspace_id
         ).order_by(RecurringTransactionModel.next_occurrence).all()
 
-    def read_active_by_workspace(self, workspace_id: str) -> List[RecurringTransactionModel]:
+    def read_active_by_workspace(self, workspace_id: str) -> list[RecurringTransactionModel]:
         return self.session.query(RecurringTransactionModel).filter(
             RecurringTransactionModel.workspace_id == workspace_id,
-            RecurringTransactionModel.is_active == True
+            RecurringTransactionModel.is_active.is_(True)
         ).order_by(RecurringTransactionModel.next_occurrence).all()
 
-    def read_pending(self, workspace_id: str, as_of_date) -> List[RecurringTransactionModel]:
+    def read_pending(self, workspace_id: str, as_of_date) -> list[RecurringTransactionModel]:
         """Get active templates where next_occurrence <= as_of_date"""
         return self.session.query(RecurringTransactionModel).filter(
             RecurringTransactionModel.workspace_id == workspace_id,
-            RecurringTransactionModel.is_active == True,
+            RecurringTransactionModel.is_active.is_(True),
             RecurringTransactionModel.next_occurrence <= as_of_date
         ).order_by(RecurringTransactionModel.next_occurrence).all()
 

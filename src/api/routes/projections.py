@@ -1,20 +1,30 @@
 """Projection endpoints"""
 
 import json
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 from decimal import Decimal
 
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from src.api.deps import get_workspace_id
+from src.api.schemas import (
+    ProjectionAssumptions as ProjectionAssumptionsSchema,
+)
+from src.api.schemas import (
+    ScenarioCreate,
+    ScenarioResponse,
+)
 from src.data.database import get_session
 from src.data.models import ScenarioModel
 from src.data.repositories import ScenarioRepository
-from src.domain.projections import ProjectionEngine, ProjectionAssumptions, CategoryBudget, SubcategoryBudget, OneTimeCost, FXMapping
-from src.api.schemas import (
-    ProjectionAssumptions as ProjectionAssumptionsSchema,
-    MonthlyProjectionResponse,
-    ScenarioCreate, ScenarioResponse, ScenarioListItem,
+from src.domain.projections import (
+    CategoryBudget,
+    FXMapping,
+    OneTimeCost,
+    ProjectionAssumptions,
+    ProjectionEngine,
+    SubcategoryBudget,
 )
-from src.api.deps import get_workspace_id
 
 router = APIRouter()
 

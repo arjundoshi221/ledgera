@@ -1,18 +1,21 @@
 """Category, Subcategory, and Fund endpoints"""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from src.data.database import get_session
-from src.data.repositories import CategoryRepository, SubcategoryRepository, FundRepository
-from src.data.models import CategoryModel, SubcategoryModel, FundModel
-from src.api.schemas import (
-    CategoryCreate, CategoryResponse,
-    SubcategoryCreate, SubcategoryResponse,
-    FundCreate, FundResponse
-)
 from src.api.deps import get_workspace_id
+from src.api.schemas import (
+    CategoryCreate,
+    CategoryResponse,
+    FundCreate,
+    FundResponse,
+    SubcategoryCreate,
+    SubcategoryResponse,
+)
+from src.data.database import get_session
+from src.data.models import CategoryModel, FundModel, SubcategoryModel
+from src.data.repositories import CategoryRepository, FundRepository, SubcategoryRepository
 
 router = APIRouter()
 
@@ -35,10 +38,10 @@ def create_category(
         type=category.type,
         description=category.description
     )
-    
+
     repo = CategoryRepository(session)
     repo.create(db_category)
-    
+
     return db_category
 
 
@@ -73,19 +76,19 @@ def create_subcategory(
     # Verify category exists and belongs to workspace
     cat_repo = CategoryRepository(session)
     category = cat_repo.read(subcategory.category_id)
-    
+
     if not category or category.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Category not found")
-    
+
     db_subcategory = SubcategoryModel(
         category_id=subcategory.category_id,
         name=subcategory.name,
         description=subcategory.description
     )
-    
+
     repo = SubcategoryRepository(session)
     repo.create(db_subcategory)
-    
+
     return db_subcategory
 
 
@@ -97,24 +100,24 @@ def list_subcategories(
 ):
     """List subcategories (optionally filter by category)"""
     repo = SubcategoryRepository(session)
-    
+
     if category_id:
         # Verify category belongs to workspace
         cat_repo = CategoryRepository(session)
         category = cat_repo.read(category_id)
         if not category or category.workspace_id != workspace_id:
             raise HTTPException(status_code=404, detail="Category not found")
-        
+
         subcategories = repo.read_by_category(category_id)
     else:
         # Get all subcategories for workspace categories
         cat_repo = CategoryRepository(session)
         categories = cat_repo.read_by_workspace(workspace_id)
         subcategories = [
-            sub for category in categories 
+            sub for category in categories
             for sub in repo.read_by_category(category.id)
         ]
-    
+
     return subcategories
 
 
@@ -127,16 +130,16 @@ def get_subcategory(
     """Get subcategory by ID"""
     repo = SubcategoryRepository(session)
     subcategory = repo.read(subcategory_id)
-    
+
     if not subcategory:
         raise HTTPException(status_code=404, detail="Subcategory not found")
-    
+
     # Verify category belongs to workspace
     cat_repo = CategoryRepository(session)
     category = cat_repo.read(subcategory.category_id)
     if not category or category.workspace_id != workspace_id:
         raise HTTPException(status_code=403, detail="Access denied")
-    
+
     return subcategory
 
 
@@ -150,25 +153,25 @@ def update_subcategory(
     """Update subcategory"""
     repo = SubcategoryRepository(session)
     subcategory = repo.read(subcategory_id)
-    
+
     if not subcategory:
         raise HTTPException(status_code=404, detail="Subcategory not found")
-    
+
     # Verify old category belongs to workspace
     cat_repo = CategoryRepository(session)
     old_category = cat_repo.read(subcategory.category_id)
     if not old_category or old_category.workspace_id != workspace_id:
         raise HTTPException(status_code=403, detail="Access denied")
-    
+
     # Verify new category exists and belongs to workspace
     new_category = cat_repo.read(subcategory_data.category_id)
     if not new_category or new_category.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Category not found")
-    
+
     subcategory.category_id = subcategory_data.category_id
     subcategory.name = subcategory_data.name
     subcategory.description = subcategory_data.description
-    
+
     repo.update(subcategory)
     return subcategory
 
@@ -182,10 +185,10 @@ def delete_subcategory(
     """Delete subcategory"""
     repo = SubcategoryRepository(session)
     subcategory = repo.read(subcategory_id)
-    
+
     if not subcategory:
         raise HTTPException(status_code=404, detail="Subcategory not found")
-    
+
     # Verify category belongs to workspace
     cat_repo = CategoryRepository(session)
     category = cat_repo.read(subcategory.category_id)
@@ -194,11 +197,11 @@ def delete_subcategory(
 
     try:
         repo.delete(subcategory_id)
-    except IntegrityError:
+    except IntegrityError as exc:
         raise HTTPException(
             status_code=409,
             detail="Subcategory is still referenced by other records. Reassign them first.",
-        )
+        ) from exc
     return {"message": "Subcategory deleted"}
 
 
@@ -256,7 +259,7 @@ def create_fund(
         try:
             repo.set_account_links(db_fund, [a.dict() if hasattr(a, 'dict') else a for a in allocations], workspace_id)
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
 
     return _build_fund_response(db_fund)
 
@@ -315,7 +318,7 @@ def update_fund(
     try:
         repo.set_account_links(fund, [a.dict() if hasattr(a, 'dict') else a for a in allocations], workspace_id)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     repo.update(fund)
     return _build_fund_response(fund)
@@ -339,14 +342,14 @@ def delete_fund(
 
     try:
         repo.delete(fund_id)
-    except IntegrityError:
+    except IntegrityError as exc:
         raise HTTPException(
             status_code=409,
             detail=(
                 "Fund has linked records that could not be removed. "
                 "Please contact support if this persists."
             ),
-        )
+        ) from exc
     return {"message": "Fund deleted"}
 
 
@@ -411,9 +414,9 @@ def delete_category(
 
     try:
         repo.delete(category_id)
-    except IntegrityError:
+    except IntegrityError as exc:
         raise HTTPException(
             status_code=409,
             detail="Category is still referenced by other records. Reassign them first.",
-        )
+        ) from exc
     return {"message": "Category deleted"}

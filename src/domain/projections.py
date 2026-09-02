@@ -1,9 +1,9 @@
 """Projection engine for financial planning"""
 
 from dataclasses import dataclass, field
-from decimal import Decimal
-from typing import Dict, List, Optional
 from datetime import datetime
+from decimal import Decimal
+
 from dateutil.relativedelta import relativedelta
 
 
@@ -12,7 +12,7 @@ class SubcategoryBudget:
     """Budget allocation for a subcategory within a category"""
     subcategory_id: str
     monthly_amount: Decimal
-    inflation_override: Optional[Decimal] = None
+    inflation_override: Decimal | None = None
 
 
 @dataclass
@@ -20,8 +20,8 @@ class CategoryBudget:
     """Budget allocation for a category"""
     category_id: str  # References existing Category in database
     monthly_amount: Decimal
-    inflation_override: Optional[Decimal] = None  # Per-category inflation (overrides global)
-    subcategory_budgets: List['SubcategoryBudget'] = field(default_factory=list)
+    inflation_override: Decimal | None = None  # Per-category inflation (overrides global)
+    subcategory_budgets: list['SubcategoryBudget'] = field(default_factory=list)
 
 
 @dataclass
@@ -30,23 +30,23 @@ class OneTimeCost:
     name: str
     amount: Decimal
     month_index: int  # Month to apply (0-based from start)
-    notes: Optional[str] = None
-    category_id: Optional[str] = None  # Optional category association
+    notes: str | None = None
+    category_id: str | None = None  # Optional category association
 
 
 @dataclass
 class FXMapping:
     """Foreign exchange mapping for multi-currency display"""
     base_currency: str  # SGD
-    display_currencies: List[str] = field(default_factory=list)  # ["USD", "AED", "INR"]
-    rates: Dict[str, Decimal] = field(default_factory=dict)  # {"SGDUSD": 0.74, "SGDAED": 2.73, ...}
+    display_currencies: list[str] = field(default_factory=list)  # ["USD", "AED", "INR"]
+    rates: dict[str, Decimal] = field(default_factory=dict)  # {"SGDUSD": 0.74, "SGDAED": 2.73, ...}
 
 
 @dataclass
 class ProjectionAssumptions:
     """Projection model inputs"""
     base_currency: str = "SGD"
-    start_date: Optional[datetime] = None  # Projection start date (defaults to now)
+    start_date: datetime | None = None  # Projection start date (defaults to now)
 
     # Income
     monthly_salary: Decimal = Decimal(0)
@@ -57,26 +57,26 @@ class ProjectionAssumptions:
     tax_rate: Decimal = Decimal(0.20)  # 20% flat rate
 
     # Expenses - Category-based (preferred) or legacy flat amount
-    category_budgets: List[CategoryBudget] = field(default_factory=list)
+    category_budgets: list[CategoryBudget] = field(default_factory=list)
     expense_inflation_rate: Decimal = Decimal(0.03)  # Default 3% annual (can be overridden per category)
 
     # Legacy: Simple flat monthly expenses (deprecated, use category_budgets instead)
-    monthly_expenses: Optional[Decimal] = None
+    monthly_expenses: Decimal | None = None
 
     # One-time costs (vacations, purchases, medical, etc.)
-    one_time_costs: List[OneTimeCost] = field(default_factory=list)
+    one_time_costs: list[OneTimeCost] = field(default_factory=list)
 
     # Allocations and buckets
-    allocation_weights: Dict[str, Decimal] = None  # e.g., {"cash": 0.3, "emergency": 0.2, "invest": 0.5}
-    bucket_returns: Dict[str, Decimal] = None  # Annual expected returns per bucket
+    allocation_weights: dict[str, Decimal] = None  # e.g., {"cash": 0.3, "emergency": 0.2, "invest": 0.5}
+    bucket_returns: dict[str, Decimal] = None  # Annual expected returns per bucket
 
     # Constraints and rules
     minimum_cash_buffer_months: int = 6
-    cash_buffer_bucket_name: Optional[str] = "cash"  # Which bucket is the cash reserve (for buffer rule)
+    cash_buffer_bucket_name: str | None = "cash"  # Which bucket is the cash reserve (for buffer rule)
     enforce_cash_buffer: bool = False  # Enable cash buffer priority allocation
 
     # Multi-currency display (optional)
-    fx_mapping: Optional[FXMapping] = None
+    fx_mapping: FXMapping | None = None
 
 
 @dataclass
@@ -87,17 +87,17 @@ class MonthlyProjection:
     taxes: Decimal = Decimal(0)
     net_income: Decimal = Decimal(0)
     expenses: Decimal = Decimal(0)
-    expense_breakdown: Dict[str, Decimal] = field(default_factory=dict)  # category_id -> amount
+    expense_breakdown: dict[str, Decimal] = field(default_factory=dict)  # category_id -> amount
     one_time_costs: Decimal = Decimal(0)  # Total one-time costs this month
-    one_time_costs_detail: List[Dict] = field(default_factory=list)  # Detailed list of one-time costs
+    one_time_costs_detail: list[dict] = field(default_factory=list)  # Detailed list of one-time costs
     savings: Decimal = Decimal(0)  # After expenses AND one-time costs
-    bucket_allocations: Dict[str, Decimal] = None  # Amount to each bucket
-    bucket_balances: Dict[str, Decimal] = None  # End-of-month balance per bucket
+    bucket_allocations: dict[str, Decimal] = None  # Amount to each bucket
+    bucket_balances: dict[str, Decimal] = None  # End-of-month balance per bucket
     savings_rate: Decimal = Decimal(0)  # savings / net_income
 
     # Multi-currency equivalents (optional)
-    net_income_fx: Dict[str, Decimal] = field(default_factory=dict)  # {"USD": 7400, "AED": 27300}
-    total_wealth_fx: Dict[str, Decimal] = field(default_factory=dict)  # Total bucket balances in each currency
+    net_income_fx: dict[str, Decimal] = field(default_factory=dict)  # {"USD": 7400, "AED": 27300}
+    total_wealth_fx: dict[str, Decimal] = field(default_factory=dict)  # Total bucket balances in each currency
 
 
 @dataclass
@@ -111,13 +111,13 @@ class YearlyProjection:
     one_time_costs: Decimal = Decimal(0)  # Sum of monthly
     savings: Decimal = Decimal(0)  # Sum of monthly
     avg_savings_rate: Decimal = Decimal(0)  # Average across months
-    bucket_balances_start: Dict[str, Decimal] = field(default_factory=dict)  # Start of year
-    bucket_balances_end: Dict[str, Decimal] = field(default_factory=dict)  # End of year
-    bucket_contributions: Dict[str, Decimal] = field(default_factory=dict)  # Sum of allocations
+    bucket_balances_start: dict[str, Decimal] = field(default_factory=dict)  # Start of year
+    bucket_balances_end: dict[str, Decimal] = field(default_factory=dict)  # End of year
+    bucket_contributions: dict[str, Decimal] = field(default_factory=dict)  # Sum of allocations
     total_wealth_end: Decimal = Decimal(0)  # Sum of end balances
 
 
-def aggregate_to_yearly(projections: List[MonthlyProjection]) -> List[YearlyProjection]:
+def aggregate_to_yearly(projections: list[MonthlyProjection]) -> list[YearlyProjection]:
     """
     Aggregate monthly projections into yearly summaries.
 
@@ -163,7 +163,7 @@ def aggregate_to_yearly(projections: List[MonthlyProjection]) -> List[YearlyProj
 
         # For start balances, we need to work backwards from first month's allocations
         # Approximation: if it's first year, start is 0; otherwise use first month's balance - allocation
-        for bucket_name in bucket_balances_end.keys():
+        for bucket_name in bucket_balances_end:
             if first_month.bucket_allocations:
                 first_allocation = first_month.bucket_allocations.get(bucket_name, Decimal(0))
                 first_balance = first_month.bucket_balances.get(bucket_name, Decimal(0))
@@ -224,15 +224,15 @@ class ProjectionEngine:
     def project_month(
         self,
         month_index: int,
-        previous_balances: Dict[str, Decimal] = None
+        previous_balances: dict[str, Decimal] = None
     ) -> MonthlyProjection:
         """
         Project a single month.
-        
+
         Args:
             month_index: Months from start (0-based)
             previous_balances: Bucket balances from prior month
-            
+
         Returns:
             MonthlyProjection with detailed month breakdown
         """
@@ -392,24 +392,24 @@ class ProjectionEngine:
     def project_period(
         self,
         months: int,
-        initial_balances: Dict[str, Decimal] = None
-    ) -> List[MonthlyProjection]:
+        initial_balances: dict[str, Decimal] = None
+    ) -> list[MonthlyProjection]:
         """
         Project multiple months.
-        
+
         Args:
             months: Number of months to project
             initial_balances: Starting bucket balances
-            
+
         Returns:
             List of MonthlyProjection objects
         """
         projections = []
         current_balances = initial_balances or {k: Decimal(0) for k in self.assumptions.allocation_weights}
-        
+
         for month_idx in range(months):
             projection = self.project_month(month_idx, current_balances)
             projections.append(projection)
             current_balances = projection.bucket_balances
-        
+
         return projections

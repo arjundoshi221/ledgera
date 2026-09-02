@@ -1,10 +1,10 @@
 """Pydantic schemas for API"""
 
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict
-from decimal import Decimal
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
+
+from pydantic import BaseModel
 
 
 class HealthResponse(BaseModel):
@@ -17,7 +17,7 @@ class AccountCreate(BaseModel):
     name: str
     account_type: str  # asset, liability
     currency: str = "SGD"
-    institution: Optional[str] = None
+    institution: str | None = None
     starting_balance: Decimal = Decimal(0)
 
 
@@ -29,7 +29,7 @@ class AccountResponse(BaseModel):
     currency: str
     balance: Decimal
     starting_balance: Decimal = Decimal(0)
-    institution: Optional[str] = None
+    institution: str | None = None
     created_at: datetime
 
     class Config:
@@ -48,32 +48,32 @@ class TransactionCreate(BaseModel):
     """Create transaction request"""
     timestamp: datetime
     payee: str
-    memo: Optional[str] = None
+    memo: str | None = None
     status: str = "unreconciled"
     source: str = "manual"
-    category_id: Optional[str] = None
-    subcategory_id: Optional[str] = None
-    fund_id: Optional[str] = None
-    payment_method_id: Optional[str] = None
-    postings: List[PostingSchema]
+    category_id: str | None = None
+    subcategory_id: str | None = None
+    fund_id: str | None = None
+    payment_method_id: str | None = None
+    postings: list[PostingSchema]
 
 
 class TransferCreate(BaseModel):
     """Create a transfer transaction between two accounts"""
     timestamp: datetime
     payee: str = "Transfer"
-    memo: Optional[str] = None
+    memo: str | None = None
     from_account_id: str
     to_account_id: str
     amount: Decimal               # Amount leaving from_account (in from_currency)
     from_currency: str = "SGD"
-    to_currency: Optional[str] = None    # Defaults to from_currency if None
+    to_currency: str | None = None    # Defaults to from_currency if None
     fx_rate: Decimal = Decimal(1)        # received = amount * fx_rate
-    source_fund_id: Optional[str] = None
-    dest_fund_id: Optional[str] = None
-    payment_method_id: Optional[str] = None
+    source_fund_id: str | None = None
+    dest_fund_id: str | None = None
+    payment_method_id: str | None = None
     fee: Decimal = Decimal(0)            # Optional FX/transfer fee (in from_currency)
-    fee_category_id: Optional[str] = None  # Category for the fee expense
+    fee_category_id: str | None = None  # Category for the fee expense
 
 
 class TransactionResponse(BaseModel):
@@ -81,16 +81,16 @@ class TransactionResponse(BaseModel):
     id: UUID
     timestamp: datetime
     payee: str
-    memo: Optional[str] = None
+    memo: str | None = None
     status: str
     source: str
-    type: Optional[str] = None
-    category_id: Optional[str] = None
-    subcategory_id: Optional[str] = None
-    fund_id: Optional[str] = None
-    source_fund_id: Optional[str] = None
-    dest_fund_id: Optional[str] = None
-    payment_method_id: Optional[str] = None
+    type: str | None = None
+    category_id: str | None = None
+    subcategory_id: str | None = None
+    fund_id: str | None = None
+    source_fund_id: str | None = None
+    dest_fund_id: str | None = None
+    payment_method_id: str | None = None
     created_at: datetime
 
     class Config:
@@ -101,15 +101,15 @@ class SubcategoryBudgetSchema(BaseModel):
     """Budget allocation for a subcategory within a category"""
     subcategory_id: str
     monthly_amount: Decimal
-    inflation_override: Optional[Decimal] = None
+    inflation_override: Decimal | None = None
 
 
 class CategoryBudgetSchema(BaseModel):
     """Budget allocation for a category"""
     category_id: str
     monthly_amount: Decimal
-    inflation_override: Optional[Decimal] = None
-    subcategory_budgets: List[SubcategoryBudgetSchema] = []
+    inflation_override: Decimal | None = None
+    subcategory_budgets: list[SubcategoryBudgetSchema] = []
 
 
 class OneTimeCostSchema(BaseModel):
@@ -117,46 +117,46 @@ class OneTimeCostSchema(BaseModel):
     name: str
     amount: Decimal
     month_index: int
-    notes: Optional[str] = None
-    category_id: Optional[str] = None
+    notes: str | None = None
+    category_id: str | None = None
 
 
 class FXMappingSchema(BaseModel):
     """Foreign exchange mapping for multi-currency display"""
     base_currency: str
-    display_currencies: List[str] = []
-    rates: Dict[str, Decimal] = {}
+    display_currencies: list[str] = []
+    rates: dict[str, Decimal] = {}
 
 
 class ProjectionAssumptions(BaseModel):
     """Projection assumptions"""
     base_currency: str = "SGD"
-    start_date: Optional[datetime] = None
+    start_date: datetime | None = None
     monthly_salary: Decimal = Decimal(0)
     annual_bonus: Decimal = Decimal(0)
     tax_rate: Decimal = Decimal(0.20)
 
     # Category-based expenses (preferred)
-    category_budgets: List[CategoryBudgetSchema] = []
+    category_budgets: list[CategoryBudgetSchema] = []
     expense_inflation_rate: Decimal = Decimal(0.03)
 
     # Legacy flat expenses (deprecated)
-    monthly_expenses: Optional[Decimal] = None
+    monthly_expenses: Decimal | None = None
 
     # One-time costs
-    one_time_costs: List[OneTimeCostSchema] = []
+    one_time_costs: list[OneTimeCostSchema] = []
 
     # Fund allocations
-    allocation_weights: Dict[str, Decimal] = {}
-    bucket_returns: Dict[str, Decimal] = {}
+    allocation_weights: dict[str, Decimal] = {}
+    bucket_returns: dict[str, Decimal] = {}
 
     # Cash buffer rules
     minimum_cash_buffer_months: int = 6
-    cash_buffer_bucket_name: Optional[str] = "cash"
+    cash_buffer_bucket_name: str | None = "cash"
     enforce_cash_buffer: bool = False
 
     # Multi-currency display (optional)
-    fx_mapping: Optional[FXMappingSchema] = None
+    fx_mapping: FXMappingSchema | None = None
 
 
 class MonthlyProjectionResponse(BaseModel):
@@ -166,27 +166,27 @@ class MonthlyProjectionResponse(BaseModel):
     taxes: Decimal
     net_income: Decimal
     expenses: Decimal
-    expense_breakdown: Dict[str, Decimal] = {}
+    expense_breakdown: dict[str, Decimal] = {}
     one_time_costs: Decimal = Decimal(0)
-    one_time_costs_detail: List[Dict] = []
+    one_time_costs_detail: list[dict] = []
     savings: Decimal
     savings_rate: Decimal
-    bucket_allocations: Dict[str, Decimal]
-    bucket_balances: Dict[str, Decimal]
-    net_income_fx: Dict[str, Decimal] = {}
-    total_wealth_fx: Dict[str, Decimal] = {}
+    bucket_allocations: dict[str, Decimal]
+    bucket_balances: dict[str, Decimal]
+    net_income_fx: dict[str, Decimal] = {}
+    total_wealth_fx: dict[str, Decimal] = {}
 
 
 class ProjectionResponse(BaseModel):
     """Projection response"""
     scenario_id: str
-    months: List[MonthlyProjectionResponse]
+    months: list[MonthlyProjectionResponse]
 
 
 class ScenarioCreate(BaseModel):
     """Save a projection as a named simulation"""
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     assumptions: ProjectionAssumptions
     is_active: bool = False
 
@@ -195,8 +195,8 @@ class ScenarioResponse(BaseModel):
     """Saved simulation response"""
     id: str
     name: str
-    description: Optional[str] = None
-    assumptions: Optional[dict] = None
+    description: str | None = None
+    assumptions: dict | None = None
     monthly_expenses_total: Decimal
     is_active: bool
     created_at: datetime
@@ -207,7 +207,7 @@ class ScenarioListItem(BaseModel):
     """Lightweight scenario for list views"""
     id: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     monthly_expenses_total: Decimal
     is_active: bool
     created_at: datetime
@@ -226,24 +226,24 @@ class PriceResponse(BaseModel):
 class ErrorResponse(BaseModel):
     """Error response"""
     error: str
-    detail: Optional[str] = None
+    detail: str | None = None
 
 
 class CategoryCreate(BaseModel):
     """Create category request"""
     name: str
-    emoji: Optional[str] = None
+    emoji: str | None = None
     type: str  # expense, income
-    description: Optional[str] = None
+    description: str | None = None
 
 
 class CategoryResponse(BaseModel):
     """Category response"""
     id: str
     name: str
-    emoji: Optional[str] = None
+    emoji: str | None = None
     type: str
-    description: Optional[str] = None
+    description: str | None = None
     is_system: bool = False
     created_at: datetime
 
@@ -255,7 +255,7 @@ class SubcategoryCreate(BaseModel):
     """Create subcategory request"""
     category_id: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
 
 
 class SubcategoryResponse(BaseModel):
@@ -263,7 +263,7 @@ class SubcategoryResponse(BaseModel):
     id: str
     category_id: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     created_at: datetime
 
     class Config:
@@ -279,18 +279,18 @@ class FundAccountAllocation(BaseModel):
 class FundCreate(BaseModel):
     """Create fund request"""
     name: str
-    emoji: Optional[str] = None
-    description: Optional[str] = None
+    emoji: str | None = None
+    description: str | None = None
     allocation_percentage: Decimal = Decimal(0)
-    account_ids: List[str] = []  # Legacy: defaults to 100% each
-    account_allocations: List[FundAccountAllocation] = []  # Preferred: explicit %
+    account_ids: list[str] = []  # Legacy: defaults to 100% each
+    account_allocations: list[FundAccountAllocation] = []  # Preferred: explicit %
 
 
 class LinkedAccountSummary(BaseModel):
     """Minimal account info for fund response"""
     id: str
     name: str
-    institution: Optional[str] = None
+    institution: str | None = None
     account_currency: str
     allocation_percentage: Decimal = Decimal(100)
 
@@ -299,13 +299,13 @@ class FundResponse(BaseModel):
     """Fund response"""
     id: str
     name: str
-    emoji: Optional[str] = None
-    description: Optional[str] = None
+    emoji: str | None = None
+    description: str | None = None
     allocation_percentage: Decimal
     is_active: bool
     is_system: bool = False
     created_at: datetime
-    linked_accounts: List[LinkedAccountSummary] = []
+    linked_accounts: list[LinkedAccountSummary] = []
 
     class Config:
         from_attributes = True
@@ -316,9 +316,9 @@ class FundAllocationOverrideCreate(BaseModel):
     fund_id: str
     year: int
     month: int
-    allocation_percentage: Optional[Decimal] = None
-    override_amount: Optional[Decimal] = None
-    mode: Optional[str] = None  # "MODEL", "OPTIMIZE", or None (manual)
+    allocation_percentage: Decimal | None = None
+    override_amount: Decimal | None = None
+    mode: str | None = None  # "MODEL", "OPTIMIZE", or None (manual)
 
 
 class FundAllocationOverrideResponse(BaseModel):
@@ -328,8 +328,8 @@ class FundAllocationOverrideResponse(BaseModel):
     year: int
     month: int
     allocation_percentage: Decimal
-    override_amount: Optional[Decimal] = None
-    mode: Optional[str] = None  # "MODEL", "OPTIMIZE", or None
+    override_amount: Decimal | None = None
+    mode: str | None = None  # "MODEL", "OPTIMIZE", or None
     created_at: datetime
     updated_at: datetime
 
@@ -354,7 +354,7 @@ class FundMonthlyLedgerRow(BaseModel):
     contribution: float
     actual_credits: float = 0
     actual_debits: float = 0
-    charge_details: List[FundChargeDetail] = []
+    charge_details: list[FundChargeDetail] = []
     fund_income: float
     closing_balance: float
     self_funding_credits: float = 0
@@ -365,21 +365,21 @@ class FundLedgerResponse(BaseModel):
     fund_id: str
     fund_name: str
     emoji: str
-    linked_accounts: List[LinkedAccountSummary]
-    months: List[FundMonthlyLedgerRow]
+    linked_accounts: list[LinkedAccountSummary]
+    months: list[FundMonthlyLedgerRow]
     total_contributions: float
     total_fund_income: float
     current_balance: float
     is_self_funding: bool = False
     self_funding_percentage: float = 0
-    overlapping_account_names: List[str] = []
+    overlapping_account_names: list[str] = []
 
 
 class AccountTrackerRow(BaseModel):
     """One account's tracker data"""
     account_id: str
     account_name: str
-    institution: Optional[str] = None
+    institution: str | None = None
     account_currency: str
     starting_balance: float
     expected_contributions: float
@@ -411,10 +411,10 @@ class AccountLedgerResponse(BaseModel):
     """Account ledger view: per-account monthly time series"""
     account_id: str
     account_name: str
-    institution: Optional[str] = None
+    institution: str | None = None
     account_currency: str
     current_fx_rate: float = 1.0
-    months: List[AccountMonthlyLedgerRow]
+    months: list[AccountMonthlyLedgerRow]
     current_balance: float
     native_balance: float
     market_value_base: float
@@ -430,9 +430,9 @@ class TransferSuggestion(BaseModel):
     to_currency: str = "SGD"
     amount: float
     currency: str  # base currency amount (kept for backward compat)
-    source_fund_id: Optional[str] = None
-    dest_fund_id: Optional[str] = None
-    note: Optional[str] = None
+    source_fund_id: str | None = None
+    dest_fund_id: str | None = None
+    note: str | None = None
 
 
 class WCOptimization(BaseModel):
@@ -451,15 +451,15 @@ class FundTrackerSummary(BaseModel):
     ytd_fund_income: float
     ytd_wc_surplus: float = 0
     unallocated_remainder: float = 0
-    transfer_suggestions: List[TransferSuggestion] = []
-    wc_optimization: Optional[WCOptimization] = None
+    transfer_suggestions: list[TransferSuggestion] = []
+    wc_optimization: WCOptimization | None = None
 
 
 class FundTrackerResponse(BaseModel):
     """Full fund & account tracker response"""
-    fund_ledgers: List[FundLedgerResponse]
-    account_summaries: List[AccountTrackerRow]
-    account_ledgers: List[AccountLedgerResponse] = []
+    fund_ledgers: list[FundLedgerResponse]
+    account_summaries: list[AccountTrackerRow]
+    account_ledgers: list[AccountLedgerResponse] = []
     summary: FundTrackerSummary
 
 
@@ -469,7 +469,7 @@ class AccountNetWorthRow(BaseModel):
     """One account in the net worth view"""
     account_id: str
     account_name: str
-    institution: Optional[str] = None
+    institution: str | None = None
     account_currency: str
     account_type: str
     native_balance: float
@@ -503,10 +503,10 @@ class NetWorthResponse(BaseModel):
     total_assets: float
     total_liabilities: float
     total_unrealized_fx_gain: float
-    accounts: List[AccountNetWorthRow]
-    currency_breakdown: List[CurrencyBreakdown]
-    history: List[NetWorthHistoryPoint]
-    fx_rates_used: Dict[str, float] = {}
+    accounts: list[AccountNetWorthRow]
+    currency_breakdown: list[CurrencyBreakdown]
+    history: list[NetWorthHistoryPoint]
+    fx_rates_used: dict[str, float] = {}
 
 
 # ─── Recurring Transactions schemas ───
@@ -515,61 +515,61 @@ class RecurringTransactionCreate(BaseModel):
     """Create a recurring transaction template"""
     name: str
     transaction_type: str  # "income", "expense", "transfer"
-    payee: Optional[str] = None
-    memo: Optional[str] = None
+    payee: str | None = None
+    memo: str | None = None
     amount: Decimal
     currency: str = "SGD"
-    category_id: Optional[str] = None
-    subcategory_id: Optional[str] = None
-    fund_id: Optional[str] = None
-    payment_method_id: Optional[str] = None
-    account_id: Optional[str] = None
-    from_account_id: Optional[str] = None
-    to_account_id: Optional[str] = None
-    from_currency: Optional[str] = None
-    to_currency: Optional[str] = None
-    fx_rate: Optional[Decimal] = None
-    source_fund_id: Optional[str] = None
-    dest_fund_id: Optional[str] = None
-    transfer_fee: Optional[Decimal] = Decimal(0)
-    fee_category_id: Optional[str] = None
+    category_id: str | None = None
+    subcategory_id: str | None = None
+    fund_id: str | None = None
+    payment_method_id: str | None = None
+    account_id: str | None = None
+    from_account_id: str | None = None
+    to_account_id: str | None = None
+    from_currency: str | None = None
+    to_currency: str | None = None
+    fx_rate: Decimal | None = None
+    source_fund_id: str | None = None
+    dest_fund_id: str | None = None
+    transfer_fee: Decimal | None = Decimal(0)
+    fee_category_id: str | None = None
     frequency: str  # daily, weekly, bi_weekly, monthly, quarterly, yearly
     start_date: str  # ISO date string "YYYY-MM-DD"
-    end_date: Optional[str] = None
+    end_date: str | None = None
 
 
 class RecurringTransactionUpdate(BaseModel):
     """Update a recurring transaction template"""
-    name: Optional[str] = None
-    payee: Optional[str] = None
-    memo: Optional[str] = None
-    amount: Optional[Decimal] = None
-    currency: Optional[str] = None
-    category_id: Optional[str] = None
-    subcategory_id: Optional[str] = None
-    fund_id: Optional[str] = None
-    payment_method_id: Optional[str] = None
-    account_id: Optional[str] = None
-    from_account_id: Optional[str] = None
-    to_account_id: Optional[str] = None
-    from_currency: Optional[str] = None
-    to_currency: Optional[str] = None
-    fx_rate: Optional[Decimal] = None
-    source_fund_id: Optional[str] = None
-    dest_fund_id: Optional[str] = None
-    transfer_fee: Optional[Decimal] = None
-    fee_category_id: Optional[str] = None
-    frequency: Optional[str] = None
-    end_date: Optional[str] = None
-    is_active: Optional[bool] = None
+    name: str | None = None
+    payee: str | None = None
+    memo: str | None = None
+    amount: Decimal | None = None
+    currency: str | None = None
+    category_id: str | None = None
+    subcategory_id: str | None = None
+    fund_id: str | None = None
+    payment_method_id: str | None = None
+    account_id: str | None = None
+    from_account_id: str | None = None
+    to_account_id: str | None = None
+    from_currency: str | None = None
+    to_currency: str | None = None
+    fx_rate: Decimal | None = None
+    source_fund_id: str | None = None
+    dest_fund_id: str | None = None
+    transfer_fee: Decimal | None = None
+    fee_category_id: str | None = None
+    frequency: str | None = None
+    end_date: str | None = None
+    is_active: bool | None = None
 
 
 class ConfirmRecurringRequest(BaseModel):
     """Confirm a pending recurring instance"""
     occurrence_date: str  # ISO date of the instance being confirmed
-    amount_override: Optional[Decimal] = None
-    payee_override: Optional[str] = None
-    memo_override: Optional[str] = None
+    amount_override: Decimal | None = None
+    payee_override: str | None = None
+    memo_override: str | None = None
 
 
 class SkipRecurringRequest(BaseModel):
@@ -584,8 +584,8 @@ class CardCreate(BaseModel):
     account_id: str
     card_name: str
     card_type: str  # "credit" or "debit"
-    card_network: Optional[str] = None
-    last_four: Optional[str] = None
+    card_network: str | None = None
+    last_four: str | None = None
 
 
 class CardResponse(BaseModel):
@@ -594,10 +594,10 @@ class CardResponse(BaseModel):
     account_id: str
     card_name: str
     card_type: str
-    card_network: Optional[str] = None
-    last_four: Optional[str] = None
+    card_network: str | None = None
+    last_four: str | None = None
     is_active: bool
-    payment_method_id: Optional[str] = None
+    payment_method_id: str | None = None
     created_at: datetime
 
     class Config:
@@ -608,8 +608,8 @@ class PaymentMethodCreate(BaseModel):
     """Create payment method request"""
     name: str
     method_type: str  # "digital_wallet" or "custom"
-    icon: Optional[str] = None
-    linked_account_id: Optional[str] = None
+    icon: str | None = None
+    linked_account_id: str | None = None
 
 
 class PaymentMethodResponse(BaseModel):
@@ -617,9 +617,9 @@ class PaymentMethodResponse(BaseModel):
     id: str
     name: str
     method_type: str
-    icon: Optional[str] = None
-    card_id: Optional[str] = None
-    linked_account_id: Optional[str] = None
+    icon: str | None = None
+    card_id: str | None = None
+    linked_account_id: str | None = None
     is_system: bool
     is_active: bool
     created_at: datetime
@@ -632,12 +632,12 @@ class PaymentMethodResponse(BaseModel):
 
 class FileHeadersResponse(BaseModel):
     """Response from reading file headers for column mapping"""
-    headers: List[str]  # Column names from CSV/XLSX
-    preview_rows: List[Dict[str, str]]  # First 5 rows as dict
-    suggested_mapping: Dict[str, str]  # Auto-suggested column mapping
+    headers: list[str]  # Column names from CSV/XLSX
+    preview_rows: list[dict[str, str]]  # First 5 rows as dict
+    suggested_mapping: dict[str, str]  # Auto-suggested column mapping
     total_rows: int
     file_type: str  # "csv" or "xlsx"
-    sheet_name: Optional[str] = None  # For XLSX files
+    sheet_name: str | None = None  # For XLSX files
 
 
 class ParsedTransaction(BaseModel):
@@ -646,11 +646,11 @@ class ParsedTransaction(BaseModel):
     # Original file values
     date_str: str
     payee: str
-    memo: Optional[str] = None
-    debit_str: Optional[str] = None
-    credit_str: Optional[str] = None
+    memo: str | None = None
+    debit_str: str | None = None
+    credit_str: str | None = None
     # Parsed values
-    timestamp: Optional[datetime] = None  # null if parse failed
+    timestamp: datetime | None = None  # null if parse failed
     amount: Decimal  # Positive for income/credit, negative for expense/debit
     transaction_type: str  # "income", "expense", or "transfer"
     # Pre-set (from selected account)
@@ -658,19 +658,19 @@ class ParsedTransaction(BaseModel):
     account_name: str
     currency: str  # from account currency
     # To be filled by user (manually reviewed and categorized)
-    category_id: Optional[str] = None
-    subcategory_id: Optional[str] = None
-    fund_id: Optional[str] = None
-    payment_method_id: Optional[str] = None
-    transfer_account_id: Optional[str] = None  # For transfers: the other account
+    category_id: str | None = None
+    subcategory_id: str | None = None
+    fund_id: str | None = None
+    payment_method_id: str | None = None
+    transfer_account_id: str | None = None  # For transfers: the other account
     # Validation
-    warnings: List[str] = []  # ["Invalid date format", etc.]
+    warnings: list[str] = []  # ["Invalid date format", etc.]
     has_errors: bool = False
 
 
 class FileParseResult(BaseModel):
     """Result from parsing a file with column mapping"""
     total_rows: int
-    parsed_transactions: List[ParsedTransaction]
+    parsed_transactions: list[ParsedTransaction]
     account_id: str
     account_name: str

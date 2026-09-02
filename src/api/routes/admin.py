@@ -2,20 +2,19 @@
 
 import json
 import logging
-from typing import Optional, List
-from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy.orm import Session
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
-logger = logging.getLogger(__name__)
-
+from src.api.admin_deps import require_admin
+from src.data.admin_repository import AdminRepository
+from src.data.audit_repository import AuditLogRepository
 from src.data.database import get_session
 from src.data.models import UserModel
-from src.data.admin_repository import AdminRepository
-from src.services.firebase_service import delete_firebase_user_by_uid, delete_firebase_user_by_email
-from src.data.audit_repository import AuditLogRepository
-from src.api.admin_deps import require_admin
+from src.services.firebase_service import delete_firebase_user_by_email, delete_firebase_user_by_uid
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -25,17 +24,17 @@ router = APIRouter()
 class AdminUserListItem(BaseModel):
     id: str
     email: str
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
+    first_name: str | None = None
+    last_name: str | None = None
     auth_provider: str
     profile_completed: bool
     is_admin: bool
     is_disabled: bool
     email_verified: bool = False
     phone_verified: bool = False
-    address_country: Optional[str] = None
+    address_country: str | None = None
     created_at: str
-    last_login_at: Optional[str] = None
+    last_login_at: str | None = None
     login_count: int = 0
 
 
@@ -45,23 +44,23 @@ class WorkspaceStats(BaseModel):
     base_currency: str
     transaction_count: int
     account_count: int
-    created_at: Optional[str] = None
+    created_at: str | None = None
 
 
 class AdminUserDetail(AdminUserListItem):
-    date_of_birth: Optional[str] = None
-    nationalities: List[str] = []
-    tax_residencies: List[str] = []
-    phone_country_code: Optional[str] = None
-    phone_number: Optional[str] = None
-    address_city: Optional[str] = None
-    address_state: Optional[str] = None
-    address_postal_code: Optional[str] = None
-    workspaces: List[WorkspaceStats] = []
+    date_of_birth: str | None = None
+    nationalities: list[str] = []
+    tax_residencies: list[str] = []
+    phone_country_code: str | None = None
+    phone_number: str | None = None
+    address_city: str | None = None
+    address_state: str | None = None
+    address_postal_code: str | None = None
+    workspaces: list[WorkspaceStats] = []
 
 
 class PaginatedUserResponse(BaseModel):
-    users: List[AdminUserListItem]
+    users: list[AdminUserListItem]
     total: int
     offset: int
     limit: int
@@ -77,8 +76,8 @@ class SystemStatsResponse(BaseModel):
 
 
 class TimeSeriesPoint(BaseModel):
-    date: Optional[str] = None
-    month: Optional[str] = None
+    date: str | None = None
+    month: str | None = None
     count: int
 
 
@@ -117,17 +116,17 @@ class FeatureAdoption(BaseModel):
 class AuditLogEntry(BaseModel):
     id: str
     actor_user_id: str
-    actor_email: Optional[str] = None
+    actor_email: str | None = None
     action: str
-    target_type: Optional[str] = None
-    target_id: Optional[str] = None
-    details: Optional[str] = None
-    ip_address: Optional[str] = None
+    target_type: str | None = None
+    target_id: str | None = None
+    details: str | None = None
+    ip_address: str | None = None
     created_at: str
 
 
 class PaginatedAuditLogResponse(BaseModel):
-    logs: List[AuditLogEntry]
+    logs: list[AuditLogEntry]
     total: int
     offset: int
     limit: int
@@ -174,7 +173,7 @@ def get_system_stats(
     return repo.get_system_stats()
 
 
-@router.get("/growth/signups", response_model=List[TimeSeriesPoint])
+@router.get("/growth/signups", response_model=list[TimeSeriesPoint])
 def get_signup_growth(
     days: int = Query(default=90, ge=7, le=365),
     admin: UserModel = Depends(require_admin),
@@ -185,7 +184,7 @@ def get_signup_growth(
     return repo.get_signups_by_period(days)
 
 
-@router.get("/growth/dau", response_model=List[TimeSeriesPoint])
+@router.get("/growth/dau", response_model=list[TimeSeriesPoint])
 def get_daily_active_users(
     days: int = Query(default=30, ge=7, le=365),
     admin: UserModel = Depends(require_admin),
@@ -196,7 +195,7 @@ def get_daily_active_users(
     return repo.get_dau(days)
 
 
-@router.get("/growth/mau", response_model=List[TimeSeriesPoint])
+@router.get("/growth/mau", response_model=list[TimeSeriesPoint])
 def get_monthly_active_users(
     months: int = Query(default=12, ge=1, le=36),
     admin: UserModel = Depends(require_admin),
@@ -211,10 +210,10 @@ def get_monthly_active_users(
 
 @router.get("/users", response_model=PaginatedUserResponse)
 def list_users(
-    search: Optional[str] = None,
-    auth_provider: Optional[str] = None,
-    is_admin: Optional[bool] = None,
-    is_disabled: Optional[bool] = None,
+    search: str | None = None,
+    auth_provider: str | None = None,
+    is_admin: bool | None = None,
+    is_disabled: bool | None = None,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
     admin: UserModel = Depends(require_admin),
@@ -416,7 +415,7 @@ def delete_user(
 
 # ── Analytics ──
 
-@router.get("/analytics/auth-providers", response_model=List[AuthProviderBreakdown])
+@router.get("/analytics/auth-providers", response_model=list[AuthProviderBreakdown])
 def get_auth_provider_breakdown(
     admin: UserModel = Depends(require_admin),
     session: Session = Depends(get_session),
@@ -456,7 +455,7 @@ def get_age_breakdown(
     return repo.get_age_breakdown()
 
 
-@router.get("/analytics/retention", response_model=List[RetentionCohort])
+@router.get("/analytics/retention", response_model=list[RetentionCohort])
 def get_retention_cohorts(
     months: int = Query(default=6, ge=1, le=24),
     admin: UserModel = Depends(require_admin),
@@ -496,10 +495,10 @@ def get_feature_adoption(
 
 @router.get("/audit-logs", response_model=PaginatedAuditLogResponse)
 def list_audit_logs(
-    action_prefix: Optional[str] = None,
-    actor_user_id: Optional[str] = None,
-    target_type: Optional[str] = None,
-    target_id: Optional[str] = None,
+    action_prefix: str | None = None,
+    actor_user_id: str | None = None,
+    target_type: str | None = None,
+    target_id: str | None = None,
     days: int = Query(default=30, ge=1, le=365),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=500),
@@ -548,14 +547,14 @@ def list_audit_logs(
 class AdminBugReportListItem(BaseModel):
     id: str
     user_id: str
-    user_email: Optional[str] = None
+    user_email: str | None = None
     title: str
     description: str
     status: str
     media_count: int
     created_at: str
     updated_at: str
-    resolved_at: Optional[str] = None
+    resolved_at: str | None = None
 
 
 class AdminBugReportMediaInfo(BaseModel):
@@ -567,11 +566,11 @@ class AdminBugReportMediaInfo(BaseModel):
 
 
 class AdminBugReportDetail(AdminBugReportListItem):
-    media: List[AdminBugReportMediaInfo] = []
+    media: list[AdminBugReportMediaInfo] = []
 
 
 class PaginatedBugReportResponse(BaseModel):
-    reports: List[AdminBugReportListItem]
+    reports: list[AdminBugReportListItem]
     total: int
     offset: int
     limit: int
@@ -583,7 +582,7 @@ class UpdateBugStatusRequest(BaseModel):
 
 @router.get("/bugs", response_model=PaginatedBugReportResponse)
 def list_bug_reports(
-    status_filter: Optional[str] = Query(default=None),
+    status_filter: str | None = Query(default=None),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
     admin: UserModel = Depends(require_admin),
@@ -724,7 +723,7 @@ def serve_bug_media(
     request: Request,
     bug_id: str,
     media_id: str,
-    token: Optional[str] = Query(None),
+    token: str | None = Query(None),
     session: Session = Depends(get_session),
 ):
     """Serve a media file from a bug report (admin).
@@ -734,6 +733,7 @@ def serve_bug_media(
     avoiding CORS preflight issues on cross-origin deployments.
     """
     from fastapi.responses import Response
+
     from config.settings import settings
     from src.data.bug_repository import BugReportRepository
     from src.data.repositories import UserRepository
@@ -786,7 +786,7 @@ def serve_bug_media(
         raise
     except Exception as e:  # noqa: BLE001  # top-level endpoint boundary -> 500
         logger.error("serve_bug_media error bug_id=%s media_id=%s: %s", bug_id, media_id, e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to serve media: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to serve media: {str(e)}") from e
 
 
 @router.delete("/bugs/{bug_id}")
@@ -817,4 +817,4 @@ def delete_bug_report(
         ip_address=_get_client_ip(request),
     )
 
-    return {"message": f"Bug report deleted"}
+    return {"message": "Bug report deleted"}

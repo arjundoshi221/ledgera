@@ -1,9 +1,9 @@
 """Database connection and session management"""
 
 import os
-from sqlalchemy import create_engine, text, inspect
-from sqlalchemy.orm import sessionmaker, Session
-from typing import Optional
+
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.orm import sessionmaker
 
 from .models import Base
 
@@ -277,6 +277,7 @@ def _run_migrations(engine) -> None:
         ).fetchone()
         if not already:
             import uuid as _uuid
+
             from .models import _utcnow_naive
             now = _utcnow_naive().isoformat()
             # Get all workspace IDs
@@ -322,6 +323,7 @@ def _run_migrations(engine) -> None:
             ).fetchone()
             if not already:
                 import uuid as _uuid
+
                 from .models import _utcnow_naive
                 now = _utcnow_naive().isoformat()
                 rows = conn.execute(text("SELECT id FROM workspaces")).fetchall()

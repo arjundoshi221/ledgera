@@ -1,12 +1,13 @@
 """Price/FX endpoints"""
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from datetime import datetime, UTC
 
+from src.api.schemas import PriceResponse
 from src.data.database import get_session
 from src.services.price_service import PriceService, YahooFinancePriceProvider
-from src.api.schemas import PriceResponse
 
 router = APIRouter()
 

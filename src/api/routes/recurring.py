@@ -1,22 +1,32 @@
 """Recurring Transactions endpoints"""
 
-from decimal import Decimal
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from src.data.database import get_session
-from src.data.repositories import RecurringTransactionRepository, TransactionRepository, AccountRepository
-from src.data.models import RecurringTransactionModel, TransactionModel, PostingModel, AccountModel, CategoryModel, _utcnow_naive
+from src.api.deps import get_workspace_id
 from src.api.schemas import (
+    ConfirmRecurringRequest,
     RecurringTransactionCreate,
     RecurringTransactionUpdate,
-    ConfirmRecurringRequest,
     SkipRecurringRequest,
 )
-from src.api.deps import get_workspace_id
+from src.data.database import get_session
+from src.data.models import (
+    AccountModel,
+    CategoryModel,
+    PostingModel,
+    RecurringTransactionModel,
+    TransactionModel,
+    _utcnow_naive,
+)
+from src.data.repositories import (
+    RecurringTransactionRepository,
+    TransactionRepository,
+)
 
 router = APIRouter()
 
@@ -177,9 +187,10 @@ def create_recurring(
     if data.transaction_type in ("income", "expense") and not data.account_id:
         raise HTTPException(status_code=400, detail="account_id is required for income/expense")
 
-    if data.transaction_type == "transfer":
-        if not data.from_account_id or not data.to_account_id:
-            raise HTTPException(status_code=400, detail="from_account_id and to_account_id are required for transfers")
+    if data.transaction_type == "transfer" and (
+        not data.from_account_id or not data.to_account_id
+    ):
+        raise HTTPException(status_code=400, detail="from_account_id and to_account_id are required for transfers")
 
     start = datetime.strptime(data.start_date, "%Y-%m-%d")  # noqa: DTZ007  # db-naive
     end = datetime.strptime(data.end_date, "%Y-%m-%d") if data.end_date else None  # noqa: DTZ007  # db-naive
@@ -420,7 +431,7 @@ def confirm_recurring(
                 fx_fees_cat = session.query(CategoryModel).filter(
                     CategoryModel.workspace_id == workspace_id,
                     CategoryModel.name == "FX Fees",
-                    CategoryModel.is_system == True
+                    CategoryModel.is_system.is_(True)
                 ).first()
                 if fx_fees_cat:
                     fee_category_id = fx_fees_cat.id

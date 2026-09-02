@@ -1,13 +1,13 @@
 """Workspace endpoints"""
 
-from fastapi import APIRouter, HTTPException, Depends, status
-from sqlalchemy.orm import Session
-from pydantic import BaseModel
-from typing import Optional
 
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from src.api.deps import get_workspace_id
 from src.data.database import get_session
 from src.data.repositories import WorkspaceRepository
-from src.api.deps import get_workspace_id
 
 router = APIRouter()
 
@@ -21,9 +21,9 @@ class WorkspaceResponse(BaseModel):
 
 
 class WorkspaceUpdateRequest(BaseModel):
-    base_currency: Optional[str] = None
-    name: Optional[str] = None
-    min_wc_balance: Optional[float] = None
+    base_currency: str | None = None
+    name: str | None = None
+    min_wc_balance: float | None = None
 
 
 @router.get("/workspace", response_model=WorkspaceResponse)

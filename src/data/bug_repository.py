@@ -1,9 +1,9 @@
 """Repository for bug report operations"""
 
-from typing import List, Tuple, Optional
+
 from sqlalchemy.orm import Session, joinedload
 
-from .models import BugReportModel, BugReportMediaModel, _utcnow_naive
+from .models import BugReportMediaModel, BugReportModel, _utcnow_naive
 
 
 class BugReportRepository:
@@ -51,7 +51,7 @@ class BugReportRepository:
     def commit(self) -> None:
         self.session.commit()
 
-    def list_by_user(self, user_id: str) -> List[BugReportModel]:
+    def list_by_user(self, user_id: str) -> list[BugReportModel]:
         return (
             self.session.query(BugReportModel)
             .options(joinedload(BugReportModel.media))
@@ -64,10 +64,10 @@ class BugReportRepository:
 
     def list_all(
         self,
-        status_filter: Optional[str] = None,
+        status_filter: str | None = None,
         offset: int = 0,
         limit: int = 50,
-    ) -> Tuple[List[BugReportModel], int]:
+    ) -> tuple[list[BugReportModel], int]:
         query = self.session.query(BugReportModel).options(
             joinedload(BugReportModel.media)
         )
@@ -82,7 +82,7 @@ class BugReportRepository:
         )
         return reports, total
 
-    def get_by_id(self, report_id: str) -> Optional[BugReportModel]:
+    def get_by_id(self, report_id: str) -> BugReportModel | None:
         return (
             self.session.query(BugReportModel)
             .options(joinedload(BugReportModel.media))
@@ -90,7 +90,7 @@ class BugReportRepository:
             .first()
         )
 
-    def get_media(self, media_id: str) -> Optional[BugReportMediaModel]:
+    def get_media(self, media_id: str) -> BugReportMediaModel | None:
         return (
             self.session.query(BugReportMediaModel)
             .filter(BugReportMediaModel.id == media_id)
@@ -101,7 +101,7 @@ class BugReportRepository:
         self,
         report_id: str,
         new_status: str,
-    ) -> Optional[BugReportModel]:
+    ) -> BugReportModel | None:
         report = (
             self.session.query(BugReportModel)
             .filter(BugReportModel.id == report_id)

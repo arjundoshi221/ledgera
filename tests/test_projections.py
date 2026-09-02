@@ -1,8 +1,15 @@
 """Tests for projection engine"""
 
-import pytest
 from decimal import Decimal
-from src.domain.projections import ProjectionEngine, ProjectionAssumptions, CategoryBudget, OneTimeCost
+
+import pytest
+
+from src.domain.projections import (
+    CategoryBudget,
+    OneTimeCost,
+    ProjectionAssumptions,
+    ProjectionEngine,
+)
 
 
 def test_projection_single_month():
@@ -14,10 +21,10 @@ def test_projection_single_month():
         allocation_weights={"cash": Decimal("0.5"), "invest": Decimal("0.5")},
         bucket_returns={"cash": Decimal("0.0"), "invest": Decimal("0.08")}
     )
-    
+
     engine = ProjectionEngine(assumptions)
     projection = engine.project_month(0)
-    
+
     assert projection.gross_income == Decimal(5000)
     assert projection.taxes == Decimal(1000)
     assert projection.net_income == Decimal(4000)
@@ -35,12 +42,12 @@ def test_projection_multiple_months():
         allocation_weights={"cash": Decimal("1.0")},
         bucket_returns={"cash": Decimal("0.0")}
     )
-    
+
     engine = ProjectionEngine(assumptions)
     projections = engine.project_period(12)
-    
+
     assert len(projections) == 12
-    
+
     # Check that savings accumulate
     for i, proj in enumerate(projections):
         assert proj.savings == Decimal(1000)
@@ -56,10 +63,10 @@ def test_projection_with_inflation():
         allocation_weights={"cash": Decimal("1.0")},
         bucket_returns={"cash": Decimal("0.0")}
     )
-    
+
     engine = ProjectionEngine(assumptions)
     projections = engine.project_period(12)
-    
+
     # Expenses should increase month-to-month
     assert projections[0].expenses < projections[11].expenses
 

@@ -1,26 +1,45 @@
 """Analytics and reporting endpoints"""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, or_
-from datetime import datetime, UTC
-from decimal import Decimal
-from typing import Dict, List, Optional
+import json
 from calendar import monthrange
-from pydantic import BaseModel
+from datetime import UTC, datetime
+from decimal import Decimal
 
-from src.data.database import get_session
-from src.data.models import TransactionModel, CategoryModel, SubcategoryModel, FundModel, FundAccountLinkModel, PostingModel, AccountModel, ScenarioModel, WorkspaceModel
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import Session
+
 from src.api.deps import get_workspace_id
 from src.api.schemas import (
+    AccountLedgerResponse,
+    AccountMonthlyLedgerRow,
+    AccountNetWorthRow,
+    AccountTrackerRow,
+    CurrencyBreakdown,
     FundAllocationOverrideCreate,
-    FundMonthlyLedgerRow, FundLedgerResponse, AccountTrackerRow,
-    AccountMonthlyLedgerRow, AccountLedgerResponse,
-    FundTrackerSummary, FundTrackerResponse, LinkedAccountSummary,
-    TransferSuggestion, FundChargeDetail, WCOptimization,
-    AccountNetWorthRow, CurrencyBreakdown, NetWorthHistoryPoint, NetWorthResponse,
+    FundChargeDetail,
+    FundLedgerResponse,
+    FundMonthlyLedgerRow,
+    FundTrackerResponse,
+    FundTrackerSummary,
+    LinkedAccountSummary,
+    NetWorthHistoryPoint,
+    NetWorthResponse,
+    TransferSuggestion,
+    WCOptimization,
 )
-import json
+from src.data.database import get_session
+from src.data.models import (
+    AccountModel,
+    CategoryModel,
+    FundAccountLinkModel,
+    FundModel,
+    PostingModel,
+    SubcategoryModel,
+    TransactionModel,
+    WorkspaceModel,
+)
 
 router = APIRouter()
 
@@ -29,7 +48,7 @@ router = APIRouter()
 
 class SubcategorySplit(BaseModel):
     """Subcategory spending breakdown"""
-    subcategory_id: Optional[str] = None
+    subcategory_id: str | None = None
     subcategory_name: str
     total_amount: float
     transaction_count: int
@@ -42,7 +61,7 @@ class CategorySplit(BaseModel):
     emoji: str
     total_amount: float
     transaction_count: int
-    subcategories: List[SubcategorySplit] = []
+    subcategories: list[SubcategorySplit] = []
 
 
 class MonthlyExpenseSplit(BaseModel):
@@ -50,7 +69,7 @@ class MonthlyExpenseSplit(BaseModel):
     year: int
     month: int
     total_expenses: float
-    categories: List[CategorySplit]
+    categories: list[CategorySplit]
 
 
 # ─── Income Allocation schemas ───
@@ -63,14 +82,14 @@ class FundAllocationDetail(BaseModel):
     allocation_percentage: float
     allocated_amount: float
     is_auto: bool = False
-    override_amount: Optional[float] = None
-    mode: Optional[str] = None  # "MODEL", "OPTIMIZE", or None (manual)
-    model_amount: Optional[float] = None  # What MODEL mode would give
-    optimize_amount: Optional[float] = None  # What OPTIMIZE mode would give
+    override_amount: float | None = None
+    mode: str | None = None  # "MODEL", "OPTIMIZE", or None (manual)
+    model_amount: float | None = None  # What MODEL mode would give
+    optimize_amount: float | None = None  # What OPTIMIZE mode would give
     is_self_funding: bool = False
     self_funding_percentage: float = 0
     self_funding_amount: float = 0
-    overlapping_account_names: List[str] = []
+    overlapping_account_names: list[str] = []
 
 
 class IncomeAllocationRow(BaseModel):
@@ -83,7 +102,7 @@ class IncomeAllocationRow(BaseModel):
     actual_fixed_cost: float
     fixed_cost_optimization: float
     savings_remainder: float
-    fund_allocations: List[FundAllocationDetail]
+    fund_allocations: list[FundAllocationDetail]
     is_locked: bool
     working_capital_pct_of_income: float
     savings_pct_of_income: float
@@ -98,10 +117,10 @@ class FundMeta(BaseModel):
     fund_id: str
     fund_name: str
     emoji: str
-    linked_account_names: List[str] = []
+    linked_account_names: list[str] = []
     is_self_funding: bool = False
     self_funding_percentage: float = 0
-    overlapping_account_names: List[str] = []
+    overlapping_account_names: list[str] = []
 
 
 class SelfFundingWarning(BaseModel):
@@ -112,12 +131,12 @@ class SelfFundingWarning(BaseModel):
 
 class IncomeAllocationResponse(BaseModel):
     """Multi-month income allocation response"""
-    rows: List[IncomeAllocationRow]
-    funds_meta: List[FundMeta]
-    active_scenario_name: Optional[str] = None
-    active_scenario_id: Optional[str] = None
+    rows: list[IncomeAllocationRow]
+    funds_meta: list[FundMeta]
+    active_scenario_name: str | None = None
+    active_scenario_id: str | None = None
     budget_benchmark: float = 0
-    self_funding_warnings: List[SelfFundingWarning] = []
+    self_funding_warnings: list[SelfFundingWarning] = []
 
 
 # Keep old schema for backward compat
@@ -133,7 +152,7 @@ class MonthlyIncomeSplit(BaseModel):
     year: int
     month: int
     total_income: float
-    funds: List[FundAllocation]
+    funds: list[FundAllocation]
 
 
 # ─── Helpers ───
@@ -206,8 +225,8 @@ def _batch_wc_balance(session, workspace_id, wc_fund, wc_fund_id):
 
     wc_account_ids = [link.account_id for link in wc_fund.account_links] if wc_fund else []
     opening = Decimal(0)
-    credits: Dict[tuple, Decimal] = {}
-    debits: Dict[tuple, Decimal] = {}
+    credits: dict[tuple, Decimal] = {}
+    debits: dict[tuple, Decimal] = {}
 
     if not (wc_fund and wc_account_ids):
         return opening, credits, debits
@@ -425,7 +444,7 @@ def get_expense_split(
         )
 
     except Exception as e:  # noqa: BLE001  # top-level endpoint boundary -> 400
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.get("/income-allocation", response_model=IncomeAllocationResponse)
@@ -447,11 +466,11 @@ def get_income_allocation(
         # Get all active funds for this workspace
         funds = session.query(FundModel).filter(
             FundModel.workspace_id == workspace_id,
-            FundModel.is_active == True
+            FundModel.is_active.is_(True)
         ).order_by(FundModel.created_at).all()
 
         # Look up active simulation for budget benchmark
-        from src.data.repositories import ScenarioRepository, FundAllocationOverrideRepository
+        from src.data.repositories import FundAllocationOverrideRepository, ScenarioRepository
         scenario_repo = ScenarioRepository(session)
         active_scenario = scenario_repo.read_active(workspace_id)
         budget_benchmark = Decimal(str(active_scenario.monthly_expenses_total)) if active_scenario else Decimal(0)
@@ -739,7 +758,7 @@ def get_income_allocation(
         )
 
     except Exception as e:  # noqa: BLE001  # top-level endpoint boundary -> 400
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 # Keep old endpoint for backward compat
@@ -774,7 +793,7 @@ def get_income_split(
 
         funds_query = session.query(FundModel).filter(
             FundModel.workspace_id == workspace_id,
-            FundModel.is_active == True
+            FundModel.is_active.is_(True)
         ).all()
 
         funds = []
@@ -802,7 +821,7 @@ def get_income_split(
         )
 
     except Exception as e:  # noqa: BLE001  # top-level endpoint boundary -> 400
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 # ─── Fund Allocation Override endpoints ───
@@ -814,8 +833,8 @@ def create_or_update_override(
     session: Session = Depends(get_session)
 ):
     """Create or update a fund allocation override for a specific month"""
-    from src.data.repositories import FundRepository, FundAllocationOverrideRepository
     from src.data.models import FundAllocationOverrideModel
+    from src.data.repositories import FundAllocationOverrideRepository, FundRepository
 
     # Verify fund exists and belongs to workspace
     fund_repo = FundRepository(session)
@@ -835,14 +854,14 @@ def create_or_update_override(
         raise HTTPException(status_code=400, detail="Must provide allocation_percentage, override_amount, or mode")
 
     # Validate percentage if provided
-    if override_data.allocation_percentage is not None:
-        if override_data.allocation_percentage < 0 or override_data.allocation_percentage > 100:
-            raise HTTPException(status_code=400, detail="Allocation percentage must be between 0 and 100")
+    if override_data.allocation_percentage is not None and (
+        override_data.allocation_percentage < 0 or override_data.allocation_percentage > 100
+    ):
+        raise HTTPException(status_code=400, detail="Allocation percentage must be between 0 and 100")
 
     # Validate amount if provided
-    if override_data.override_amount is not None:
-        if override_data.override_amount < 0:
-            raise HTTPException(status_code=400, detail="Override amount must be >= 0")
+    if override_data.override_amount is not None and override_data.override_amount < 0:
+        raise HTTPException(status_code=400, detail="Override amount must be >= 0")
 
     # Validate month
     if override_data.month < 1 or override_data.month > 12:
@@ -880,8 +899,8 @@ def create_or_update_override(
 
 @router.get("/fund-allocation-overrides")
 def list_overrides(
-    year: Optional[int] = None,
-    month: Optional[int] = None,
+    year: int | None = None,
+    month: int | None = None,
     workspace_id: str = Depends(get_workspace_id),
     session: Session = Depends(get_session)
 ):
@@ -907,7 +926,7 @@ def delete_override(
     session: Session = Depends(get_session)
 ):
     """Delete a fund allocation override (revert to fund default)"""
-    from src.data.repositories import FundRepository, FundAllocationOverrideRepository
+    from src.data.repositories import FundAllocationOverrideRepository, FundRepository
 
     # Verify fund belongs to workspace
     fund_repo = FundRepository(session)
@@ -992,21 +1011,22 @@ def get_fund_tracker(
     and account-level expected vs actual balances.
     """
     try:
-        from src.data.repositories import ScenarioRepository, FundAllocationOverrideRepository
         from sqlalchemy.orm import joinedload
+
+        from src.data.repositories import FundAllocationOverrideRepository, ScenarioRepository
 
         # Load all active funds with account links
         funds = session.query(FundModel).options(
             joinedload(FundModel.account_links).joinedload(FundAccountLinkModel.account)
         ).filter(
             FundModel.workspace_id == workspace_id,
-            FundModel.is_active == True
+            FundModel.is_active.is_(True)
         ).order_by(FundModel.created_at).all()
 
         # Load all accounts for the workspace (exclude External bookkeeping account)
         all_accounts = session.query(AccountModel).filter(
             AccountModel.workspace_id == workspace_id,
-            AccountModel.is_active == True,
+            AccountModel.is_active.is_(True),
             AccountModel.name != "External"
         ).all()
 
@@ -1111,8 +1131,8 @@ def get_fund_tracker(
         min_wc_balance = Decimal(str(workspace.min_wc_balance or 0)) if workspace else Decimal(0)
 
         # Pre-compute sweep savings_remainder and wc_amount per month
-        monthly_sweep_savings: Dict[tuple, Decimal] = {}
-        monthly_sweep_wc_amount: Dict[tuple, Decimal] = {}
+        monthly_sweep_savings: dict[tuple, Decimal] = {}
+        monthly_sweep_wc_amount: dict[tuple, Decimal] = {}
         wc_sweep_running = wc_opening
         for y, m in months_list:
             # K for this month
@@ -1162,10 +1182,7 @@ def get_fund_tracker(
                 apply_self_funding = True
 
             # Apply self-funding adjustment only in optimize mode
-            if apply_self_funding:
-                sav_rem = max(Decimal(0), raw_savings / (1 + K))
-            else:
-                sav_rem = raw_savings
+            sav_rem = max(Decimal(0), raw_savings / (1 + K)) if apply_self_funding else raw_savings
 
             monthly_sweep_savings[(y, m)] = sav_rem
             monthly_sweep_wc_amount[(y, m)] = wc_amt
@@ -1261,7 +1278,6 @@ def get_fund_tracker(
                 ).filter(transfer_dest_filter, *ext_filter).scalar() or 0
 
                 actual_credits = Decimal(str(credits_non_tf)) + Decimal(str(credits_tf))
-                transfer_credits = Decimal(str(credits_tf))
 
                 # Debits = negative non-transfer postings + transfer source
                 debits_non_tf = session.query(
@@ -1688,7 +1704,7 @@ def get_fund_tracker(
         )
 
     except Exception as e:  # noqa: BLE001  # top-level endpoint boundary -> 400
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 # ─── Net Worth / Portfolio endpoint ───
@@ -1704,8 +1720,9 @@ def get_net_worth(
     and historical net worth progression.
     """
     try:
-        from src.services.price_service import PriceService
         from datetime import date
+
+        from src.services.price_service import PriceService
 
         price_service = PriceService()
 
@@ -1720,7 +1737,7 @@ def get_net_worth(
         # Load all accounts (exclude External)
         all_accounts = session.query(AccountModel).filter(
             AccountModel.workspace_id == workspace_id,
-            AccountModel.is_active == True,
+            AccountModel.is_active.is_(True),
             AccountModel.name != "External"
         ).all()
 
@@ -1770,10 +1787,6 @@ def get_net_worth(
             fx_rate = fx_rates.get(ccy, Decimal(1)) if ccy != base_currency else Decimal(1)
             base_value = native_balance * fx_rate
             unrealized_fx_gain = base_value - cost_basis
-
-            # Sign: liabilities are typically negative or we negate them
-            sign = Decimal(1) if acc.type == "asset" else Decimal(-1)
-            signed_base_value = base_value * sign
 
             if acc.type == "asset":
                 total_assets += base_value
@@ -1903,14 +1916,14 @@ def get_net_worth(
     except HTTPException:
         raise
     except Exception as e:  # noqa: BLE001  # top-level endpoint boundary -> 400
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 # ─── Monthly Dashboard schemas ───
 
 class FundCategoryAnalysis(BaseModel):
     """Category-level spending and budget for one fund"""
-    category_id: Optional[str] = None
+    category_id: str | None = None
     category_name: str
     category_emoji: str = ""
     amount_spent: float
@@ -1926,7 +1939,7 @@ class FundDashboardAnalysis(BaseModel):
     total_spent: float
     total_budget: float
     fund_balance: float = 0
-    categories: List[FundCategoryAnalysis]
+    categories: list[FundCategoryAnalysis]
 
 
 class FundExtractionItem(BaseModel):
@@ -1943,8 +1956,8 @@ class MonthlyDashboardResponse(BaseModel):
     year: int
     month: int
     currency: str = "SGD"
-    fund_analyses: List[FundDashboardAnalysis]
-    fund_extraction: List[FundExtractionItem]
+    fund_analyses: list[FundDashboardAnalysis]
+    fund_extraction: list[FundExtractionItem]
 
 
 # ─── Monthly Dashboard endpoint ───
@@ -1961,15 +1974,16 @@ def get_monthly_dashboard(
     plus fund extraction (allocation split) for the month.
     """
     try:
-        from src.data.repositories import ScenarioRepository, FundAllocationOverrideRepository
         from sqlalchemy.orm import joinedload
+
+        from src.data.repositories import FundAllocationOverrideRepository, ScenarioRepository
 
         # ── Load funds with account links (needed for balance computation) ──
         funds = session.query(FundModel).options(
             joinedload(FundModel.account_links).joinedload(FundAccountLinkModel.account)
         ).filter(
             FundModel.workspace_id == workspace_id,
-            FundModel.is_active == True,
+            FundModel.is_active.is_(True),
         ).order_by(FundModel.created_at).all()
 
         # ── Active scenario for budget benchmarks ──
@@ -1978,7 +1992,7 @@ def get_monthly_dashboard(
         budget_benchmark = Decimal(str(active_scenario.monthly_expenses_total)) if active_scenario else Decimal(0)
 
         # Parse category budgets from scenario assumptions
-        category_budgets_map: Dict[str, Decimal] = {}
+        category_budgets_map: dict[str, Decimal] = {}
         if active_scenario and active_scenario.assumptions_json:
             assumptions = json.loads(active_scenario.assumptions_json)
             for cb in assumptions.get("category_budgets", []):
@@ -2015,15 +2029,15 @@ def get_monthly_dashboard(
 
         # ── Precompute monthly incomes for all months Jan..selected month ──
         # Pure cash basis: use current month income (avoids redundant queries per fund)
-        monthly_incomes: Dict[int, Decimal] = {}
+        monthly_incomes: dict[int, Decimal] = {}
         for m in range(1, month + 1):
             monthly_incomes[m] = _get_income_for_month(session, workspace_id, year, m)
 
         allocated_fixed_cost = budget_benchmark
 
         # ── Pre-compute sweep savings per month ──
-        monthly_sweep_savings: Dict[int, Decimal] = {}
-        monthly_sweep_wc_amount: Dict[int, Decimal] = {}
+        monthly_sweep_savings: dict[int, Decimal] = {}
+        monthly_sweep_wc_amount: dict[int, Decimal] = {}
         wc_sweep_running = wc_opening
         for m_s in range(1, month + 1):
             K = Decimal(0)
@@ -2071,10 +2085,7 @@ def get_monthly_dashboard(
                 apply_self_funding = True
 
             # Apply self-funding adjustment only in optimize mode
-            if apply_self_funding:
-                sav_rem = max(Decimal(0), raw_savings / (1 + K))
-            else:
-                sav_rem = raw_savings
+            sav_rem = max(Decimal(0), raw_savings / (1 + K)) if apply_self_funding else raw_savings
 
             monthly_sweep_savings[m_s] = sav_rem
             monthly_sweep_wc_amount[m_s] = wc_amt
@@ -2216,7 +2227,7 @@ def get_monthly_dashboard(
             spend_rows = spend_q.all()
 
             # Build category spending map
-            cat_spend: Dict[str, tuple] = {}
+            cat_spend: dict[str, tuple] = {}
             total_spent = Decimal(0)
             for cat_id, cat_name, cat_emoji, total in spend_rows:
                 if total:
@@ -2291,4 +2302,4 @@ def get_monthly_dashboard(
         )
 
     except Exception as e:  # noqa: BLE001  # top-level endpoint boundary -> 400
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e

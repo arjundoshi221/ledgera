@@ -1,6 +1,6 @@
 """Shared FastAPI dependencies for auth and workspace scoping"""
 
-from fastapi import Request, HTTPException, status
+from fastapi import HTTPException, Request, status
 
 
 def get_user_id(request: Request) -> str:

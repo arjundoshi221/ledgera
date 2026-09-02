@@ -1,12 +1,12 @@
 """Admin-specific FastAPI dependencies"""
 
-from fastapi import HTTPException, status, Depends
+from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from src.data.database import get_session
-from src.data.repositories import UserRepository
-from src.data.models import UserModel
 from src.api.deps import get_user_id
+from src.data.database import get_session
+from src.data.models import UserModel
+from src.data.repositories import UserRepository
 
 
 def require_admin(

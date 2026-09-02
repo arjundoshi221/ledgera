@@ -1,20 +1,33 @@
 """Authentication endpoints"""
 
-import os
 import json
-from datetime import datetime, date
-from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Depends, Request, status
-from sqlalchemy.orm import Session
+import os
+from datetime import date, datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from config.settings import settings
-from src.data.database import get_session
-from src.data.repositories import UserRepository, WorkspaceRepository, FundRepository, CategoryRepository, PaymentMethodRepository
-from src.data.models import UserModel, WorkspaceModel, FundModel, CategoryModel, PaymentMethodModel, _utcnow_naive
-from src.services.auth_service import AuthService
 from src.api.deps import get_user_id
 from src.api.rate_limit import limiter
+from src.data.database import get_session
+from src.data.models import (
+    CategoryModel,
+    FundModel,
+    PaymentMethodModel,
+    UserModel,
+    WorkspaceModel,
+    _utcnow_naive,
+)
+from src.data.repositories import (
+    CategoryRepository,
+    FundRepository,
+    PaymentMethodRepository,
+    UserRepository,
+    WorkspaceRepository,
+)
+from src.services.auth_service import AuthService
 
 router = APIRouter()
 
@@ -36,9 +49,9 @@ class SignupRequest(BaseModel):
     first_name: str
     last_name: str
     date_of_birth: str
-    nationalities: List[str]
-    tax_residencies: List[str]
-    countries_of_interest: List[str] = []
+    nationalities: list[str]
+    tax_residencies: list[str]
+    countries_of_interest: list[str] = []
     phone_country_code: str
     phone_number: str
     address_line1: str
@@ -68,12 +81,12 @@ class FirebaseLoginRequest(BaseModel):
 
 
 class CompleteProfileRequest(BaseModel):
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
+    first_name: str | None = None
+    last_name: str | None = None
     date_of_birth: str
-    nationalities: List[str]
-    tax_residencies: List[str]
-    countries_of_interest: List[str] = []
+    nationalities: list[str]
+    tax_residencies: list[str]
+    countries_of_interest: list[str] = []
     phone_country_code: str
     phone_number: str
     address_line1: str
@@ -104,23 +117,23 @@ class UserResponse(BaseModel):
     first_name: str
     last_name: str
     workspace_id: str
-    date_of_birth: Optional[str] = None
-    nationalities: List[str] = []
-    tax_residencies: List[str] = []
-    countries_of_interest: List[str] = []
-    phone_country_code: Optional[str] = None
-    phone_number: Optional[str] = None
-    address_line1: Optional[str] = None
-    address_line2: Optional[str] = None
-    address_city: Optional[str] = None
-    address_state: Optional[str] = None
-    address_postal_code: Optional[str] = None
-    address_country: Optional[str] = None
-    tax_id_number: Optional[str] = None
+    date_of_birth: str | None = None
+    nationalities: list[str] = []
+    tax_residencies: list[str] = []
+    countries_of_interest: list[str] = []
+    phone_country_code: str | None = None
+    phone_number: str | None = None
+    address_line1: str | None = None
+    address_line2: str | None = None
+    address_city: str | None = None
+    address_state: str | None = None
+    address_postal_code: str | None = None
+    address_country: str | None = None
+    tax_id_number: str | None = None
     is_us_person: bool = False
-    tos_accepted_at: Optional[str] = None
-    privacy_accepted_at: Optional[str] = None
-    tos_version: Optional[str] = None
+    tos_accepted_at: str | None = None
+    privacy_accepted_at: str | None = None
+    tos_version: str | None = None
     profile_completed: bool = False
     auth_provider: str = "email"
     email_verified: bool = False
@@ -133,11 +146,11 @@ def _validate_age(date_of_birth: str):
     """Validate DOB format and enforce 18+ age gate."""
     try:
         dob = datetime.strptime(date_of_birth, "%Y-%m-%d").date()  # noqa: DTZ007  # date-only
-    except ValueError:
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="date_of_birth must be in YYYY-MM-DD format"
-        )
+        ) from exc
     today = date.today()  # noqa: DTZ011  # date-only
     age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
     if age < 18:
@@ -218,8 +231,8 @@ def _create_workspace_and_defaults(session: Session, user_id: str, base_currency
     )
     cat_repo.create(fx_fees_cat)
 
-    from src.data.repositories import AccountRepository
     from src.data.models import AccountModel
+    from src.data.repositories import AccountRepository
     account_repo = AccountRepository(session)
     external_account = AccountModel(
         workspace_id=workspace.id,
@@ -417,11 +430,11 @@ def google_login(
         if resp.status_code != 200:
             raise ValueError("Invalid token")
         idinfo = resp.json()
-    except (http_requests.RequestException, ValueError):
+    except (http_requests.RequestException, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid Google token"
-        )
+        ) from exc
 
     email = idinfo.get("email")
     if not email:
@@ -567,15 +580,16 @@ def firebase_login(
 ):
     """Authenticate via Firebase ID token. Creates user on first login."""
     from firebase_admin.exceptions import FirebaseError
+
     from src.services.firebase_service import verify_firebase_token
 
     try:
         decoded = verify_firebase_token(req.id_token)
-    except FirebaseError:
+    except FirebaseError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid Firebase token"
-        )
+        ) from exc
 
     firebase_uid = decoded["uid"]
     email = decoded.get("email", "")
@@ -671,15 +685,16 @@ def update_verification(
 ):
     """After user verifies email or phone in Firebase, update our DB."""
     from firebase_admin.exceptions import FirebaseError
+
     from src.services.firebase_service import verify_firebase_token
 
     try:
         decoded = verify_firebase_token(req.id_token)
-    except FirebaseError:
+    except FirebaseError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid Firebase token"
-        )
+        ) from exc
 
     user_repo = UserRepository(session)
     user = user_repo.read(user_id)
@@ -708,7 +723,8 @@ def provision_firebase(
     """Create a Firebase account for an existing email-only user and return a custom token."""
     from firebase_admin import auth as firebase_auth
     from firebase_admin.exceptions import FirebaseError
-    from src.services.firebase_service import create_firebase_user, create_custom_token
+
+    from src.services.firebase_service import create_custom_token, create_firebase_user
 
     user_repo = UserRepository(session)
     user = user_repo.read(user_id)
@@ -727,7 +743,7 @@ def provision_firebase(
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Could not create Firebase account",
-                )
+                ) from e
         user.firebase_uid = firebase_uid
         user_repo.update(user)
 

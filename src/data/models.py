@@ -1,12 +1,22 @@
 """SQLAlchemy database models"""
 
+import uuid
+from datetime import UTC, datetime
+
 from sqlalchemy import (
-    Column, String, Numeric, DateTime, ForeignKey,
-    Enum, Text, Boolean, Table, Index, Integer, LargeBinary
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    Numeric,
+    String,
+    Table,
+    Text,
 )
 from sqlalchemy.orm import declarative_base, relationship
-from datetime import datetime, UTC
-import uuid
 
 Base = declarative_base()
 

@@ -1,8 +1,10 @@
 """FastAPI application and routes"""
 
+import contextlib
 import logging
 import os
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -12,14 +14,28 @@ from sqlalchemy import text
 
 from config.settings import settings
 from src.data.database import get_session, init_db
+
 from .errors import AppError
 from .logging_config import configure_logging
-from .schemas import HealthResponse
-from .routes import accounts, transactions, projections, prices, auth, workspace, categories, analytics, payments, recurring, admin, bugs
 from .middleware import AuthMiddleware
 from .middleware_cache import CacheControlMiddleware
 from .rate_limit import limiter
 from .request_id import REQUEST_ID_HEADER, RequestIDMiddleware
+from .routes import (
+    accounts,
+    admin,
+    analytics,
+    auth,
+    bugs,
+    categories,
+    payments,
+    prices,
+    projections,
+    recurring,
+    transactions,
+    workspace,
+)
+from .schemas import HealthResponse
 
 logger = logging.getLogger(__name__)
 
@@ -145,12 +161,10 @@ async def health_ready():
         raise HTTPException(
             status_code=503,
             detail=f"not ready: {type(exc).__name__}",
-        )
+        ) from exc
     finally:
-        try:
+        with contextlib.suppress(StopIteration):
             gen.close()
-        except StopIteration:
-            pass
     return HealthResponse(status="ok")
 
 

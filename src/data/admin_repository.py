@@ -1,21 +1,23 @@
 """Repository for admin-level data access (cross-tenant)"""
 
-from typing import List, Optional, Tuple
 from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
-from sqlalchemy import func, distinct, case, String
-from sqlalchemy.sql import expression
+
+from sqlalchemy import String, case, distinct, func, text
 from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.orm import Session
+from sqlalchemy.sql import expression
 from sqlalchemy.types import Date as DateType
 
-from sqlalchemy import text
 from .models import (
-    UserModel, WorkspaceModel, TransactionModel,
-    AccountModel, ScenarioModel, FundModel, RecurringTransactionModel,
-    AuditLogModel,
+    AccountModel,
+    FundModel,
+    RecurringTransactionModel,
+    ScenarioModel,
+    TransactionModel,
+    UserModel,
+    WorkspaceModel,
     _utcnow_naive,
 )
-
 
 # ── Cross-dialect SQL helpers ──
 
@@ -57,13 +59,13 @@ class AdminRepository:
 
     def list_users(
         self,
-        search: Optional[str] = None,
-        auth_provider: Optional[str] = None,
-        is_admin: Optional[bool] = None,
-        is_disabled: Optional[bool] = None,
+        search: str | None = None,
+        auth_provider: str | None = None,
+        is_admin: bool | None = None,
+        is_disabled: bool | None = None,
         offset: int = 0,
         limit: int = 50,
-    ) -> Tuple[List[UserModel], int]:
+    ) -> tuple[list[UserModel], int]:
         """List all users with search/filter, returns (users, total_count)"""
         query = self.session.query(UserModel)
 
@@ -85,11 +87,11 @@ class AdminRepository:
         users = query.order_by(UserModel.created_at.desc()).offset(offset).limit(limit).all()
         return users, total
 
-    def get_user_detail(self, user_id: str) -> Optional[UserModel]:
+    def get_user_detail(self, user_id: str) -> UserModel | None:
         """Get a single user by ID"""
         return self.session.query(UserModel).filter(UserModel.id == user_id).first()
 
-    def disable_user(self, user_id: str) -> Optional[UserModel]:
+    def disable_user(self, user_id: str) -> UserModel | None:
         """Disable a user account"""
         user = self.get_user_detail(user_id)
         if user:
@@ -98,7 +100,7 @@ class AdminRepository:
             self.session.commit()
         return user
 
-    def enable_user(self, user_id: str) -> Optional[UserModel]:
+    def enable_user(self, user_id: str) -> UserModel | None:
         """Enable a user account"""
         user = self.get_user_detail(user_id)
         if user:
@@ -107,7 +109,7 @@ class AdminRepository:
             self.session.commit()
         return user
 
-    def promote_to_admin(self, user_id: str) -> Optional[UserModel]:
+    def promote_to_admin(self, user_id: str) -> UserModel | None:
         """Promote a user to admin"""
         user = self.get_user_detail(user_id)
         if user:
@@ -116,7 +118,7 @@ class AdminRepository:
             self.session.commit()
         return user
 
-    def demote_from_admin(self, user_id: str) -> Optional[UserModel]:
+    def demote_from_admin(self, user_id: str) -> UserModel | None:
         """Remove admin role from a user"""
         user = self.get_user_detail(user_id)
         if user:
@@ -241,7 +243,7 @@ class AdminRepository:
 
     # ── Growth Metrics ──
 
-    def get_signups_by_period(self, days: int = 90) -> List[dict]:
+    def get_signups_by_period(self, days: int = 90) -> list[dict]:
         """Daily signup counts for the last N days"""
         cutoff = _utcnow_naive() - timedelta(days=days)
         results = self.session.query(
@@ -256,7 +258,7 @@ class AdminRepository:
         ).all()
         return [{"date": str(r.date), "count": r.count} for r in results]
 
-    def get_dau(self, days: int = 30) -> List[dict]:
+    def get_dau(self, days: int = 30) -> list[dict]:
         """Daily active users (users who logged in) for last N days"""
         cutoff = _utcnow_naive() - timedelta(days=days)
         results = self.session.query(
@@ -272,7 +274,7 @@ class AdminRepository:
         ).all()
         return [{"date": str(r.date), "count": r.count} for r in results]
 
-    def get_mau(self, months: int = 12) -> List[dict]:
+    def get_mau(self, months: int = 12) -> list[dict]:
         """Monthly active users for the last N months"""
         cutoff = _utcnow_naive() - timedelta(days=months * 31)
         results = self.session.query(
@@ -290,7 +292,7 @@ class AdminRepository:
 
     # ── User Analytics ──
 
-    def get_auth_provider_breakdown(self) -> List[dict]:
+    def get_auth_provider_breakdown(self) -> list[dict]:
         """Count users by auth_provider (email vs google)"""
         results = self.session.query(
             UserModel.auth_provider,
@@ -308,7 +310,7 @@ class AdminRepository:
         ).scalar() or 0
         return {"completed": completed, "incomplete": incomplete}
 
-    def get_geographic_distribution(self) -> List[dict]:
+    def get_geographic_distribution(self) -> list[dict]:
         """Users by address_country"""
         results = self.session.query(
             UserModel.address_country,
@@ -321,7 +323,7 @@ class AdminRepository:
         ).all()
         return [{"country": r.address_country, "count": r.count} for r in results]
 
-    def get_age_breakdown(self) -> List[dict]:
+    def get_age_breakdown(self) -> list[dict]:
         """Age distribution of users in brackets: 18-24, 25-34, 35-44, 45-54, 55-64, 65+"""
         users = self.session.query(UserModel.date_of_birth).filter(
             UserModel.date_of_birth.isnot(None),
@@ -355,7 +357,7 @@ class AdminRepository:
 
         return [{"bracket": k, "count": v} for k, v in buckets.items() if v > 0]
 
-    def get_retention_cohorts(self, months: int = 6) -> List[dict]:
+    def get_retention_cohorts(self, months: int = 6) -> list[dict]:
         """Monthly cohort retention: signup month vs last_login_at"""
         cutoff = _utcnow_naive() - timedelta(days=months * 31)
         results = self.session.query(

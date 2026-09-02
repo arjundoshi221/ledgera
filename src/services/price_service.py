@@ -2,9 +2,9 @@
 
 import logging
 from abc import ABC, abstractmethod
+from datetime import date, datetime
 from decimal import Decimal
-from datetime import datetime, date
-from typing import Optional, Dict, List, Tuple
+
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -39,7 +39,7 @@ class PriceProvider(ABC):
         base_ccy: str,
         quote_ccy: str,
         as_of: datetime = None
-    ) -> Optional[Decimal]:
+    ) -> Decimal | None:
         """Get exchange rate between two currencies"""
         pass
 
@@ -48,7 +48,7 @@ class PriceProvider(ABC):
         self,
         symbol: str,
         as_of: datetime = None
-    ) -> Optional[Decimal]:
+    ) -> Decimal | None:
         """Get stock/ETF price"""
         pass
 
@@ -59,7 +59,7 @@ class PriceProvider(ABC):
         quote_ccy: str,
         start_date: date,
         end_date: date
-    ) -> Dict[date, Decimal]:
+    ) -> dict[date, Decimal]:
         """Get historical daily rates for a date range"""
         pass
 
@@ -72,7 +72,7 @@ class YahooFinancePriceProvider(PriceProvider):
         base_ccy: str,
         quote_ccy: str,
         as_of: datetime = None
-    ) -> Optional[Decimal]:
+    ) -> Decimal | None:
         if base_ccy == quote_ccy:
             return Decimal(1)
 
@@ -96,7 +96,7 @@ class YahooFinancePriceProvider(PriceProvider):
         self,
         symbol: str,
         as_of: datetime = None
-    ) -> Optional[Decimal]:
+    ) -> Decimal | None:
         try:
             ticker = _get_yf().Ticker(symbol)
             data = ticker.history(period="5d")
@@ -116,7 +116,7 @@ class YahooFinancePriceProvider(PriceProvider):
         quote_ccy: str,
         start_date: date,
         end_date: date
-    ) -> Dict[date, Decimal]:
+    ) -> dict[date, Decimal]:
         if base_ccy == quote_ccy:
             return {}
 
@@ -207,9 +207,9 @@ class PriceService:
 
     def get_bulk_fx_rates(
         self,
-        pairs: List[Tuple[str, str]],
+        pairs: list[tuple[str, str]],
         session: Session = None
-    ) -> Dict[Tuple[str, str], Decimal]:
+    ) -> dict[tuple[str, str], Decimal]:
         """Fetch rates for multiple currency pairs"""
         result = {}
         for base_ccy, quote_ccy in pairs:
@@ -223,7 +223,7 @@ class PriceService:
         start_date: date,
         end_date: date,
         session: Session = None
-    ) -> Dict[date, Decimal]:
+    ) -> dict[date, Decimal]:
         """
         Get historical daily rates. Fetches from Yahoo Finance and persists to DB.
         Returns dict of {date: rate}.
@@ -280,6 +280,6 @@ class PriceService:
         self,
         symbol: str,
         as_of: datetime = None
-    ) -> Optional[Decimal]:
+    ) -> Decimal | None:
         """Get security price"""
         return self.primary_provider.get_stock_price(symbol, as_of)

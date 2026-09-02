@@ -1,8 +1,8 @@
 """Repository for audit log operations"""
 
 import json
-from typing import List, Tuple, Optional
 from datetime import timedelta
+
 from sqlalchemy.orm import Session
 
 from .models import AuditLogModel, _utcnow_naive
@@ -18,11 +18,11 @@ class AuditLogRepository:
         self,
         actor_user_id: str,
         action: str,
-        target_type: Optional[str] = None,
-        target_id: Optional[str] = None,
-        details: Optional[str] = None,
-        ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None,
+        target_type: str | None = None,
+        target_id: str | None = None,
+        details: str | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
     ) -> AuditLogModel:
         """Create an audit log entry"""
         entry = AuditLogModel(
@@ -40,14 +40,14 @@ class AuditLogRepository:
 
     def list_logs(
         self,
-        action_prefix: Optional[str] = None,
-        actor_user_id: Optional[str] = None,
-        target_type: Optional[str] = None,
-        target_id: Optional[str] = None,
+        action_prefix: str | None = None,
+        actor_user_id: str | None = None,
+        target_type: str | None = None,
+        target_id: str | None = None,
         days: int = 30,
         offset: int = 0,
         limit: int = 100,
-    ) -> Tuple[List[AuditLogModel], int]:
+    ) -> tuple[list[AuditLogModel], int]:
         """Query audit logs with filters, returns (logs, total_count)"""
         query = self.session.query(AuditLogModel)
         cutoff = _utcnow_naive() - timedelta(days=days)

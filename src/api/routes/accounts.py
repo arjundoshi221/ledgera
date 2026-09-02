@@ -4,12 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from src.data.database import get_session
-from src.data.repositories import AccountRepository, TransferPostingsExistError
-from src.data.models import AccountModel
-from src.api.schemas import AccountCreate, AccountResponse
 from src.api.deps import get_workspace_id
 from src.api.errors import Conflict, NotFound, TransferConflict
+from src.api.schemas import AccountCreate, AccountResponse
+from src.data.database import get_session
+from src.data.models import AccountModel
+from src.data.repositories import AccountRepository, TransferPostingsExistError
 
 router = APIRouter()
 
@@ -147,10 +147,10 @@ def delete_account(
             f"Account is part of {exc.count} transfer transaction(s) with other "
             "accounts. Delete those transfers first, then retry.",
             count=exc.count,
-        )
-    except IntegrityError:
+        ) from exc
+    except IntegrityError as exc:
         raise Conflict(
             "Account has linked records that could not be removed. "
             "Please contact support if this persists."
-        )
+        ) from exc
     return {"message": "Account deleted"}

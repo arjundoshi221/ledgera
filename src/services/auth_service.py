@@ -1,12 +1,10 @@
 """Authentication service — JWT, password hashing, signup/login"""
 
-from datetime import datetime, timedelta, UTC
-from typing import Optional, Tuple
-from uuid import UUID
 import hashlib
-import hmac
+from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
-from jwt import encode, decode, ExpiredSignatureError, InvalidTokenError
+from jwt import ExpiredSignatureError, InvalidTokenError, decode, encode
 from passlib.context import CryptContext
 
 # Password hashing
@@ -19,7 +17,7 @@ class AuthService:
     def __init__(self, secret_key: str, algorithm: str = "HS256", token_expiry_hours: int = 24):
         """
         Initialize auth service.
-        
+
         Args:
             secret_key: Secret for JWT signing (use environment variable in production)
             algorithm: JWT algorithm (default HS256)
@@ -40,11 +38,11 @@ class AuthService:
     def create_access_token(self, user_id: UUID, workspace_id: UUID) -> str:
         """
         Create JWT token.
-        
+
         Args:
             user_id: User UUID
             workspace_id: Workspace UUID
-            
+
         Returns:
             JWT token as string
         """
@@ -57,13 +55,13 @@ class AuthService:
         token = encode(payload, self.secret_key, algorithm=self.algorithm)
         return token
 
-    def decode_access_token(self, token: str) -> Optional[Tuple[UUID, UUID]]:
+    def decode_access_token(self, token: str) -> tuple[UUID, UUID] | None:
         """
         Decode and validate JWT token.
-        
+
         Args:
             token: JWT token string
-            
+
         Returns:
             (user_id, workspace_id) or None if invalid
         """
@@ -78,12 +76,12 @@ class AuthService:
     def compute_import_hash(self, payee: str, amount: str, date: str) -> str:
         """
         Compute SHA-256 hash for transaction deduplication.
-        
+
         Args:
             payee: Transaction payee
             amount: Amount as string (e.g., "5000")
             date: Date as string (e.g., "2026-01-15")
-            
+
         Returns:
             Hex SHA-256 hash
         """

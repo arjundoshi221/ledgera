@@ -1,23 +1,35 @@
 """Transaction endpoints"""
 
-from decimal import Decimal, InvalidOperation
-from typing import Optional, List, Dict
 import io
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
+
 from dateutil import parser as date_parser
 
 # pandas is imported lazily inside the two file-upload handlers below.
 # Cold-import of pandas is 1.5-2s; deferring it keeps FastAPI startup fast
 # (see B4). Do NOT reintroduce a module-level `import pandas as pd`.
-
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
-from datetime import datetime
 
-from src.data.database import get_session
-from src.data.repositories import TransactionRepository, AccountRepository
-from src.data.models import TransactionModel, PostingModel, FundAccountLinkModel, FundModel, AccountModel, CategoryModel
-from src.api.schemas import TransactionCreate, TransferCreate, FileHeadersResponse, ParsedTransaction, FileParseResult
 from src.api.deps import get_workspace_id
+from src.api.schemas import (
+    FileHeadersResponse,
+    FileParseResult,
+    ParsedTransaction,
+    TransactionCreate,
+    TransferCreate,
+)
+from src.data.database import get_session
+from src.data.models import (
+    AccountModel,
+    CategoryModel,
+    FundAccountLinkModel,
+    FundModel,
+    PostingModel,
+    TransactionModel,
+)
+from src.data.repositories import AccountRepository, TransactionRepository
 
 router = APIRouter()
 
@@ -129,14 +141,14 @@ def create_transaction(
     return _serialize_tx(db_tx)
 
 
-def _auto_detect_fund(session: Session, account_id: str, workspace_id: str) -> Optional[str]:
+def _auto_detect_fund(session: Session, account_id: str, workspace_id: str) -> str | None:
     """If an account is linked to exactly one active fund, return that fund_id."""
     links = session.query(FundAccountLinkModel).join(
         FundModel, FundAccountLinkModel.fund_id == FundModel.id
     ).filter(
         FundAccountLinkModel.account_id == account_id,
         FundModel.workspace_id == workspace_id,
-        FundModel.is_active == True
+        FundModel.is_active.is_(True)
     ).all()
 
     if len(links) == 1:
@@ -241,7 +253,7 @@ def create_transfer(
             fx_fees_cat = session.query(CategoryModel).filter(
                 CategoryModel.workspace_id == workspace_id,
                 CategoryModel.name == "FX Fees",
-                CategoryModel.is_system == True
+                CategoryModel.is_system.is_(True)
             ).first()
             if fx_fees_cat:
                 fee_category_id = fx_fees_cat.id
@@ -415,7 +427,7 @@ AMOUNT_PATTERNS = ["amount", "value", "transaction amount", "amt"]
 MEMO_PATTERNS = ["memo", "reference", "ref", "remarks", "notes", "comment"]
 
 
-def _suggest_column_mapping(headers: List[str]) -> Dict[str, str]:
+def _suggest_column_mapping(headers: list[str]) -> dict[str, str]:
     """Auto-suggest column mapping based on header names"""
     mapping = {}
     headers_lower = [h.lower().strip() for h in headers]
@@ -506,10 +518,10 @@ async def read_file_headers(
             sheet_name=sheet_name
         )
 
-    except pd.errors.EmptyDataError:
-        raise HTTPException(status_code=400, detail="File is empty")
+    except pd.errors.EmptyDataError as exc:
+        raise HTTPException(status_code=400, detail="File is empty") from exc
     except Exception as e:  # noqa: BLE001  # top-level endpoint boundary -> 400
-        raise HTTPException(status_code=400, detail=f"Error reading file: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error reading file: {str(e)}") from e
 
 
 @router.post("/parse-file", response_model=FileParseResult)
@@ -518,7 +530,7 @@ async def parse_file(
     account_id: str = Form(...),
     column_mapping: str = Form(...),  # JSON string
     file_type: str = Form(...),
-    sheet_name: Optional[str] = Form(None),
+    sheet_name: str | None = Form(None),
     workspace_id: str = Depends(get_workspace_id),
     session: Session = Depends(get_session)
 ):
@@ -526,6 +538,7 @@ async def parse_file(
     Parse CSV or XLSX file using user-confirmed column mapping and return parsed transactions.
     """
     import json
+
     import pandas as pd  # lazy: see B4
 
     try:
@@ -657,9 +670,9 @@ async def parse_file(
             account_name=account.name
         )
 
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid column mapping JSON")
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Invalid column mapping JSON") from exc
     except KeyError as e:
-        raise HTTPException(status_code=400, detail=f"Column not found in file: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Column not found in file: {str(e)}") from e
     except Exception as e:  # noqa: BLE001  # top-level endpoint boundary -> 400
-        raise HTTPException(status_code=400, detail=f"Error parsing file: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error parsing file: {str(e)}") from e

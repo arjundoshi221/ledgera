@@ -1,15 +1,15 @@
 """Bug report API routes (user-facing)"""
 
 import logging
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from sqlalchemy.orm import Session
-from pydantic import BaseModel
 
-from src.data.database import get_session
-from src.data.bug_repository import BugReportRepository
-from src.data.repositories import UserRepository
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
 from src.api.deps import get_user_id
+from src.data.bug_repository import BugReportRepository
+from src.data.database import get_session
+from src.data.repositories import UserRepository
 from src.services.email_service import send_bug_report_confirmation
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ class BugReportResponse(BaseModel):
     media_count: int
     created_at: str
     updated_at: str
-    resolved_at: Optional[str] = None
+    resolved_at: str | None = None
 
 
 # ── Endpoints ──
@@ -52,7 +52,7 @@ class BugReportResponse(BaseModel):
 async def create_bug_report(
     title: str = Form(...),
     description: str = Form(...),
-    files: List[UploadFile] = File(default=[]),
+    files: list[UploadFile] = File(default=[]),
     user_id: str = Depends(get_user_id),
     session: Session = Depends(get_session),
 ):
@@ -116,7 +116,7 @@ async def create_bug_report(
     )
 
 
-@router.get("", response_model=List[BugReportResponse])
+@router.get("", response_model=list[BugReportResponse])
 def list_my_bug_reports(
     user_id: str = Depends(get_user_id),
     session: Session = Depends(get_session),

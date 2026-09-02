@@ -1,5 +1,6 @@
 """Authentication middleware"""
 
+import contextlib
 import logging
 
 from fastapi import Request, status
@@ -75,10 +76,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     content={"detail": "auth check unavailable"},
                 )
         finally:
-            try:
+            with contextlib.suppress(StopIteration):
                 gen.close()
-            except StopIteration:
-                pass
 
         if disabled:
             return JSONResponse(
