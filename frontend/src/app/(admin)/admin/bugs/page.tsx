@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
+import Image from "next/image"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -353,9 +354,15 @@ export default function AdminBugsPage() {
                               <div className="text-sm text-muted-foreground animate-pulse py-2">Loading image...</div>
                             )}
                             {mediaUrls[m.id] && (
-                              <img
+                              /* unoptimized: src is a runtime blob URL (URL.createObjectURL),
+                                 so Next's image optimizer has nothing to work with. width/height
+                                 are placeholders — actual aspect preserved by object-contain. */
+                              <Image
                                 src={mediaUrls[m.id]}
                                 alt={m.filename}
+                                width={800}
+                                height={600}
+                                unoptimized
                                 className="rounded-md max-h-[300px] w-auto object-contain"
                               />
                             )}
