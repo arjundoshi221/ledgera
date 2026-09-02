@@ -53,6 +53,9 @@ dependencies = [
 
     # Rate limiting (in-memory backend; Redis recommended for production)
     "slowapi>=0.1.9",
+
+    # Error tracking (no-op when SENTRY_DSN is unset)
+    "sentry-sdk[fastapi]>=2.0.0",
 ]
 
 [project.optional-dependencies]

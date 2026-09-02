@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
+import * as Sentry from "@sentry/nextjs"
 import { Button } from "@/components/ui/button"
 
 export default function RootError({
@@ -11,7 +12,9 @@ export default function RootError({
   reset: () => void
 }) {
   useEffect(() => {
-    // TODO: hook into observability once B20 lands (Sentry.captureException(error))
+    // Sentry.init is a no-op when NEXT_PUBLIC_SENTRY_DSN is unset, so
+    // captureException here is safe to call unconditionally.
+    Sentry.captureException(error)
     console.error("[root error boundary]", error)
   }, [error])
 

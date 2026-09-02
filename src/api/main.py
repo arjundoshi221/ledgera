@@ -3,27 +3,55 @@
 import logging
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy import text
 
 from config.settings import settings
-from src.data.database import init_db
+from src.data.database import get_session, init_db
 from .errors import AppError
+from .logging_config import configure_logging
 from .schemas import HealthResponse
 from .routes import accounts, transactions, projections, prices, auth, workspace, categories, analytics, payments, recurring, admin, bugs
 from .middleware import AuthMiddleware
 from .middleware_cache import CacheControlMiddleware
 from .rate_limit import limiter
+from .request_id import REQUEST_ID_HEADER, RequestIDMiddleware
 
 logger = logging.getLogger(__name__)
+
+
+def _init_sentry() -> None:
+    """Initialize Sentry only when SENTRY_DSN is set. No-op otherwise."""
+    sentry_dsn = os.environ.get("SENTRY_DSN")
+    if not sentry_dsn:
+        logger.info("SENTRY_DSN not set — error tracking disabled")
+        return
+
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
+
+    sentry_sdk.init(
+        dsn=sentry_dsn,
+        integrations=[FastApiIntegration(), StarletteIntegration()],
+        traces_sample_rate=0.1,
+        profiles_sample_rate=0.0,
+        environment=os.environ.get("RAILWAY_ENVIRONMENT_NAME", "local"),
+        release=os.environ.get("RAILWAY_DEPLOYMENT_ID"),
+    )
+    logger.info("Sentry initialized")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize database on startup"""
+    configure_logging()
+    _init_sentry()
+
     db_url = os.environ.get("DATABASE_URL", "sqlite:///./ledgera.db")
     init_db(db_url)
 
@@ -58,6 +86,11 @@ app.add_middleware(CacheControlMiddleware)
 # JWT authentication middleware (runs after CORS, before cache)
 app.add_middleware(AuthMiddleware)
 
+# Request-ID middleware — runs OUTSIDE auth so the correlation ID is available
+# for every log line, including auth failures. Starlette adds middleware in
+# LIFO order, so the last add_middleware is the outermost wrapper.
+app.add_middleware(RequestIDMiddleware)
+
 # CORS configuration (outer — wraps ALL responses including auth errors)
 # Origins are enumerated explicitly via ALLOWED_ORIGINS env var. Wildcard +
 # credentials is spec-invalid and browsers ignore credentials in that combo.
@@ -68,8 +101,8 @@ app.add_middleware(
     allow_methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     # If adding a client-side SDK that decorates fetch (Sentry, OTel, analytics),
     # add its headers here — narrow list is intentional, see B33.
-    allow_headers=["Authorization", "Content-Type", "If-None-Match"],
-    expose_headers=["ETag"],
+    allow_headers=["Authorization", "Content-Type", "If-None-Match", REQUEST_ID_HEADER],
+    expose_headers=["ETag", REQUEST_ID_HEADER],
     max_age=600,
 )
 
@@ -90,7 +123,34 @@ async def root():
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Health check endpoint"""
+    """Backward-compat liveness probe (Railway hits this)."""
+    return HealthResponse(status="ok")
+
+
+@app.get("/health/live", response_model=HealthResponse)
+async def health_live():
+    """Kubernetes-style liveness — process is up, no dep checks."""
+    return HealthResponse(status="ok")
+
+
+@app.get("/health/ready", response_model=HealthResponse)
+async def health_ready():
+    """Readiness probe — verifies the DB is reachable via SELECT 1."""
+    gen = get_session()
+    try:
+        session = next(gen)
+        session.execute(text("SELECT 1"))
+    except Exception as exc:
+        logger.exception("readiness probe failed")
+        raise HTTPException(
+            status_code=503,
+            detail=f"not ready: {type(exc).__name__}",
+        )
+    finally:
+        try:
+            gen.close()
+        except StopIteration:
+            pass
     return HealthResponse(status="ok")
 
 

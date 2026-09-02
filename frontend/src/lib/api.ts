@@ -79,8 +79,9 @@ class ApiError extends Error {
   body: unknown
   code?: string
   extra?: Record<string, unknown>
+  requestId?: string
 
-  constructor(status: number, body: unknown) {
+  constructor(status: number, body: unknown, requestId?: string) {
     let message = `API error ${status}`
     let code: string | undefined
     let extra: Record<string, unknown> | undefined
@@ -103,6 +104,7 @@ class ApiError extends Error {
     this.body = body
     this.code = code
     this.extra = extra
+    this.requestId = requestId
   }
 }
 
@@ -112,15 +114,27 @@ export { ApiError }
  * Core fetch helper that prepends the base URL, attaches the Bearer token
  * (when available), and returns parsed JSON typed as T.
  */
+function newRequestId(): string {
+  // crypto.randomUUID exists in modern browsers + Node 18+. Fall back to a
+  // Math.random-based id only for ancient runtimes so a missing polyfill
+  // never breaks the fetch.
+  const c: Crypto | undefined =
+    typeof crypto !== "undefined" ? (crypto as Crypto) : undefined
+  if (c && typeof c.randomUUID === "function") return c.randomUUID()
+  return `r-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`
+}
+
 async function apiFetch<T>(
   path: string,
   options?: RequestInit
 ): Promise<T> {
   const token = getToken()
   const method = (options?.method ?? "GET").toUpperCase()
+  const requestId = newRequestId()
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    "X-Request-Id": requestId,
     ...(options?.headers as Record<string, string> | undefined),
   }
 
@@ -140,10 +154,12 @@ async function apiFetch<T>(
     headers,
   })
 
+  const echoedRequestId = response.headers.get("X-Request-Id") ?? requestId
+
   if (method === "GET" && response.status === 304) {
     const cached = etagCache.get(path)
     if (cached) return cached.body as T
-    throw new ApiError(304, { detail: "Received 304 without cached body" })
+    throw new ApiError(304, { detail: "Received 304 without cached body" }, echoedRequestId)
   }
 
   if (!response.ok) {
@@ -153,7 +169,7 @@ async function apiFetch<T>(
     } catch {
       body = await response.text()
     }
-    throw new ApiError(response.status, body)
+    throw new ApiError(response.status, body, echoedRequestId)
   }
 
   const body = (await response.json()) as T
@@ -755,7 +771,8 @@ export async function skipRecurring(
 
 async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
   const token = getToken()
-  const headers: Record<string, string> = {}
+  const requestId = newRequestId()
+  const headers: Record<string, string> = { "X-Request-Id": requestId }
   if (token) {
     headers["Authorization"] = `Bearer ${token}`
   }
@@ -764,10 +781,11 @@ async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
     headers,
     body: formData,
   })
+  const echoedRequestId = response.headers.get("X-Request-Id") ?? requestId
   if (!response.ok) {
     let body: unknown
     try { body = await response.json() } catch { body = await response.text() }
-    throw new ApiError(response.status, body)
+    throw new ApiError(response.status, body, echoedRequestId)
   }
   return response.json() as Promise<T>
 }
