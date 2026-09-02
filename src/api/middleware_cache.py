@@ -73,12 +73,14 @@ class CacheControlMiddleware(BaseHTTPMiddleware):
         cache_strategy = self._get_cache_strategy(path)
 
         if cache_strategy:
-            # Add Cache-Control header
-            max_age = cache_strategy["max_age"]
-            swr = cache_strategy["swr"]
-            response.headers["Cache-Control"] = (
-                f"max-age={max_age}, stale-while-revalidate={swr}, private"
-            )
+            # `no-cache` (not `no-store`): browser MAY store the body, but MUST
+            # revalidate with the server before serving it. Combined with the
+            # ETag we generate below, this gives us a 304 fast path for
+            # unchanged data without ever serving a stale body across a
+            # mutation. Previous `max-age=N, stale-while-revalidate=M` allowed
+            # the browser to skip the network entirely for up to N seconds,
+            # which meant post-DELETE refetches returned the pre-DELETE body.
+            response.headers["Cache-Control"] = "no-cache, private"
 
             # Add Vary header for user-specific caching
             # This ensures different users get different cache entries
