@@ -29,6 +29,8 @@ If your fix has zero downstream impact, say so explicitly. Don't just leave it o
 - Only then propose the fix.
 - After fixing, run the new test AND the existing tests. If any existing test breaks, that's a hint you missed something in blast radius.
 
+**Backend changes that touch exceptions, auth, or imports: always run `pytest -q` before reporting done, even if the bug isn't nominally a "test bug".** A test suite catches AttributeError on non-existent exception classes, silent-swallow reintroductions, and other runtime regressions that grep and static reading can't. Real prior incident: a bare `except Exception:` was narrowed to `except firebase_auth.FirebaseError:` — the class doesn't exist at that attribute path, so every real Firebase failure would AttributeError at except-clause evaluation and 500 in prod. Would have been caught in ~90s by running pytest.
+
 ## 3. Cleanliness of code
 
 Every fix ships modern-idiomatic code:
@@ -43,6 +45,25 @@ Every fix ships modern-idiomatic code:
   - Python: `datetime.now(timezone.utc)`, structured errors, typed everything, `pyproject.toml`
   - TypeScript: no `any`, typed API responses, `next/dynamic` for heavy imports, error boundaries
   - No `print` statements — use `logger`. No `console.log` in shipped code.
+
+## 3b. Verify runtime symbols exist before catching or referencing them
+
+When narrowing `except Exception:` to a specific class, when calling a function you found via grep, or when using an attribute like `some_module.SomeClass`: **verify the symbol actually exists at that path.** Grep matches strings — it does not prove the class is exported at that attribute name.
+
+- Cheap check: `python -c "from <module> import <symbol>"` in the shell. If it imports, it exists.
+- Better: also verify the specific runtime error you expect to catch actually inherits from your target base. Example: `python -c "from firebase_admin.exceptions import FirebaseError; from firebase_admin.auth import InvalidIdTokenError; assert issubclass(InvalidIdTokenError, FirebaseError)"`.
+- If you moved an import to inside a function (lazy import), the import still has to resolve when the function runs — verify by actually calling the code path or writing a test that does.
+
+The narrow-catch lesson generalizes: any code change that *references a name* — an exception class, a function, an attribute, a config field — needs runtime verification, not just "grep found something that looks right."
+
+## 3c. Docker / infrastructure changes you cannot verify locally
+
+If Docker daemon is not running in the shell, or you cannot run the actual deploy target, do NOT claim the change "works." State clearly:
+- Which local verification you ran (e.g. `pip install .`, `ruff check`, syntactic review).
+- Which verification you SKIPPED and why (e.g. "Docker daemon not running — did not run `docker build`").
+- What the caller should watch in the Railway/prod deploy log to detect failure (specific log lines that would appear if the change is broken).
+
+The caller can decide whether to redeploy blind or start Docker Desktop and re-verify. Silence about unverified assumptions is what led to the frontend Dockerfile shipping with `NODE_ENV=production` hoisted to the base stage, which made `npm ci` skip devDependencies and broke the whole build.
 
 ## 4. Fix scope discipline
 
