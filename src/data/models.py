@@ -101,10 +101,22 @@ class AccountModel(Base):
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     # Relationships
+    # passive_deletes=True lets Postgres's ON DELETE CASCADE do the actual work
+    # instead of SQLAlchemy issuing per-row DELETEs (needed for large child sets
+    # and to avoid the ORM trying to null non-nullable FKs before the DB cascade).
     workspace = relationship("WorkspaceModel", back_populates="accounts")
-    postings = relationship("PostingModel", back_populates="account", cascade="all, delete-orphan")
-    fund_links = relationship("FundAccountLinkModel", back_populates="account")
-    cards = relationship("CardModel", back_populates="account")
+    postings = relationship(
+        "PostingModel", back_populates="account",
+        cascade="all, delete-orphan", passive_deletes=True,
+    )
+    fund_links = relationship(
+        "FundAccountLinkModel", back_populates="account",
+        cascade="all, delete-orphan", passive_deletes=True,
+    )
+    cards = relationship(
+        "CardModel", back_populates="account",
+        cascade="all, delete-orphan", passive_deletes=True,
+    )
 
     # Index for common queries
     __table_args__ = (
@@ -118,7 +130,7 @@ class CardModel(Base):
 
     id = Column(String(36), primary_key=True, default=new_uuid)
     workspace_id = Column(String(36), ForeignKey('workspaces.id'), nullable=False, index=True)
-    account_id = Column(String(36), ForeignKey('accounts.id'), nullable=False)
+    account_id = Column(String(36), ForeignKey('accounts.id', ondelete='CASCADE'), nullable=False)
     card_name = Column(String(255), nullable=False)
     card_type = Column(String(20), nullable=False)  # "credit" or "debit"
     card_network = Column(String(50))  # "visa", "mastercard", "amex", etc.
@@ -148,7 +160,7 @@ class PaymentMethodModel(Base):
     method_type = Column(String(50), nullable=False)  # "cash", "bank_transfer", "card", "digital_wallet", "custom"
     icon = Column(String(10))
     card_id = Column(String(36), ForeignKey('cards.id'), nullable=True)
-    linked_account_id = Column(String(36), ForeignKey('accounts.id'), nullable=True)
+    linked_account_id = Column(String(36), ForeignKey('accounts.id', ondelete='SET NULL'), nullable=True)
     is_system = Column(Boolean, nullable=False, default=False)
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
@@ -180,8 +192,13 @@ class CategoryModel(Base):
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     # Relationships
+    # passive_deletes=True defers the child DELETE to Postgres's ON DELETE CASCADE
+    # so the ORM doesn't emit per-row deletes for large subcategory sets.
     workspace = relationship("WorkspaceModel", back_populates="categories")
-    subcategories = relationship("SubcategoryModel", back_populates="category", cascade="all, delete-orphan")
+    subcategories = relationship(
+        "SubcategoryModel", back_populates="category",
+        cascade="all, delete-orphan", passive_deletes=True,
+    )
 
     __table_args__ = (
         Index('idx_categories_workspace_type', 'workspace_id', 'type'),
@@ -193,7 +210,7 @@ class SubcategoryModel(Base):
     __tablename__ = 'subcategories'
 
     id = Column(String(36), primary_key=True, default=new_uuid)
-    category_id = Column(String(36), ForeignKey('categories.id'), nullable=False, index=True)
+    category_id = Column(String(36), ForeignKey('categories.id', ondelete='CASCADE'), nullable=False, index=True)
     name = Column(String(255), nullable=False)
     description = Column(Text)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
@@ -224,7 +241,13 @@ class FundModel(Base):
 
     # Relationships
     workspace = relationship("WorkspaceModel", back_populates="funds")
-    account_links = relationship("FundAccountLinkModel", back_populates="fund", cascade="all, delete-orphan")
+    # passive_deletes=True defers to the DB-side ON DELETE CASCADE on
+    # fund_accounts.fund_id (see FundAccountLinkModel) rather than issuing
+    # per-row ORM DELETEs.
+    account_links = relationship(
+        "FundAccountLinkModel", back_populates="fund",
+        cascade="all, delete-orphan", passive_deletes=True,
+    )
 
     @property
     def accounts(self):
@@ -242,7 +265,7 @@ class FundAllocationOverrideModel(Base):
 
     id = Column(String(36), primary_key=True, default=new_uuid)
     workspace_id = Column(String(36), ForeignKey('workspaces.id'), nullable=False, index=True)
-    fund_id = Column(String(36), ForeignKey('funds.id'), nullable=False, index=True)
+    fund_id = Column(String(36), ForeignKey('funds.id', ondelete='CASCADE'), nullable=False, index=True)
     year = Column(Integer, nullable=False)  # e.g., 2026
     month = Column(Integer, nullable=False)  # 1-12
     allocation_percentage = Column(Numeric(5, 2), nullable=False)  # Override percentage
@@ -264,8 +287,8 @@ class FundAccountLinkModel(Base):
     """Fund-to-account link with allocation percentage"""
     __tablename__ = 'fund_accounts'
 
-    fund_id = Column(String(36), ForeignKey('funds.id'), primary_key=True)
-    account_id = Column(String(36), ForeignKey('accounts.id'), primary_key=True)
+    fund_id = Column(String(36), ForeignKey('funds.id', ondelete='CASCADE'), primary_key=True)
+    account_id = Column(String(36), ForeignKey('accounts.id', ondelete='CASCADE'), primary_key=True)
     allocation_percentage = Column(Numeric(5, 2), nullable=False, default=100)
 
     # Relationships
@@ -310,12 +333,15 @@ class TransactionModel(Base):
     status = Column(String(50), nullable=False, default='unreconciled')
     source = Column(String(50))  # manual, csv_import, sync, etc.
     import_hash = Column(String(64))  # SHA-256 of (payee + amount + date) for dedup
-    category_id = Column(String(36), ForeignKey('categories.id'), index=True)
-    subcategory_id = Column(String(36), ForeignKey('subcategories.id'), index=True)
-    fund_id = Column(String(36), ForeignKey('funds.id'), index=True)
+    category_id = Column(String(36), ForeignKey('categories.id', ondelete='SET NULL'), index=True)
+    subcategory_id = Column(String(36), ForeignKey('subcategories.id', ondelete='SET NULL'), index=True)
+    # ondelete=SET NULL: deleting a fund should preserve the historical transaction
+    # (income/expense stays visible with no fund attribution). Postings on accounts
+    # are unaffected, so double-entry balance is preserved on all three FKs below.
+    fund_id = Column(String(36), ForeignKey('funds.id', ondelete='SET NULL'), index=True)
     type = Column(String(20), nullable=True)  # "transfer" or NULL for income/expense/legacy
-    source_fund_id = Column(String(36), ForeignKey('funds.id'), nullable=True)
-    dest_fund_id = Column(String(36), ForeignKey('funds.id'), nullable=True)
+    source_fund_id = Column(String(36), ForeignKey('funds.id', ondelete='SET NULL'), nullable=True)
+    dest_fund_id = Column(String(36), ForeignKey('funds.id', ondelete='SET NULL'), nullable=True)
     payment_method_id = Column(String(36), ForeignKey('payment_methods.id'), nullable=True, index=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
@@ -353,7 +379,7 @@ class PostingModel(Base):
 
     id = Column(String(36), primary_key=True, default=new_uuid)
     transaction_id = Column(String(36), ForeignKey('transactions.id'), nullable=False, index=True)
-    account_id = Column(String(36), ForeignKey('accounts.id'), nullable=False, index=True)
+    account_id = Column(String(36), ForeignKey('accounts.id', ondelete='CASCADE'), nullable=False, index=True)
     amount = Column(Numeric(19, 4), nullable=False)  # In posting_currency
     posting_currency = Column(String(3), nullable=False, default='SGD')
     fx_rate_to_base = Column(Numeric(19, 6), nullable=False, default=1.0)
@@ -457,24 +483,29 @@ class RecurringTransactionModel(Base):
     memo = Column(Text)
     amount = Column(Numeric(19, 4), nullable=False)
     currency = Column(String(3), nullable=False, default='SGD')
-    category_id = Column(String(36), ForeignKey('categories.id'), nullable=True)
-    subcategory_id = Column(String(36), ForeignKey('subcategories.id'), nullable=True)
-    fund_id = Column(String(36), ForeignKey('funds.id'), nullable=True)
+    category_id = Column(String(36), ForeignKey('categories.id', ondelete='SET NULL'), nullable=True)
+    subcategory_id = Column(String(36), ForeignKey('subcategories.id', ondelete='SET NULL'), nullable=True)
+    # ondelete=SET NULL: a recurring template that referenced a now-deleted fund
+    # is still usable — fund_id is just copied through to spawned transactions
+    # as attribution, and NULL is a valid value there (no-fund transaction).
+    fund_id = Column(String(36), ForeignKey('funds.id', ondelete='SET NULL'), nullable=True)
     payment_method_id = Column(String(36), ForeignKey('payment_methods.id'), nullable=True)
 
     # For income/expense: the real account
-    account_id = Column(String(36), ForeignKey('accounts.id'), nullable=True)
+    # ondelete=CASCADE: a recurring template pointing at a deleted account is
+    # unusable — the next scheduler tick would fail on the missing FK anyway.
+    account_id = Column(String(36), ForeignKey('accounts.id', ondelete='CASCADE'), nullable=True)
 
     # For transfers
-    from_account_id = Column(String(36), ForeignKey('accounts.id'), nullable=True)
-    to_account_id = Column(String(36), ForeignKey('accounts.id'), nullable=True)
+    from_account_id = Column(String(36), ForeignKey('accounts.id', ondelete='CASCADE'), nullable=True)
+    to_account_id = Column(String(36), ForeignKey('accounts.id', ondelete='CASCADE'), nullable=True)
     from_currency = Column(String(3), nullable=True)
     to_currency = Column(String(3), nullable=True)
     fx_rate = Column(Numeric(19, 6), nullable=True)
-    source_fund_id = Column(String(36), ForeignKey('funds.id'), nullable=True)
-    dest_fund_id = Column(String(36), ForeignKey('funds.id'), nullable=True)
+    source_fund_id = Column(String(36), ForeignKey('funds.id', ondelete='SET NULL'), nullable=True)
+    dest_fund_id = Column(String(36), ForeignKey('funds.id', ondelete='SET NULL'), nullable=True)
     transfer_fee = Column(Numeric(19, 4), nullable=True, default=0)
-    fee_category_id = Column(String(36), ForeignKey('categories.id'), nullable=True)
+    fee_category_id = Column(String(36), ForeignKey('categories.id', ondelete='SET NULL'), nullable=True)
 
     # Recurrence configuration
     frequency = Column(String(20), nullable=False)  # daily, weekly, bi_weekly, monthly, quarterly, yearly

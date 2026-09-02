@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from .models import (
@@ -129,9 +130,17 @@ class AccountRepository(BaseRepository):
 
     def delete(self, account_id: UUID) -> None:
         account = self.read(account_id)
-        if account:
+        if not account:
+            return
+        try:
             self.session.delete(account)
             self.session.commit()
+        except IntegrityError:
+            # Belt-and-braces: if any FK to accounts.id was added without an
+            # ondelete clause (regression check), roll back cleanly so the route
+            # can convert this into an actionable 409 instead of an opaque 500.
+            self.session.rollback()
+            raise
 
 
 class TransactionRepository(BaseRepository):
@@ -208,9 +217,17 @@ class CategoryRepository(BaseRepository):
 
     def delete(self, category_id: str) -> None:
         category = self.read(category_id)
-        if category:
+        if not category:
+            return
+        try:
             self.session.delete(category)
             self.session.commit()
+        except IntegrityError:
+            # Regression safety net: if a new FK to categories.id ever lands
+            # without an ondelete clause, roll back cleanly so the route can
+            # convert this into an actionable 409 instead of an opaque 500.
+            self.session.rollback()
+            raise
 
 
 class PriceRepository(BaseRepository):
@@ -361,9 +378,15 @@ class SubcategoryRepository(BaseRepository):
 
     def delete(self, subcategory_id: str) -> None:
         subcategory = self.read(subcategory_id)
-        if subcategory:
+        if not subcategory:
+            return
+        try:
             self.session.delete(subcategory)
             self.session.commit()
+        except IntegrityError:
+            # Regression safety net: same reasoning as CategoryRepository.delete.
+            self.session.rollback()
+            raise
 
 
 class FundRepository(BaseRepository):
@@ -397,9 +420,17 @@ class FundRepository(BaseRepository):
 
     def delete(self, fund_id: str) -> None:
         fund = self.read(fund_id)
-        if fund:
+        if not fund:
+            return
+        try:
             self.session.delete(fund)
             self.session.commit()
+        except IntegrityError:
+            # Belt-and-braces: if a new FK to funds.id ever ships without an
+            # ondelete clause (regression check), roll back so the route can
+            # convert this into an actionable 409 instead of an opaque 500.
+            self.session.rollback()
+            raise
 
     def set_account_links(self, fund: FundModel, account_allocations: List[dict], workspace_id: str) -> FundModel:
         """Replace all account links for a fund with the given allocations.

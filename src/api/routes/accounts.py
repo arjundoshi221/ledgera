@@ -1,6 +1,7 @@
 """Account endpoints"""
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.data.database import get_session
@@ -138,5 +139,14 @@ def delete_account(
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
-    repo.delete(account_id)
+    try:
+        repo.delete(account_id)
+    except IntegrityError:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Account has linked records that could not be removed. "
+                "Please contact support if this persists."
+            ),
+        )
     return {"message": "Account deleted"}

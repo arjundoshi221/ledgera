@@ -1,6 +1,7 @@
 """Category, Subcategory, and Fund endpoints"""
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.data.database import get_session
@@ -190,8 +191,14 @@ def delete_subcategory(
     category = cat_repo.read(subcategory.category_id)
     if not category or category.workspace_id != workspace_id:
         raise HTTPException(status_code=403, detail="Access denied")
-    
-    repo.delete(subcategory_id)
+
+    try:
+        repo.delete(subcategory_id)
+    except IntegrityError:
+        raise HTTPException(
+            status_code=409,
+            detail="Subcategory is still referenced by other records. Reassign them first.",
+        )
     return {"message": "Subcategory deleted"}
 
 
@@ -330,7 +337,16 @@ def delete_fund(
     if fund.is_system:
         raise HTTPException(status_code=400, detail="System funds cannot be deleted")
 
-    repo.delete(fund_id)
+    try:
+        repo.delete(fund_id)
+    except IntegrityError:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Fund has linked records that could not be removed. "
+                "Please contact support if this persists."
+            ),
+        )
     return {"message": "Fund deleted"}
 
 
@@ -393,5 +409,11 @@ def delete_category(
     if category.is_system:
         raise HTTPException(status_code=400, detail="System categories cannot be deleted")
 
-    repo.delete(category_id)
+    try:
+        repo.delete(category_id)
+    except IntegrityError:
+        raise HTTPException(
+            status_code=409,
+            detail="Category is still referenced by other records. Reassign them first.",
+        )
     return {"message": "Category deleted"}
