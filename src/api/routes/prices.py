@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, UTC
 
 from src.data.database import get_session
 from src.services.price_service import PriceService, YahooFinancePriceProvider
@@ -26,7 +26,7 @@ def get_fx_rate(
         "base_ccy": base_ccy,
         "quote_ccy": quote_ccy,
         "rate": rate,
-        "timestamp": datetime.utcnow(),
+        "timestamp": datetime.now(UTC),
         "source": "yahoo_finance"
     }
 
@@ -45,6 +45,6 @@ def get_stock_price(
     return {
         "symbol": symbol,
         "price": price,
-        "timestamp": datetime.utcnow(),
+        "timestamp": datetime.now(UTC),
         "source": "yahoo_finance"
     }

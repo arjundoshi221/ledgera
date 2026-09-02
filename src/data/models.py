@@ -5,7 +5,7 @@ from sqlalchemy import (
     Enum, Text, Boolean, Table, Index, Integer, LargeBinary
 )
 from sqlalchemy.orm import declarative_base, relationship
-from datetime import datetime
+from datetime import datetime, UTC
 import uuid
 
 Base = declarative_base()
@@ -13,6 +13,12 @@ Base = declarative_base()
 
 def new_uuid():
     return str(uuid.uuid4())
+
+
+# DB columns are naive `DateTime` (no timezone); strip tzinfo at write time so
+# on-disk shape stays stable while application code uses timezone-aware UTC.
+def _utcnow_naive() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 # === Auth & Tenancy ===
@@ -54,8 +60,8 @@ class UserModel(Base):
     is_disabled = Column(Boolean, nullable=False, default=False)
     last_login_at = Column(DateTime, nullable=True)
     login_count = Column(Integer, nullable=False, default=0)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive, index=True)
+    updated_at = Column(DateTime, nullable=False, default=_utcnow_naive)
 
     # Relationships
     workspaces = relationship("WorkspaceModel", back_populates="owner")
@@ -70,8 +76,8 @@ class WorkspaceModel(Base):
     name = Column(String(255), nullable=False, default='Personal')
     base_currency = Column(String(3), nullable=False, default='SGD')
     min_wc_balance = Column(Numeric(19, 4), nullable=False, default=0)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive)
+    updated_at = Column(DateTime, nullable=False, default=_utcnow_naive)
 
     # Relationships
     owner = relationship("UserModel", back_populates="workspaces")
@@ -97,8 +103,8 @@ class AccountModel(Base):
     institution = Column(String(255))
     starting_balance = Column(Numeric(19, 4), nullable=False, default=0)
     is_active = Column(Boolean, nullable=False, default=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive)
+    updated_at = Column(DateTime, nullable=False, default=_utcnow_naive)
 
     # Relationships
     # passive_deletes=True lets Postgres's ON DELETE CASCADE do the actual work
@@ -136,8 +142,8 @@ class CardModel(Base):
     card_network = Column(String(50))  # "visa", "mastercard", "amex", etc.
     last_four = Column(String(4))
     is_active = Column(Boolean, nullable=False, default=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive)
+    updated_at = Column(DateTime, nullable=False, default=_utcnow_naive)
 
     # Relationships
     workspace = relationship("WorkspaceModel", back_populates="cards")
@@ -163,8 +169,8 @@ class PaymentMethodModel(Base):
     linked_account_id = Column(String(36), ForeignKey('accounts.id', ondelete='SET NULL'), nullable=True)
     is_system = Column(Boolean, nullable=False, default=False)
     is_active = Column(Boolean, nullable=False, default=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive)
+    updated_at = Column(DateTime, nullable=False, default=_utcnow_naive)
 
     # Relationships
     workspace = relationship("WorkspaceModel", back_populates="payment_methods")
@@ -188,8 +194,8 @@ class CategoryModel(Base):
     type = Column(String(50), nullable=False)  # expense, income
     description = Column(Text)
     is_system = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive)
+    updated_at = Column(DateTime, nullable=False, default=_utcnow_naive)
 
     # Relationships
     # passive_deletes=True defers the child DELETE to Postgres's ON DELETE CASCADE
@@ -213,8 +219,8 @@ class SubcategoryModel(Base):
     category_id = Column(String(36), ForeignKey('categories.id', ondelete='CASCADE'), nullable=False, index=True)
     name = Column(String(255), nullable=False)
     description = Column(Text)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive)
+    updated_at = Column(DateTime, nullable=False, default=_utcnow_naive)
 
     # Relationships
     category = relationship("CategoryModel", back_populates="subcategories")
@@ -236,8 +242,8 @@ class FundModel(Base):
     allocation_percentage = Column(Numeric(5, 2), default=0)  # Default allocation %
     is_active = Column(Boolean, nullable=False, default=True)
     is_system = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive)
+    updated_at = Column(DateTime, nullable=False, default=_utcnow_naive)
 
     # Relationships
     workspace = relationship("WorkspaceModel", back_populates="funds")
@@ -271,8 +277,8 @@ class FundAllocationOverrideModel(Base):
     allocation_percentage = Column(Numeric(5, 2), nullable=False)  # Override percentage
     override_amount = Column(Numeric(19, 4), nullable=True)  # Absolute amount override (for Working Capital)
     mode = Column(String(20), nullable=True)  # "MODEL", "OPTIMIZE", or NULL (manual override)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive)
+    updated_at = Column(DateTime, nullable=False, default=_utcnow_naive)
 
     # Relationships
     workspace = relationship("WorkspaceModel")
@@ -311,7 +317,7 @@ class TagModel(Base):
 
     id = Column(String(36), primary_key=True, default=new_uuid)
     name = Column(String(255), nullable=False, unique=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive)
 
     # Relationships
     transactions = relationship(
@@ -343,8 +349,8 @@ class TransactionModel(Base):
     source_fund_id = Column(String(36), ForeignKey('funds.id', ondelete='SET NULL'), nullable=True)
     dest_fund_id = Column(String(36), ForeignKey('funds.id', ondelete='SET NULL'), nullable=True)
     payment_method_id = Column(String(36), ForeignKey('payment_methods.id'), nullable=True, index=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive)
+    updated_at = Column(DateTime, nullable=False, default=_utcnow_naive)
 
     # Relationships
     workspace = relationship("WorkspaceModel", back_populates="transactions")
@@ -384,7 +390,7 @@ class PostingModel(Base):
     posting_currency = Column(String(3), nullable=False, default='SGD')
     fx_rate_to_base = Column(Numeric(19, 6), nullable=False, default=1.0)
     base_amount = Column(Numeric(19, 4), nullable=False)  # Pre-computed: amount * fx_rate_to_base
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive)
 
     # Relationships
     transaction = relationship("TransactionModel", back_populates="postings")
@@ -405,7 +411,7 @@ class PriceModel(Base):
     rate = Column(Numeric(19, 6), nullable=False)
     timestamp = Column(DateTime, nullable=False)
     source = Column(String(50))  # yahoo_finance, manual, etc.
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive)
 
     __table_args__ = (
         Index('idx_prices_pair_timestamp', 'base_ccy', 'quote_ccy', 'timestamp'),
@@ -423,8 +429,8 @@ class ScenarioModel(Base):
     assumptions_json = Column(Text, nullable=False, default='{}')
     monthly_expenses_total = Column(Numeric(19, 4), nullable=False, default=0)
     is_active = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive)
+    updated_at = Column(DateTime, nullable=False, default=_utcnow_naive)
 
     # Relationships
     workspace = relationship("WorkspaceModel")
@@ -441,7 +447,7 @@ class ProjectionAssumptionModel(Base):
     key = Column(String(255), nullable=False)  # monthly_salary, tax_rate, etc.
     value = Column(Text, nullable=False)  # Stored as string
     currency = Column(String(3))
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive)
 
     # Relationships
     scenario = relationship("ScenarioModel", back_populates="assumptions")
@@ -457,7 +463,7 @@ class ProjectionResultModel(Base):
     metric_key = Column(String(255), nullable=False)  # net_income, savings_rate, etc.
     value = Column(Numeric(19, 4), nullable=False)
     currency = Column(String(3), nullable=False, default='SGD')
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive)
 
     # Relationships
     scenario = relationship("ScenarioModel", back_populates="results")
@@ -516,8 +522,8 @@ class RecurringTransactionModel(Base):
     # Status
     is_active = Column(Boolean, nullable=False, default=True)
 
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive)
+    updated_at = Column(DateTime, nullable=False, default=_utcnow_naive)
 
     # Relationships
     workspace = relationship("WorkspaceModel")
@@ -542,7 +548,7 @@ class AuditLogModel(Base):
     details = Column(Text, nullable=True)  # JSON-encoded context
     ip_address = Column(String(45), nullable=True)  # IPv4/IPv6
     user_agent = Column(String(500), nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive, index=True)
 
     # Relationships
     actor = relationship("UserModel")
@@ -565,8 +571,8 @@ class BugReportModel(Base):
     title = Column(String(500), nullable=False)
     description = Column(Text, nullable=False)
     status = Column(String(20), nullable=False, default='open')  # open, in_progress, resolved
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive)
+    updated_at = Column(DateTime, nullable=False, default=_utcnow_naive)
     resolved_at = Column(DateTime, nullable=True)
 
     # Relationships
@@ -589,7 +595,7 @@ class BugReportMediaModel(Base):
     content_type = Column(String(100), nullable=False)
     file_size = Column(Integer, nullable=False)
     file_data = Column(LargeBinary, nullable=False)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive)
 
     # Relationships
     bug_report = relationship("BugReportModel", back_populates="media")

@@ -13,6 +13,7 @@ from .models import (
     UserModel, WorkspaceModel, TransactionModel,
     AccountModel, ScenarioModel, FundModel, RecurringTransactionModel,
     AuditLogModel,
+    _utcnow_naive,
 )
 
 
@@ -93,7 +94,7 @@ class AdminRepository:
         user = self.get_user_detail(user_id)
         if user:
             user.is_disabled = True
-            user.updated_at = datetime.utcnow()
+            user.updated_at = _utcnow_naive()
             self.session.commit()
         return user
 
@@ -102,7 +103,7 @@ class AdminRepository:
         user = self.get_user_detail(user_id)
         if user:
             user.is_disabled = False
-            user.updated_at = datetime.utcnow()
+            user.updated_at = _utcnow_naive()
             self.session.commit()
         return user
 
@@ -111,7 +112,7 @@ class AdminRepository:
         user = self.get_user_detail(user_id)
         if user:
             user.is_admin = True
-            user.updated_at = datetime.utcnow()
+            user.updated_at = _utcnow_naive()
             self.session.commit()
         return user
 
@@ -120,7 +121,7 @@ class AdminRepository:
         user = self.get_user_detail(user_id)
         if user:
             user.is_admin = False
-            user.updated_at = datetime.utcnow()
+            user.updated_at = _utcnow_naive()
             self.session.commit()
         return user
 
@@ -242,7 +243,7 @@ class AdminRepository:
 
     def get_signups_by_period(self, days: int = 90) -> List[dict]:
         """Daily signup counts for the last N days"""
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = _utcnow_naive() - timedelta(days=days)
         results = self.session.query(
             _to_date(UserModel.created_at).label('date'),
             func.count(UserModel.id).label('count')
@@ -257,7 +258,7 @@ class AdminRepository:
 
     def get_dau(self, days: int = 30) -> List[dict]:
         """Daily active users (users who logged in) for last N days"""
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = _utcnow_naive() - timedelta(days=days)
         results = self.session.query(
             _to_date(UserModel.last_login_at).label('date'),
             func.count(UserModel.id).label('count')
@@ -273,7 +274,7 @@ class AdminRepository:
 
     def get_mau(self, months: int = 12) -> List[dict]:
         """Monthly active users for the last N months"""
-        cutoff = datetime.utcnow() - timedelta(days=months * 31)
+        cutoff = _utcnow_naive() - timedelta(days=months * 31)
         results = self.session.query(
             _year_month(UserModel.last_login_at).label('month'),
             func.count(distinct(UserModel.id)).label('count')
@@ -328,12 +329,12 @@ class AdminRepository:
         ).all()
 
         buckets = {"18-24": 0, "25-34": 0, "35-44": 0, "45-54": 0, "55-64": 0, "65+": 0, "Unknown": 0}
-        today = datetime.utcnow().date()
+        today = _utcnow_naive().date()
 
         for (dob_str,) in users:
             try:
                 parts = str(dob_str).split("-")
-                dob = datetime(int(parts[0]), int(parts[1]), int(parts[2])).date()
+                dob = datetime(int(parts[0]), int(parts[1]), int(parts[2])).date()  # noqa: DTZ001  # date-only
                 age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
                 if age < 18:
                     continue
@@ -356,7 +357,7 @@ class AdminRepository:
 
     def get_retention_cohorts(self, months: int = 6) -> List[dict]:
         """Monthly cohort retention: signup month vs last_login_at"""
-        cutoff = datetime.utcnow() - timedelta(days=months * 31)
+        cutoff = _utcnow_naive() - timedelta(days=months * 31)
         results = self.session.query(
             _year_month(UserModel.created_at).label('cohort'),
             func.count(UserModel.id).label('total'),

@@ -1,10 +1,9 @@
 """Repository for bug report operations"""
 
 from typing import List, Tuple, Optional
-from datetime import datetime
 from sqlalchemy.orm import Session, joinedload
 
-from .models import BugReportModel, BugReportMediaModel
+from .models import BugReportModel, BugReportMediaModel, _utcnow_naive
 
 
 class BugReportRepository:
@@ -111,9 +110,9 @@ class BugReportRepository:
         if not report:
             return None
         report.status = new_status
-        report.updated_at = datetime.utcnow()
+        report.updated_at = _utcnow_naive()
         if new_status == 'resolved':
-            report.resolved_at = datetime.utcnow()
+            report.resolved_at = _utcnow_naive()
         self.session.commit()
         return report
 

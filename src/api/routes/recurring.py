@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from src.data.database import get_session
 from src.data.repositories import RecurringTransactionRepository, TransactionRepository, AccountRepository
-from src.data.models import RecurringTransactionModel, TransactionModel, PostingModel, AccountModel, CategoryModel
+from src.data.models import RecurringTransactionModel, TransactionModel, PostingModel, AccountModel, CategoryModel, _utcnow_naive
 from src.api.schemas import (
     RecurringTransactionCreate,
     RecurringTransactionUpdate,
@@ -181,8 +181,8 @@ def create_recurring(
         if not data.from_account_id or not data.to_account_id:
             raise HTTPException(status_code=400, detail="from_account_id and to_account_id are required for transfers")
 
-    start = datetime.strptime(data.start_date, "%Y-%m-%d")
-    end = datetime.strptime(data.end_date, "%Y-%m-%d") if data.end_date else None
+    start = datetime.strptime(data.start_date, "%Y-%m-%d")  # noqa: DTZ007  # db-naive
+    end = datetime.strptime(data.end_date, "%Y-%m-%d") if data.end_date else None  # noqa: DTZ007  # db-naive
 
     template = RecurringTransactionModel(
         workspace_id=workspace_id,
@@ -224,7 +224,7 @@ def get_pending(
 ):
     """Get all pending recurring instances (computed on-the-fly)."""
     repo = RecurringTransactionRepository(session)
-    now = datetime.utcnow()
+    now = _utcnow_naive()
     templates = repo.read_pending(workspace_id, now)
 
     all_instances = []
@@ -266,7 +266,7 @@ def update_recurring(
             setattr(template, field, value)
 
     if data.end_date is not None:
-        template.end_date = datetime.strptime(data.end_date, "%Y-%m-%d") if data.end_date else None
+        template.end_date = datetime.strptime(data.end_date, "%Y-%m-%d") if data.end_date else None  # noqa: DTZ007  # db-naive
 
     repo.update(template)
     return _serialize_recurring(template)
@@ -307,7 +307,7 @@ def confirm_recurring(
     if not template.is_active:
         raise HTTPException(status_code=400, detail="Recurring transaction is not active")
 
-    occurrence = datetime.strptime(body.occurrence_date, "%Y-%m-%d")
+    occurrence = datetime.strptime(body.occurrence_date, "%Y-%m-%d")  # noqa: DTZ007  # db-naive
 
     # Validate occurrence matches next_occurrence
     expected_date = template.next_occurrence.strftime("%Y-%m-%d")
@@ -480,7 +480,7 @@ def skip_recurring(
     if not template.is_active:
         raise HTTPException(status_code=400, detail="Recurring transaction is not active")
 
-    occurrence = datetime.strptime(body.occurrence_date, "%Y-%m-%d")
+    occurrence = datetime.strptime(body.occurrence_date, "%Y-%m-%d")  # noqa: DTZ007  # db-naive
 
     expected_date = template.next_occurrence.strftime("%Y-%m-%d")
     if body.occurrence_date != expected_date:

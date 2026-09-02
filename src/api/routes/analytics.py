@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_
-from datetime import datetime
+from datetime import datetime, UTC
 from decimal import Decimal
 from typing import Dict, List, Optional
 from calendar import monthrange
@@ -140,9 +140,9 @@ class MonthlyIncomeSplit(BaseModel):
 
 def _get_month_range(year: int, month: int):
     """Return (start_date, end_date) for a given year/month."""
-    start = datetime(year, month, 1)
+    start = datetime(year, month, 1)  # noqa: DTZ001  # db-naive
     _, last_day = monthrange(year, month)
-    end = datetime(year, month, last_day, 23, 59, 59)
+    end = datetime(year, month, last_day, 23, 59, 59)  # noqa: DTZ001  # db-naive
     return start, end
 
 
@@ -525,7 +525,7 @@ def get_income_allocation(
         )
 
         # Build rows for full calendar year(s): Jan-Dec
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         current_year = now.year
         start_year = current_year - years + 1
 
@@ -1046,7 +1046,7 @@ def get_fund_tracker(
         sf_map = _compute_self_funding_metadata(funds, wc_fund)
 
         # Time range
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         current_year = now.year
         start_year = current_year - years + 1
 
@@ -1818,7 +1818,7 @@ def get_net_worth(
         fx_rates_used = {f"{ccy}/{base_currency}": float(rate) for ccy, rate in fx_rates.items()}
 
         # ── Historical net worth ──
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         current_year = now.year
         start_year = current_year - years + 1
 
@@ -1843,7 +1843,7 @@ def get_net_worth(
         history = []
         for y, m in history_months:
             _, last_day = monthrange(y, m)
-            month_end = datetime(y, m, last_day, 23, 59, 59)
+            month_end = datetime(y, m, last_day, 23, 59, 59)  # noqa: DTZ001  # db-naive
 
             # Native balances at month-end per account
             month_native_sums = dict(

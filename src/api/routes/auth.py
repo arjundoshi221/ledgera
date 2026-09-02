@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from config.settings import settings
 from src.data.database import get_session
 from src.data.repositories import UserRepository, WorkspaceRepository, FundRepository, CategoryRepository, PaymentMethodRepository
-from src.data.models import UserModel, WorkspaceModel, FundModel, CategoryModel, PaymentMethodModel
+from src.data.models import UserModel, WorkspaceModel, FundModel, CategoryModel, PaymentMethodModel, _utcnow_naive
 from src.services.auth_service import AuthService
 from src.api.deps import get_user_id
 from src.api.rate_limit import limiter
@@ -132,13 +132,13 @@ class UserResponse(BaseModel):
 def _validate_age(date_of_birth: str):
     """Validate DOB format and enforce 18+ age gate."""
     try:
-        dob = datetime.strptime(date_of_birth, "%Y-%m-%d").date()
+        dob = datetime.strptime(date_of_birth, "%Y-%m-%d").date()  # noqa: DTZ007  # date-only
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="date_of_birth must be in YYYY-MM-DD format"
         )
-    today = date.today()
+    today = date.today()  # noqa: DTZ011  # date-only
     age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
     if age < 18:
         raise HTTPException(
@@ -306,7 +306,7 @@ def signup(
     _validate_consent(req.tos_accepted, req.privacy_accepted)
     _validate_password(req.password)
 
-    now = datetime.utcnow()
+    now = _utcnow_naive()
     hashed_pwd = auth_service.hash_password(req.password)
     user = UserModel(
         email=req.email,
@@ -384,7 +384,7 @@ def login(
     token = auth_service.create_access_token(user.id, workspace.id)
 
     # Track login analytics
-    user.last_login_at = datetime.utcnow()
+    user.last_login_at = _utcnow_naive()
     user.login_count = (user.login_count or 0) + 1
     user_repo.update(user)
 
@@ -465,7 +465,7 @@ def google_login(
     token = auth_service.create_access_token(user.id, workspace.id)
 
     # Track login analytics
-    user.last_login_at = datetime.utcnow()
+    user.last_login_at = _utcnow_naive()
     user.login_count = (user.login_count or 0) + 1
     user_repo.update(user)
 
@@ -497,7 +497,7 @@ def complete_profile(
     _validate_age(req.date_of_birth)
     _validate_consent(req.tos_accepted, req.privacy_accepted)
 
-    now = datetime.utcnow()
+    now = _utcnow_naive()
 
     if req.first_name:
         user.first_name = req.first_name
@@ -613,7 +613,7 @@ def firebase_login(
             )
         workspace = workspaces[0]
 
-        user.last_login_at = datetime.utcnow()
+        user.last_login_at = _utcnow_naive()
         user.login_count = (user.login_count or 0) + 1
         user_repo.update(user)
     else:

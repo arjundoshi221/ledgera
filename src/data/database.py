@@ -277,8 +277,8 @@ def _run_migrations(engine) -> None:
         ).fetchone()
         if not already:
             import uuid as _uuid
-            from datetime import datetime as _dt
-            now = _dt.utcnow().isoformat()
+            from .models import _utcnow_naive
+            now = _utcnow_naive().isoformat()
             # Get all workspace IDs
             rows = conn.execute(text("SELECT id FROM workspaces")).fetchall()
             for row in rows:
@@ -322,8 +322,8 @@ def _run_migrations(engine) -> None:
             ).fetchone()
             if not already:
                 import uuid as _uuid
-                from datetime import datetime as _dt
-                now = _dt.utcnow().isoformat()
+                from .models import _utcnow_naive
+                now = _utcnow_naive().isoformat()
                 rows = conn.execute(text("SELECT id FROM workspaces")).fetchall()
                 for row in rows:
                     ws_id = row[0]

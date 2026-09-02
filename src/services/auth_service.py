@@ -1,6 +1,6 @@
 """Authentication service — JWT, password hashing, signup/login"""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import Optional, Tuple
 from uuid import UUID
 import hashlib
@@ -51,8 +51,8 @@ class AuthService:
         payload = {
             "sub": str(user_id),
             "workspace_id": str(workspace_id),
-            "exp": datetime.utcnow() + self.token_expiry,
-            "iat": datetime.utcnow()
+            "exp": datetime.now(UTC) + self.token_expiry,
+            "iat": datetime.now(UTC)
         }
         token = encode(payload, self.secret_key, algorithm=self.algorithm)
         return token

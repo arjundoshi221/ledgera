@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session, joinedload
 from .models import (
     UserModel, WorkspaceModel, AccountModel, TransactionModel, PostingModel,
     CategoryModel, SubcategoryModel, FundModel, FundAccountLinkModel, FundAllocationOverrideModel, TagModel, PriceModel, ScenarioModel,
-    CardModel, PaymentMethodModel, RecurringTransactionModel
+    CardModel, PaymentMethodModel, RecurringTransactionModel,
+    _utcnow_naive,
 )
 
 
@@ -59,7 +60,7 @@ class UserRepository(BaseRepository):
         return self.session.query(UserModel).filter(UserModel.firebase_uid == firebase_uid).first()
 
     def update(self, user: UserModel) -> UserModel:
-        user.updated_at = datetime.utcnow()
+        user.updated_at = _utcnow_naive()
         self.session.commit()
         return user
 
@@ -87,7 +88,7 @@ class WorkspaceRepository(BaseRepository):
         ).all()
 
     def update(self, workspace: WorkspaceModel) -> WorkspaceModel:
-        workspace.updated_at = datetime.utcnow()
+        workspace.updated_at = _utcnow_naive()
         self.session.commit()
         return workspace
 
@@ -141,7 +142,7 @@ class AccountRepository(BaseRepository):
         ).first()
 
     def update(self, account: AccountModel) -> AccountModel:
-        account.updated_at = datetime.utcnow()
+        account.updated_at = _utcnow_naive()
         self.session.commit()
         return account
 
@@ -204,7 +205,7 @@ class TransactionRepository(BaseRepository):
         return query.order_by(TransactionModel.timestamp).all()
 
     def update(self, transaction: TransactionModel) -> TransactionModel:
-        transaction.updated_at = datetime.utcnow()
+        transaction.updated_at = _utcnow_naive()
         self.session.commit()
         return transaction
 
@@ -241,7 +242,7 @@ class CategoryRepository(BaseRepository):
         return self.session.query(CategoryModel).filter(CategoryModel.name == name).first()
 
     def update(self, category: CategoryModel) -> CategoryModel:
-        category.updated_at = datetime.utcnow()
+        category.updated_at = _utcnow_naive()
         self.session.commit()
         return category
 
@@ -290,7 +291,7 @@ class PriceRepository(BaseRepository):
     ) -> Optional[PriceModel]:
         """Get latest FX rate only if it's within max_age_hours of now"""
         from datetime import timedelta
-        cutoff = datetime.utcnow() - timedelta(hours=max_age_hours)
+        cutoff = _utcnow_naive() - timedelta(hours=max_age_hours)
         return self.session.query(PriceModel).filter(
             PriceModel.base_ccy == base_ccy,
             PriceModel.quote_ccy == quote_ccy,
@@ -356,7 +357,7 @@ class ScenarioRepository(BaseRepository):
         self.session.query(ScenarioModel).filter(
             ScenarioModel.workspace_id == workspace_id,
             ScenarioModel.is_active == True
-        ).update({"is_active": False, "updated_at": datetime.utcnow()})
+        ).update({"is_active": False, "updated_at": _utcnow_naive()})
         self.session.flush()
 
     def activate(self, scenario_id: str, workspace_id: str) -> Optional[ScenarioModel]:
@@ -367,12 +368,12 @@ class ScenarioRepository(BaseRepository):
         ).first()
         if scenario:
             scenario.is_active = True
-            scenario.updated_at = datetime.utcnow()
+            scenario.updated_at = _utcnow_naive()
             self.session.commit()
         return scenario
 
     def update(self, scenario: ScenarioModel) -> ScenarioModel:
-        scenario.updated_at = datetime.utcnow()
+        scenario.updated_at = _utcnow_naive()
         self.session.commit()
         return scenario
 
@@ -402,7 +403,7 @@ class SubcategoryRepository(BaseRepository):
         ).all()
 
     def update(self, subcategory: SubcategoryModel) -> SubcategoryModel:
-        subcategory.updated_at = datetime.utcnow()
+        subcategory.updated_at = _utcnow_naive()
         self.session.commit()
         return subcategory
 
@@ -444,7 +445,7 @@ class FundRepository(BaseRepository):
         ).all()
 
     def update(self, fund: FundModel) -> FundModel:
-        fund.updated_at = datetime.utcnow()
+        fund.updated_at = _utcnow_naive()
         self.session.commit()
         return fund
 
@@ -574,7 +575,7 @@ class FundAllocationOverrideRepository(BaseRepository):
         ).all()
 
     def update(self, override: FundAllocationOverrideModel) -> FundAllocationOverrideModel:
-        override.updated_at = datetime.utcnow()
+        override.updated_at = _utcnow_naive()
         self.session.commit()
         return override
 
@@ -622,7 +623,7 @@ class CardRepository(BaseRepository):
         ).all()
 
     def update(self, card: CardModel) -> CardModel:
-        card.updated_at = datetime.utcnow()
+        card.updated_at = _utcnow_naive()
         self.session.commit()
         return card
 
@@ -663,7 +664,7 @@ class PaymentMethodRepository(BaseRepository):
         ).first()
 
     def update(self, pm: PaymentMethodModel) -> PaymentMethodModel:
-        pm.updated_at = datetime.utcnow()
+        pm.updated_at = _utcnow_naive()
         self.session.commit()
         return pm
 
@@ -707,7 +708,7 @@ class RecurringTransactionRepository(BaseRepository):
         ).order_by(RecurringTransactionModel.next_occurrence).all()
 
     def update(self, recurring: RecurringTransactionModel) -> RecurringTransactionModel:
-        recurring.updated_at = datetime.utcnow()
+        recurring.updated_at = _utcnow_naive()
         self.session.commit()
         return recurring
 

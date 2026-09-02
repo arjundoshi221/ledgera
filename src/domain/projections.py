@@ -352,7 +352,7 @@ class ProjectionEngine:
         savings_rate = savings / net_income if net_income > 0 else Decimal(0)
 
         # Generate period label using proper date arithmetic
-        start_date = self.assumptions.start_date or datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        start_date = self.assumptions.start_date or datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)  # noqa: DTZ005  # label-only
         period_date = start_date + relativedelta(months=month_index)
         period = period_date.strftime("%Y-%m")
 

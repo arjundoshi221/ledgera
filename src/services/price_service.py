@@ -7,7 +7,7 @@ from datetime import datetime, date
 from typing import Optional, Dict, List, Tuple
 from sqlalchemy.orm import Session
 
-from src.data.models import PriceModel
+from src.data.models import PriceModel, _utcnow_naive
 from src.data.repositories import PriceRepository
 
 logger = logging.getLogger(__name__)
@@ -183,7 +183,7 @@ class PriceService:
                 base_ccy=base_ccy,
                 quote_ccy=quote_ccy,
                 rate=rate,
-                timestamp=datetime.utcnow(),
+                timestamp=_utcnow_naive(),
                 source="yahoo_finance",
             )
             try:
@@ -245,7 +245,7 @@ class PriceService:
                     base_ccy=base_ccy,
                     quote_ccy=quote_ccy,
                     rate=rate,
-                    timestamp=datetime(d.year, d.month, d.day, 23, 59, 59),
+                    timestamp=datetime(d.year, d.month, d.day, 23, 59, 59),  # noqa: DTZ001  # db-naive
                     source="yahoo_finance",
                 ))
             try:
@@ -268,7 +268,7 @@ class PriceService:
 
         if session:
             repo = PriceRepository(session)
-            dt = datetime(target_date.year, target_date.month, target_date.day, 23, 59, 59)
+            dt = datetime(target_date.year, target_date.month, target_date.day, 23, 59, 59)  # noqa: DTZ001  # db-naive
             price = repo.read_rate_at_date(base_ccy, quote_ccy, dt)
             if price:
                 return Decimal(str(price.rate))

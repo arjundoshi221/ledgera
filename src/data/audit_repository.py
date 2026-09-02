@@ -2,10 +2,10 @@
 
 import json
 from typing import List, Tuple, Optional
-from datetime import datetime, timedelta
+from datetime import timedelta
 from sqlalchemy.orm import Session
 
-from .models import AuditLogModel
+from .models import AuditLogModel, _utcnow_naive
 
 
 class AuditLogRepository:
@@ -50,7 +50,7 @@ class AuditLogRepository:
     ) -> Tuple[List[AuditLogModel], int]:
         """Query audit logs with filters, returns (logs, total_count)"""
         query = self.session.query(AuditLogModel)
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = _utcnow_naive() - timedelta(days=days)
         query = query.filter(AuditLogModel.created_at >= cutoff)
 
         if action_prefix:
