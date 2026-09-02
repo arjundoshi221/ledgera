@@ -1,13 +1,17 @@
 """Firebase Admin SDK service for token verification and user management."""
 
+from __future__ import annotations
+
 import json
 import logging
 from pathlib import Path
-
-import firebase_admin
-from firebase_admin import auth as firebase_auth, credentials
+from typing import TYPE_CHECKING
 
 from config.settings import settings
+
+if TYPE_CHECKING:
+    import firebase_admin
+    from firebase_admin import credentials
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +26,8 @@ def _load_credentials() -> credentials.Certificate:
     exists solely so local devs can drop a JSON file in the repo root without
     exporting env vars.
     """
+    from firebase_admin import credentials
+
     if settings.firebase_service_account_json:
         info = json.loads(settings.firebase_service_account_json)
         return credentials.Certificate(info)
@@ -41,6 +47,8 @@ def _init_firebase() -> None:
     global _app
     if _app is not None:
         return
+    import firebase_admin
+
     _app = firebase_admin.initialize_app(_load_credentials())
 
 
@@ -52,12 +60,16 @@ def verify_firebase_token(id_token: str) -> dict:
     'phone_number', 'name', 'picture', 'firebase', etc.
     Raises firebase_admin.auth.InvalidIdTokenError on failure.
     """
+    from firebase_admin import auth as firebase_auth
+
     _init_firebase()
     return firebase_auth.verify_id_token(id_token)
 
 
 def create_firebase_user(email: str) -> str:
     """Create a Firebase user with the given email. Returns the Firebase UID."""
+    from firebase_admin import auth as firebase_auth
+
     _init_firebase()
     user = firebase_auth.create_user(email=email)
     return user.uid
@@ -65,12 +77,16 @@ def create_firebase_user(email: str) -> str:
 
 def create_custom_token(uid: str) -> str:
     """Create a custom token for the given Firebase UID so the client can sign in."""
+    from firebase_admin import auth as firebase_auth
+
     _init_firebase()
     return firebase_auth.create_custom_token(uid).decode("utf-8")
 
 
 def delete_firebase_user_by_uid(uid: str) -> bool:
     """Delete a user from Firebase Authentication by their Firebase UID."""
+    from firebase_admin import auth as firebase_auth
+
     _init_firebase()
     try:
         firebase_auth.delete_user(uid)
@@ -86,6 +102,8 @@ def delete_firebase_user_by_uid(uid: str) -> bool:
 
 def delete_firebase_user_by_email(email: str) -> bool:
     """Delete a user from Firebase Authentication by email (lookup then delete)."""
+    from firebase_admin import auth as firebase_auth
+
     _init_firebase()
     try:
         fb_user = firebase_auth.get_user_by_email(email)
