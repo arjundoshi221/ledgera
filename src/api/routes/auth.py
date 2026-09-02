@@ -417,7 +417,7 @@ def google_login(
         if resp.status_code != 200:
             raise ValueError("Invalid token")
         idinfo = resp.json()
-    except Exception:
+    except (http_requests.RequestException, ValueError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid Google token"
@@ -566,11 +566,12 @@ def firebase_login(
     session: Session = Depends(get_session)
 ):
     """Authenticate via Firebase ID token. Creates user on first login."""
+    from firebase_admin import auth as firebase_auth
     from src.services.firebase_service import verify_firebase_token
 
     try:
         decoded = verify_firebase_token(req.id_token)
-    except Exception:
+    except firebase_auth.FirebaseError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid Firebase token"
@@ -669,11 +670,12 @@ def update_verification(
     session: Session = Depends(get_session)
 ):
     """After user verifies email or phone in Firebase, update our DB."""
+    from firebase_admin import auth as firebase_auth
     from src.services.firebase_service import verify_firebase_token
 
     try:
         decoded = verify_firebase_token(req.id_token)
-    except Exception:
+    except firebase_auth.FirebaseError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid Firebase token"
@@ -704,6 +706,7 @@ def provision_firebase(
     session: Session = Depends(get_session),
 ):
     """Create a Firebase account for an existing email-only user and return a custom token."""
+    from firebase_admin import auth as firebase_auth
     from src.services.firebase_service import create_firebase_user, create_custom_token
 
     user_repo = UserRepository(session)
@@ -714,12 +717,10 @@ def provision_firebase(
     if not user.firebase_uid:
         try:
             firebase_uid = create_firebase_user(user.email)
-        except Exception as e:
+        except firebase_auth.FirebaseError as e:
             # User may already exist in Firebase (e.g. created but uid never saved)
             if "ALREADY_EXISTS" in str(e):
-                from src.services.firebase_service import verify_firebase_token
-                from firebase_admin import auth as fb_auth
-                fb_user = fb_auth.get_user_by_email(user.email)
+                fb_user = firebase_auth.get_user_by_email(user.email)
                 firebase_uid = fb_user.uid
             else:
                 raise HTTPException(

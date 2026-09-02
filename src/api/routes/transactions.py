@@ -1,6 +1,6 @@
 """Transaction endpoints"""
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Optional, List, Dict
 import io
 from dateutil import parser as date_parser
@@ -508,7 +508,7 @@ async def read_file_headers(
 
     except pd.errors.EmptyDataError:
         raise HTTPException(status_code=400, detail="File is empty")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001  # top-level endpoint boundary -> 400
         raise HTTPException(status_code=400, detail=f"Error reading file: {str(e)}")
 
 
@@ -568,7 +568,7 @@ async def parse_file(
                     date_str = str(row[mapping["date"]])
                     # Try to parse date with multiple formats
                     timestamp = date_parser.parse(date_str, fuzzy=True)
-                except Exception:
+                except (ValueError, TypeError):
                     warnings.append(f"Invalid date format: {date_str}")
                     has_errors = True
             else:
@@ -607,7 +607,7 @@ async def parse_file(
 
                     # Credit is positive, debit is negative
                     amount = credit_amount - debit_amount
-                except Exception as e:
+                except (InvalidOperation, ValueError, TypeError) as e:
                     warnings.append(f"Invalid amount values: {str(e)}")
                     has_errors = True
             elif mapping.get("amount"):
@@ -621,7 +621,7 @@ async def parse_file(
                         amount_str = '-' + amount_str[1:-1]
 
                     amount = Decimal(amount_str)
-                except Exception as e:
+                except (InvalidOperation, ValueError, TypeError) as e:
                     warnings.append(f"Invalid amount: {str(e)}")
                     has_errors = True
             else:
@@ -661,5 +661,5 @@ async def parse_file(
         raise HTTPException(status_code=400, detail="Invalid column mapping JSON")
     except KeyError as e:
         raise HTTPException(status_code=400, detail=f"Column not found in file: {str(e)}")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001  # top-level endpoint boundary -> 400
         raise HTTPException(status_code=400, detail=f"Error parsing file: {str(e)}")

@@ -101,7 +101,7 @@ async def create_bug_report(
         user = user_repo.read(user_id)
         if user and user.email:
             send_bug_report_confirmation(user.email, title, report.id)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001  # best-effort notify; do not block bug submission
         logger.warning("Failed to send bug report confirmation email: %s", str(e))
 
     return BugReportResponse(

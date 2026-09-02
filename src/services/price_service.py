@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from decimal import Decimal
 from datetime import datetime, date
 from typing import Optional, Dict, List, Tuple
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.data.models import PriceModel, _utcnow_naive
@@ -87,7 +88,7 @@ class YahooFinancePriceProvider(PriceProvider):
 
             price = data['Close'].iloc[-1]
             return Decimal(str(price))
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001  # yfinance raises untyped provider errors
             logger.error(f"Error fetching {symbol}: {e}")
             return None
 
@@ -105,7 +106,7 @@ class YahooFinancePriceProvider(PriceProvider):
 
             price = data['Close'].iloc[-1]
             return Decimal(str(price))
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001  # yfinance raises untyped provider errors
             logger.error(f"Error fetching {symbol}: {e}")
             return None
 
@@ -138,7 +139,7 @@ class YahooFinancePriceProvider(PriceProvider):
                 result[d] = Decimal(str(row['Close']))
 
             logger.info(f"Fetched {len(result)} historical rates for {symbol}")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001  # yfinance raises untyped provider errors
             logger.error(f"Error fetching historical {symbol}: {e}")
 
         return result
@@ -188,7 +189,7 @@ class PriceService:
             )
             try:
                 repo.create(price)
-            except Exception as e:
+            except SQLAlchemyError as e:
                 logger.error(f"Failed to persist rate {base_ccy}/{quote_ccy}: {e}")
 
         if rate:
@@ -250,7 +251,7 @@ class PriceService:
                 ))
             try:
                 repo.bulk_create(prices)
-            except Exception as e:
+            except SQLAlchemyError as e:
                 logger.error(f"Failed to persist historical rates {base_ccy}/{quote_ccy}: {e}")
 
         return rates

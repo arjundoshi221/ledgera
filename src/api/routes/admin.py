@@ -702,8 +702,8 @@ def update_bug_status(
             user = user_repo.read(report.user_id)
             if user and user.email:
                 send_bug_report_resolved(user.email, report.title)
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001  # best-effort notify; do not block bug-resolve
+            logger.exception("Failed to send bug-resolved email for bug_id=%s", bug_id)
 
     # Audit log
     audit = AuditLogRepository(session)
@@ -784,7 +784,7 @@ def serve_bug_media(
         )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001  # top-level endpoint boundary -> 500
         logger.error("serve_bug_media error bug_id=%s media_id=%s: %s", bug_id, media_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to serve media: {str(e)}")
 

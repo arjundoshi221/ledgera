@@ -424,7 +424,7 @@ def get_expense_split(
             categories=sorted(categories, key=lambda x: x.total_amount, reverse=True)
         )
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001  # top-level endpoint boundary -> 400
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -738,7 +738,7 @@ def get_income_allocation(
             self_funding_warnings=self_funding_warnings,
         )
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001  # top-level endpoint boundary -> 400
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -801,7 +801,7 @@ def get_income_split(
             funds=sorted(funds, key=lambda x: x.allocated_amount, reverse=True)
         )
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001  # top-level endpoint boundary -> 400
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -1687,7 +1687,7 @@ def get_fund_tracker(
             summary=summary,
         )
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001  # top-level endpoint boundary -> 400
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -1902,7 +1902,7 @@ def get_net_worth(
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001  # top-level endpoint boundary -> 400
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -2290,5 +2290,5 @@ def get_monthly_dashboard(
             fund_extraction=fund_extraction_items,
         )
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001  # top-level endpoint boundary -> 400
         raise HTTPException(status_code=400, detail=str(e))

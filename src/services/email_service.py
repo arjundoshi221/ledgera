@@ -23,7 +23,7 @@ def _send_email(to: str, subject: str, html: str) -> bool:
             "html": html,
         })
         return True
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001  # Resend SDK raises untyped errors; email is best-effort
         logger.error("Failed to send email to %s: %s", to, str(e))
         return False
 
