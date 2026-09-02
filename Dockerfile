@@ -7,11 +7,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
+COPY pyproject.toml .
 COPY src/ src/
 COPY config/ config/
+
+RUN pip install .
 
 EXPOSE 8000
 

@@ -41,15 +41,15 @@ switch ($Action) {
     }
 
     'install_requirements' {
-        Write-Host "Installing packages from requirements.txt into: $EnvPath"
-        Run-Conda "run -p `"$EnvPath`" --no-capture-output pip install -r requirements.txt"
+        Write-Host "Installing project (editable) with dev extras into: $EnvPath"
+        Run-Conda "run -p `"$EnvPath`" --no-capture-output pip install -e `".[dev]`""
         break
     }
 
     'install_conda_then_pip' {
         Write-Host "Installing heavy packages with conda, then pip for rest"
         Run-Conda "install -p `"$EnvPath`" -y numpy pandas"
-        Run-Conda "run -p `"$EnvPath`" --no-capture-output pip install -r requirements.txt"
+        Run-Conda "run -p `"$EnvPath`" --no-capture-output pip install -e `".[dev]`""
         break
     }
 

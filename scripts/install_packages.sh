@@ -25,14 +25,14 @@ case "$ACTION" in
     ;;
 
   install_requirements)
-    echo "Installing requirements.txt into $ENVPATH"
-    "$CONDA_EXE" run -p "$ENVPATH" --no-capture-output pip install -r requirements.txt
+    echo "Installing project (editable) with dev extras into $ENVPATH"
+    "$CONDA_EXE" run -p "$ENVPATH" --no-capture-output pip install -e ".[dev]"
     ;;
 
   install_conda_then_pip)
     echo "Installing numpy/pandas via conda, then pip for the rest"
     "$CONDA_EXE" install -p "$ENVPATH" -y numpy pandas
-    "$CONDA_EXE" run -p "$ENVPATH" --no-capture-output pip install -r requirements.txt
+    "$CONDA_EXE" run -p "$ENVPATH" --no-capture-output pip install -e ".[dev]"
     ;;
 
   install_package)

@@ -20,17 +20,17 @@ Common commands
 C:\ProgramData\anaconda3\Scripts\conda.exe create -p .\env python=3.11 -y
 ```
 
-2) Install everything from `requirements.txt` into an env path without activating:
+2) Install the project (editable) with dev extras into an env path without activating:
 
 ```powershell
-C:\ProgramData\anaconda3\Scripts\conda.exe run -p "C:\Users\arjd2\Documents\GitHub\ledgera\.conda" --no-capture-output pip install -r requirements.txt
+C:\ProgramData\anaconda3\Scripts\conda.exe run -p "C:\Users\arjd2\Documents\GitHub\ledgera\.conda" --no-capture-output pip install -e ".[dev]"
 ```
 
 3) Install heavy packages with conda first, then pip for the remainder (recommended on Windows):
 
 ```powershell
 C:\ProgramData\anaconda3\Scripts\conda.exe install -p "C:\Users\arjd2\Documents\GitHub\ledgera\.conda" -y numpy pandas
-C:\ProgramData\anaconda3\Scripts\conda.exe run -p "C:\Users\arjd2\Documents\GitHub\ledgera\.conda" --no-capture-output pip install -r requirements.txt
+C:\ProgramData\anaconda3\Scripts\conda.exe run -p "C:\Users\arjd2\Documents\GitHub\ledgera\.conda" --no-capture-output pip install -e ".[dev]"
 ```
 
 4) Install a single package into the env (example: `yfinance`):
