@@ -9,6 +9,7 @@ from src.data.repositories import AccountRepository, TransferPostingsExistError
 from src.data.models import AccountModel
 from src.api.schemas import AccountCreate, AccountResponse
 from src.api.deps import get_workspace_id
+from src.api.errors import Conflict, NotFound, TransferConflict
 
 router = APIRouter()
 
@@ -137,24 +138,19 @@ def delete_account(
     account = repo.read_for_workspace(account_id, workspace_id)
 
     if not account:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise NotFound("Account not found", account_id=account_id)
 
     try:
         repo.delete(account_id)
     except TransferPostingsExistError as exc:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"This account is part of {exc.count} transfer transaction(s) "
-                "with other accounts. Delete those transfers first, then retry."
-            ),
+        raise TransferConflict(
+            f"Account is part of {exc.count} transfer transaction(s) with other "
+            "accounts. Delete those transfers first, then retry.",
+            count=exc.count,
         )
     except IntegrityError:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Account has linked records that could not be removed. "
-                "Please contact support if this persists."
-            ),
+        raise Conflict(
+            "Account has linked records that could not be removed. "
+            "Please contact support if this persists."
         )
     return {"message": "Account deleted"}

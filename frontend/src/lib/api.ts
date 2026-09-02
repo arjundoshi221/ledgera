@@ -71,19 +71,38 @@ export function clearEtagCache(): void {
 // Base fetcher
 // ---------------------
 
+// Structured envelope emitted by the backend AppError handler (see B15).
+// Legacy HTTPException responses still ship `{detail: string}` — both shapes
+// are parsed below so the migration in B37 can proceed one route at a time.
 class ApiError extends Error {
   status: number
   body: unknown
+  code?: string
+  extra?: Record<string, unknown>
 
   constructor(status: number, body: unknown) {
-    const message =
-      typeof body === "object" && body !== null && "detail" in body
-        ? String((body as { detail: unknown }).detail)
-        : `API error ${status}`
+    let message = `API error ${status}`
+    let code: string | undefined
+    let extra: Record<string, unknown> | undefined
+
+    if (typeof body === "object" && body !== null) {
+      const obj = body as Record<string, unknown>
+      if (typeof obj.code === "string" && typeof obj.message === "string") {
+        code = obj.code
+        message = obj.message
+        const { code: _c, message: _m, ...rest } = obj
+        extra = rest
+      } else if ("detail" in obj) {
+        message = String(obj.detail)
+      }
+    }
+
     super(message)
     this.name = "ApiError"
     this.status = status
     this.body = body
+    this.code = code
+    this.extra = extra
   }
 }
 

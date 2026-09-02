@@ -3,13 +3,15 @@
 import logging
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from config.settings import settings
 from src.data.database import init_db
+from .errors import AppError
 from .schemas import HealthResponse
 from .routes import accounts, transactions, projections, prices, auth, workspace, categories, analytics, payments, recurring, admin, bugs
 from .middleware import AuthMiddleware
@@ -70,6 +72,14 @@ app.add_middleware(
     expose_headers=["ETag"],
     max_age=600,
 )
+
+
+@app.exception_handler(AppError)
+async def _app_error_handler(request: Request, exc: AppError) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"code": exc.code, "message": exc.message, **exc.extra},
+    )
 
 
 @app.get("/", response_model=HealthResponse)
