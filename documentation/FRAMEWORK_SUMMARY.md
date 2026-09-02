@@ -1,5 +1,7 @@
 """Summary of Ledgera Framework Creation"""
 
+> **Historical note (2026-09-03):** written during early framework scaffolding, may not reflect the current codebase. See git log for authoritative state.
+
 # Ledgera Framework - Complete Summary
 
 ## Overview
@@ -18,8 +20,7 @@ The framework is organized into 4 main layers:
 ### Root Configuration Files
 ```
 ledgera/
-├── requirements.txt              # Python dependencies
-├── setup.py                      # Package setup
+├── pyproject.toml                # Python packaging + dependencies
 ├── main.py                       # Application entry point
 ├── .gitignore                    # Git ignore rules
 ├── QUICKSTART.md                 # Quick start guide
@@ -234,7 +235,7 @@ config/
 ### Setup & Installation
 ```bash
 # Install dependencies
-pip install -r requirements.txt
+pip install -e ".[dev]"
 
 # Initialize database
 python -c "from src.data.database import init_db; init_db('sqlite:///./ledgera.db')"
@@ -330,8 +331,7 @@ ledgera/
 ├── documentation/
 │   └── documentation.ipynb
 ├── main.py
-├── requirements.txt
-├── setup.py
+├── pyproject.toml
 ├── .gitignore
 ├── LICENSE
 ├── README.md

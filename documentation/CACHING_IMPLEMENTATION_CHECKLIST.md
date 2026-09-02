@@ -1,3 +1,5 @@
+> **Historical note (2026-09-03):** written during the caching build-out; implementation is complete, may not reflect the current codebase. See git log for authoritative state.
+
 # Browser Caching Implementation Checklist
 
 ## Phase 1: SWR Client Cache (HIGH PRIORITY - Immediate Impact)

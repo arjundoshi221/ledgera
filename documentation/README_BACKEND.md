@@ -38,7 +38,7 @@ config/              # Configuration and migrations
 ### 1. Install Dependencies
 
 ```bash
-pip install -r requirements.txt
+pip install -e ".[dev]"
 ```
 
 ### 2. Initialize Database

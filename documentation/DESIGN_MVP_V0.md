@@ -842,7 +842,7 @@ def test_csv_import_idempotent(client, user):
 | `src/api/middleware.py` | **NEW**: Extract workspace_id from JWT |
 | `tests/test_multi_user_isolation.py` | **NEW**: Multi-user + isolation tests |
 | `tests/test_auth.py` | **NEW**: Auth flow tests |
-| `requirements.txt` | Add `PyJWT`, `passlib`, `argon2-cffi` (update if needed) |
+| `pyproject.toml` | Add `PyJWT`, `passlib`, `argon2-cffi` (update if needed) |
 
 ---
 

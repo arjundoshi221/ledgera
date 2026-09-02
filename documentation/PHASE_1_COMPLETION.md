@@ -1,3 +1,5 @@
+> **Historical note (2026-09-03):** written during phase 1, may not reflect the current codebase. See git log for authoritative state.
+
 # Phase 1 Completion: Auth + Workspace Layer
 
 **Status:** ✅ COMPLETE  
@@ -311,7 +313,7 @@ Subsequent Request:
 
 ```bash
 # Install dependencies
-pip install -r requirements.txt
+pip install -e ".[dev]"
 
 # Run tests
 pytest tests/test_auth.py -v

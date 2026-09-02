@@ -1,3 +1,5 @@
+> **Historical note (2026-09-03):** written during the SWR migration; the migration is complete, may not reflect the current codebase. See git log for authoritative state.
+
 # Migration Guide: From useState to SWR
 
 This guide shows how to migrate existing pages from manual `useState` + `useEffect` patterns to SWR hooks.

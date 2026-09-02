@@ -47,8 +47,7 @@ ledgera/
 │   └── migrations.md            # Database migration guide
 │
 ├── main.py                        # Application entry point
-├── requirements.txt              # Python dependencies
-├── setup.py                       # Package setup
+├── pyproject.toml                 # Python packaging + dependencies
 ├── .gitignore                     # Git ignore rules
 └── README_BACKEND.md             # Backend documentation
 ```
@@ -247,8 +246,8 @@ export PRICE_CACHE_TTL=3600
 ## Resources
 
 - [Backend README](README_BACKEND.md)
-- [Documentation](documentation/documentation.ipynb)
-- [Alembic Migrations Guide](config/migrations.md)
+- [Documentation](documentation.ipynb)
+- [Alembic Migrations Guide](../config/migrations.md)
 
 ---
 
