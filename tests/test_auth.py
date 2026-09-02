@@ -1,152 +1,148 @@
-"""Authentication endpoint tests"""
+"""Authentication endpoint tests (Firebase-backed).
 
-import pytest
+The /auth/firebase endpoint is the entry point: it accepts a Firebase ID token,
+verifies it via firebase_admin, and returns a JWT signed by our AuthService.
+Tests mock firebase_admin.auth.verify_id_token via the `firebase_verify`
+fixture — no real Firebase call is ever made.
+"""
+
 from fastapi.testclient import TestClient
 
+from tests.conftest import firebase_signup
 
-class TestSignup:
-    """Test user signup"""
-    
-    def test_signup_success(self, client: TestClient, test_user_data):
-        """Test successful signup"""
-        response = client.post("/auth/signup", json=test_user_data)
-        
-        assert response.status_code == 201
-        data = response.json()
+
+class TestFirebaseSignup:
+    """First /auth/firebase call for a new Firebase UID creates the user + workspace."""
+
+    def test_firebase_signup_creates_user(self, client: TestClient, firebase_verify):
+        data = firebase_signup(
+            client, firebase_verify,
+            token="tok-new", uid="fb-uid-new",
+            email="new@example.com", name="Alice Example",
+        )
         assert "user_id" in data
         assert "workspace_id" in data
         assert "access_token" in data
         assert data["token_type"] == "bearer"
-    
-    def test_signup_duplicate_email(self, client: TestClient, test_user_data):
-        """Test signup with duplicate email"""
-        # First signup
-        response1 = client.post("/auth/signup", json=test_user_data)
-        assert response1.status_code == 201
-        
-        # Second signup with same email
-        response2 = client.post("/auth/signup", json=test_user_data)
-        assert response2.status_code == 400
-        assert "already registered" in response2.json()["detail"]
-    
-    def test_signup_creates_workspace(self, client: TestClient, test_user_data):
-        """Test that signup automatically creates a workspace"""
-        response = client.post("/auth/signup", json=test_user_data)
-        
-        assert response.status_code == 201
-        data = response.json()
+
+    def test_firebase_signup_creates_workspace(self, client: TestClient, firebase_verify):
+        data = firebase_signup(
+            client, firebase_verify,
+            token="tok-ws", uid="fb-uid-ws", email="ws@example.com",
+        )
         workspace_id = data["workspace_id"]
-        
-        # Verify workspace can be accessed with the token
+
         headers = {"Authorization": f"Bearer {data['access_token']}"}
-        workspace_response = client.get("/api/v1/workspace", headers=headers)
-        
-        assert workspace_response.status_code == 200
-        ws_data = workspace_response.json()
-        assert ws_data["id"] == workspace_id
-        assert ws_data["name"] == "Personal"
-        assert ws_data["base_currency"] == "SGD"
+        ws_resp = client.get("/api/v1/workspace", headers=headers)
+        assert ws_resp.status_code == 200
+        ws = ws_resp.json()
+        assert ws["id"] == workspace_id
+        assert ws["name"] == "Personal"
 
+class TestFirebaseLogin:
+    """Second /auth/firebase call for an existing Firebase UID logs the user in."""
 
-class TestLogin:
-    """Test user login"""
-    
-    def test_login_success(self, client: TestClient, test_user_data):
-        """Test successful login"""
-        # Signup first
-        signup_response = client.post("/auth/signup", json=test_user_data)
-        assert signup_response.status_code == 201
-        
-        # Login
-        login_data = {
-            "email": test_user_data["email"],
-            "password": test_user_data["password"]
-        }
-        response = client.post("/auth/login", json=login_data)
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert "user_id" in data
-        assert "workspace_id" in data
-        assert "access_token" in data
-        assert data["token_type"] == "bearer"
-    
-    def test_login_invalid_email(self, client: TestClient):
-        """Test login with non-existent email"""
-        response = client.post("/auth/login", json={
-            "email": "nonexistent@example.com",
-            "password": "anypassword"
-        })
-        
-        assert response.status_code == 401
-        assert "Invalid email or password" in response.json()["detail"]
-    
-    def test_login_invalid_password(self, client: TestClient, test_user_data):
-        """Test login with wrong password"""
-        # Signup first
-        client.post("/auth/signup", json=test_user_data)
-        
-        # Try login with wrong password
-        response = client.post("/auth/login", json={
-            "email": test_user_data["email"],
-            "password": "WrongPassword123!"
-        })
-        
-        assert response.status_code == 401
-        assert "Invalid email or password" in response.json()["detail"]
+    def test_repeat_firebase_login_reuses_user(self, client: TestClient, firebase_verify):
+        first = firebase_signup(
+            client, firebase_verify,
+            token="tok-1", uid="fb-uid-repeat", email="repeat@example.com",
+        )
+
+        # Second call with a different token but same uid/email → same user + workspace
+        second = firebase_signup(
+            client, firebase_verify,
+            token="tok-2", uid="fb-uid-repeat", email="repeat@example.com",
+        )
+
+        assert second["user_id"] == first["user_id"]
+        assert second["workspace_id"] == first["workspace_id"]
+
+    def test_firebase_login_by_email_backfills_uid(self, client: TestClient, firebase_verify):
+        """User created with one uid can be found on next login by email
+        (backfills firebase_uid), matching the endpoint's read_by_email fallback."""
+        first = firebase_signup(
+            client, firebase_verify,
+            token="tok-orig", uid="fb-uid-orig", email="same@example.com",
+        )
+        # Different uid but same email → should still resolve to the same account
+        second = firebase_signup(
+            client, firebase_verify,
+            token="tok-new", uid="fb-uid-different", email="same@example.com",
+        )
+        assert second["user_id"] == first["user_id"]
+
+    def test_two_distinct_firebase_uids_get_distinct_users(self, client: TestClient, firebase_verify):
+        a = firebase_signup(
+            client, firebase_verify,
+            token="tok-x", uid="fb-uid-x", email="x@example.com",
+        )
+        b = firebase_signup(
+            client, firebase_verify,
+            token="tok-y", uid="fb-uid-y", email="y@example.com",
+        )
+        assert a["user_id"] != b["user_id"]
+        assert a["workspace_id"] != b["workspace_id"]
 
 
 class TestMeEndpoint:
-    """Test /me endpoint"""
-    
-    def test_get_me_success(self, client: TestClient, test_user_data):
-        """Test successful /me request"""
-        # Signup
-        signup_response = client.post("/auth/signup", json=test_user_data)
-        token = signup_response.json()["access_token"]
-        
-        # Get /me
-        headers = {"Authorization": f"Bearer {token}"}
-        response = client.get("/auth/me", headers=headers)
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["email"] == test_user_data["email"]
-        assert data["display_name"] == test_user_data["display_name"]
-        assert "user_id" in data
-    
+    """Test /auth/me endpoint"""
+
+    def test_get_me_success(self, client: TestClient, firebase_verify):
+        data = firebase_signup(
+            client, firebase_verify,
+            token="tok-me", uid="fb-uid-me",
+            email="me@example.com", name="Me User",
+        )
+
+        headers = {"Authorization": f"Bearer {data['access_token']}"}
+        resp = client.get("/auth/me", headers=headers)
+
+        assert resp.status_code == 200
+        me = resp.json()
+        assert me["email"] == "me@example.com"
+        assert me["first_name"] == "Me"
+        assert me["last_name"] == "User"
+        assert me["id"] == data["user_id"]
+
     def test_get_me_without_token(self, client: TestClient):
-        """Test /me without authentication token"""
-        response = client.get("/auth/me")
-        
-        assert response.status_code == 401
-        assert "Not authenticated" in response.json()["detail"]
-    
+        resp = client.get("/auth/me")
+        assert resp.status_code == 401
+        assert "Not authenticated" in resp.json()["detail"]
+
     def test_get_me_invalid_token(self, client: TestClient):
-        """Test /me with invalid token"""
         headers = {"Authorization": "Bearer invalid-token-xyz"}
-        response = client.get("/auth/me", headers=headers)
-        
-        assert response.status_code == 401
-        assert "Invalid or expired token" in response.json()["detail"]
+        resp = client.get("/auth/me", headers=headers)
+        assert resp.status_code == 401
+        assert "Invalid or expired token" in resp.json()["detail"]
+
+    def test_get_me_after_re_login_returns_same_identity(self, client: TestClient, firebase_verify):
+        """A second login for the same Firebase UID produces a JWT that
+        resolves back to the same user record via /auth/me."""
+        first = firebase_signup(
+            client, firebase_verify,
+            token="tok-me-1", uid="fb-uid-relogin",
+            email="relogin@example.com", name="Re Login",
+        )
+        second = firebase_signup(
+            client, firebase_verify,
+            token="tok-me-2", uid="fb-uid-relogin",
+            email="relogin@example.com", name="Re Login",
+        )
+        me = client.get("/auth/me", headers={"Authorization": f"Bearer {second['access_token']}"})
+        assert me.status_code == 200
+        assert me.json()["id"] == first["user_id"]
+        assert me.json()["email"] == "relogin@example.com"
 
 
 class TestTokenExpiry:
-    """Test token expiration and validity"""
-    
-    def test_token_can_access_protected_endpoints(self, client: TestClient, test_user_data):
-        """Test that valid token can access protected endpoints"""
-        # Signup and get token
-        signup_response = client.post("/auth/signup", json=test_user_data)
-        token = signup_response.json()["access_token"]
-        
-        # Use token on multiple endpoints
-        headers = {"Authorization": f"Bearer {token}"}
-        
-        # /me
-        me_response = client.get("/auth/me", headers=headers)
-        assert me_response.status_code == 200
-        
-        # /workspace
-        ws_response = client.get("/api/v1/workspace", headers=headers)
-        assert ws_response.status_code == 200
+    """Test that a JWT issued by /auth/firebase gates protected endpoints."""
+
+    def test_token_can_access_protected_endpoints(self, client: TestClient, firebase_verify):
+        data = firebase_signup(
+            client, firebase_verify,
+            token="tok-access", uid="fb-uid-access", email="access@example.com",
+        )
+        headers = {"Authorization": f"Bearer {data['access_token']}"}
+
+        assert client.get("/auth/me", headers=headers).status_code == 200
+        assert client.get("/api/v1/workspace", headers=headers).status_code == 200

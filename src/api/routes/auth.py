@@ -566,12 +566,12 @@ def firebase_login(
     session: Session = Depends(get_session)
 ):
     """Authenticate via Firebase ID token. Creates user on first login."""
-    from firebase_admin import auth as firebase_auth
+    from firebase_admin.exceptions import FirebaseError
     from src.services.firebase_service import verify_firebase_token
 
     try:
         decoded = verify_firebase_token(req.id_token)
-    except firebase_auth.FirebaseError:
+    except FirebaseError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid Firebase token"
@@ -670,12 +670,12 @@ def update_verification(
     session: Session = Depends(get_session)
 ):
     """After user verifies email or phone in Firebase, update our DB."""
-    from firebase_admin import auth as firebase_auth
+    from firebase_admin.exceptions import FirebaseError
     from src.services.firebase_service import verify_firebase_token
 
     try:
         decoded = verify_firebase_token(req.id_token)
-    except firebase_auth.FirebaseError:
+    except FirebaseError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid Firebase token"
@@ -707,6 +707,7 @@ def provision_firebase(
 ):
     """Create a Firebase account for an existing email-only user and return a custom token."""
     from firebase_admin import auth as firebase_auth
+    from firebase_admin.exceptions import FirebaseError
     from src.services.firebase_service import create_firebase_user, create_custom_token
 
     user_repo = UserRepository(session)
@@ -717,7 +718,7 @@ def provision_firebase(
     if not user.firebase_uid:
         try:
             firebase_uid = create_firebase_user(user.email)
-        except firebase_auth.FirebaseError as e:
+        except FirebaseError as e:
             # User may already exist in Firebase (e.g. created but uid never saved)
             if "ALREADY_EXISTS" in str(e):
                 fb_user = firebase_auth.get_user_by_email(user.email)

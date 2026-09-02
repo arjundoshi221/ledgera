@@ -86,6 +86,7 @@ def create_custom_token(uid: str) -> str:
 def delete_firebase_user_by_uid(uid: str) -> bool:
     """Delete a user from Firebase Authentication by their Firebase UID."""
     from firebase_admin import auth as firebase_auth
+    from firebase_admin.exceptions import FirebaseError
 
     _init_firebase()
     try:
@@ -95,7 +96,7 @@ def delete_firebase_user_by_uid(uid: str) -> bool:
     except firebase_auth.UserNotFoundError:
         logger.info("No Firebase user found for uid=%s, nothing to delete", uid)
         return False
-    except firebase_auth.FirebaseError:
+    except FirebaseError:
         logger.warning("Failed to delete Firebase user uid=%s", uid, exc_info=True)
         return False
 
@@ -103,6 +104,7 @@ def delete_firebase_user_by_uid(uid: str) -> bool:
 def delete_firebase_user_by_email(email: str) -> bool:
     """Delete a user from Firebase Authentication by email (lookup then delete)."""
     from firebase_admin import auth as firebase_auth
+    from firebase_admin.exceptions import FirebaseError
 
     _init_firebase()
     try:
@@ -113,6 +115,6 @@ def delete_firebase_user_by_email(email: str) -> bool:
     except firebase_auth.UserNotFoundError:
         logger.info("No Firebase user found for email=%s, nothing to delete", email)
         return False
-    except firebase_auth.FirebaseError:
+    except FirebaseError:
         logger.warning("Failed to delete Firebase user email=%s", email, exc_info=True)
         return False
