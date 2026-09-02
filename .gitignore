@@ -73,11 +73,14 @@ temp/
 # Node / JavaScript
 node_modules/
 .nodeenv
-.claude
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 npm-shrinkwrap.json
+
+# Claude Code — keep the per-user overrides local, but leave the shared
+# .claude/settings.json + .claude/agents/ trackable so team defaults commit.
+.claude/settings.local.json
 
 # Next.js
 .next/
@@ -91,5 +94,3 @@ dist/
 
 # Tailwind CSS
 *.cache
-
-nul
