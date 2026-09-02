@@ -1,7 +1,8 @@
 FROM node:18-alpine AS base
-ENV NODE_ENV=production
 
-# Install dependencies
+# Install dependencies — must NOT set NODE_ENV=production here, or `npm ci`
+# skips devDependencies (tailwindcss, typescript, postcss) that next build
+# needs to compile the app.
 FROM base AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
@@ -30,6 +31,7 @@ RUN npm run build
 # Production runner
 FROM base AS runner
 WORKDIR /app
+ENV NODE_ENV=production
 
 RUN addgroup -g 1001 -S nodejs && adduser -S -u 1001 nextjs -G nodejs
 
