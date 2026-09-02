@@ -63,7 +63,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    # If adding a client-side SDK that decorates fetch (Sentry, OTel, analytics),
+    # add its headers here — narrow list is intentional, see B33.
     allow_headers=["Authorization", "Content-Type", "If-None-Match"],
     expose_headers=["ETag"],
     max_age=600,
