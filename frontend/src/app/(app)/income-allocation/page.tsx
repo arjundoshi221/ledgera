@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useIncomeAllocation, useWorkspace, useAllocationOverrideMutations } from "@/lib/hooks"
 import { invalidateAllocationOverrides } from "@/lib/cache"
+import { errorMessage } from "@/lib/errors"
 import { useToast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
 import { Info } from "lucide-react"
@@ -115,8 +116,8 @@ export default function IncomeAllocationPage() {
       toast({ title: "Allocation updated" })
       setEditingCell(null)
       await invalidateAllocationOverrides(year, month)
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to save", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to save", description: errorMessage(err) })
     } finally {
       setSaving(false)
     }
@@ -165,8 +166,8 @@ export default function IncomeAllocationPage() {
       toast({ title: "Working Capital updated (manual override)" })
       setEditingWcCell(null)
       await invalidateAllocationOverrides(year, month)
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to save", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to save", description: errorMessage(err) })
     } finally {
       setSaving(false)
     }
@@ -187,8 +188,8 @@ export default function IncomeAllocationPage() {
       await deleteOverride.trigger({ fundId, year, month })
       toast({ title: "Reset to model amount" })
       await invalidateAllocationOverrides(year, month)
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to reset", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to reset", description: errorMessage(err) })
     } finally {
       setSaving(false)
     }
@@ -201,8 +202,8 @@ export default function IncomeAllocationPage() {
       await deleteOverride.trigger({ fundId, year, month })
       toast({ title: "Reset to sweep default" })
       await invalidateAllocationOverrides(year, month)
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to reset", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to reset", description: errorMessage(err) })
     } finally {
       setSaving(false)
     }
@@ -227,8 +228,8 @@ export default function IncomeAllocationPage() {
         toast({ title: "Switched to Model mode" })
       }
       await invalidateAllocationOverrides(year, month)
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to change mode", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to change mode", description: errorMessage(err) })
     } finally {
       setSaving(false)
     }

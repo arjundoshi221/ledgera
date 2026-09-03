@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { signup, firebaseLogin } from "@/lib/api"
 import { setAuth } from "@/lib/auth"
+import { errorCode, errorMessage, errorStatus } from "@/lib/errors"
 import { useToast } from "@/components/ui/use-toast"
 import { createUserWithEmailAndPassword, sendEmailVerification } from "firebase/auth"
 import { firebaseAuth } from "@/lib/firebase"
@@ -259,8 +260,8 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
         // 2. Send email verification
         await sendEmailVerification(cred.user)
         console.log("[Signup] Firebase user created and verification email sent")
-      } catch (fbErr: any) {
-        if (fbErr.code === "auth/email-already-in-use") {
+      } catch (fbErr) {
+        if (errorCode(fbErr) === "auth/email-already-in-use") {
           // Firebase user already exists (from a previous attempt) — continue with backend signup
           console.log("[Signup] Firebase user already exists, continuing with backend signup")
         } else {
@@ -300,11 +301,11 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
           : "You can now sign in.",
       })
       onSuccess()
-    } catch (err: any) {
-      console.error("[Signup] Error:", err.code || err.status, err.message)
-      const message = err.code === "auth/email-already-in-use"
+    } catch (err) {
+      console.error("[Signup] Error:", errorCode(err) || errorStatus(err), errorMessage(err))
+      const message = errorCode(err) === "auth/email-already-in-use"
         ? "Email already registered"
-        : err.message || "Could not create account"
+        : errorMessage(err, "Could not create account")
       toast({
         variant: "destructive",
         title: "Signup failed",

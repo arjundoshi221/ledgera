@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/components/ui/use-toast"
 import { getUsers, disableUser, enableUser, promoteUser, demoteUser } from "@/lib/admin-api"
 import type { AdminUserListItem, PaginatedUserResponse } from "@/lib/admin-types"
+import { errorMessage } from "@/lib/errors"
 
 export default function AdminUsersPage() {
   const router = useRouter()
@@ -28,15 +29,15 @@ export default function AdminUsersPage() {
   const loadUsers = useCallback(async () => {
     try {
       setLoading(true)
-      const params: any = { offset: page * limit, limit }
+      const params: Parameters<typeof getUsers>[0] = { offset: page * limit, limit }
       if (search) params.search = search
       if (authFilter !== "all") params.auth_provider = authFilter
       if (statusFilter === "disabled") params.is_disabled = true
       if (statusFilter === "admin") params.is_admin = true
       const res = await getUsers(params)
       setData(res)
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to load users", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to load users", description: errorMessage(err) })
     } finally {
       setLoading(false)
     }
@@ -58,8 +59,8 @@ export default function AdminUsersPage() {
       toast({ title: `User ${user.email} ${action}d successfully` })
       setConfirmAction(null)
       loadUsers()
-    } catch (err: any) {
-      toast({ variant: "destructive", title: `Failed to ${action} user`, description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: `Failed to ${action} user`, description: errorMessage(err) })
     }
   }
 

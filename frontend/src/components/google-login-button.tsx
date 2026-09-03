@@ -5,6 +5,7 @@ import { signInWithPopup, GoogleAuthProvider } from "firebase/auth"
 import { firebaseAuth } from "@/lib/firebase"
 import { firebaseLogin } from "@/lib/api"
 import { setAuth } from "@/lib/auth"
+import { errorCode, errorMessage } from "@/lib/errors"
 import { useToast } from "@/components/ui/use-toast"
 import { Button } from "@/components/ui/button"
 
@@ -26,12 +27,12 @@ export function GoogleLoginButton() {
       } else {
         router.push("/onboarding")
       }
-    } catch (err: any) {
-      if (err.code !== "auth/popup-closed-by-user") {
+    } catch (err) {
+      if (errorCode(err) !== "auth/popup-closed-by-user") {
         toast({
           variant: "destructive",
           title: "Google sign-in failed",
-          description: err.message || "Could not authenticate with Google",
+          description: errorMessage(err, "Could not authenticate with Google"),
         })
       }
     }

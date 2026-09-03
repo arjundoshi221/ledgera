@@ -18,6 +18,7 @@ import type {
   Transaction,
   CreateTransactionRequest,
   CreateTransferRequest,
+  MonthlyProjection,
   ProjectionAssumptions,
   ProjectionResponse,
   Workspace,
@@ -415,7 +416,7 @@ export async function runProjection(
   months?: number
 ): Promise<ProjectionResponse> {
   const params = months !== undefined ? `?months=${months}` : ""
-  const raw = await apiFetch<{ scenario_id: string; months: any[] }>(`/api/v1/projections/forecast${params}`, {
+  const raw = await apiFetch<{ scenario_id: string; months: MonthlyProjection[] }>(`/api/v1/projections/forecast${params}`, {
     method: "POST",
     body: JSON.stringify(assumptions),
   })

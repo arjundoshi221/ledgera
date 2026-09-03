@@ -92,7 +92,7 @@ export const swrLive: SWRConfiguration = {
 // ============================================================
 
 // Generate consistent cache keys
-function cacheKey(endpoint: string, params?: Record<string, any>) {
+function cacheKey(endpoint: string, params?: Record<string, unknown>) {
   if (!params) return endpoint
   return [endpoint, params]
 }

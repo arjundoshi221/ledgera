@@ -12,6 +12,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { getUserDetail, disableUser, enableUser, promoteUser, demoteUser, deleteUser } from "@/lib/admin-api"
 import { getAuditLogs } from "@/lib/admin-api"
 import type { AdminUserDetail, AuditLogEntry } from "@/lib/admin-types"
+import { errorMessage } from "@/lib/errors"
 
 export default function AdminUserDetailPage() {
   const { userId } = useParams<{ userId: string }>()
@@ -30,8 +31,8 @@ export default function AdminUserDetailPage() {
       ])
       setUser(u)
       setAuditLogs(logs.logs)
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to load user", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to load user", description: errorMessage(err) })
     } finally {
       setLoading(false)
     }
@@ -55,8 +56,8 @@ export default function AdminUserDetailPage() {
       toast({ title: `User ${confirmAction}d successfully` })
       setConfirmAction(null)
       load()
-    } catch (err: any) {
-      toast({ variant: "destructive", title: `Failed to ${confirmAction} user`, description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: `Failed to ${confirmAction} user`, description: errorMessage(err) })
     }
   }
 

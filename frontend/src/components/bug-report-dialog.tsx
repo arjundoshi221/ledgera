@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
 import { submitBugReport } from "@/lib/api"
+import { errorMessage } from "@/lib/errors"
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024
 const MAX_FILES = 5
@@ -81,11 +82,11 @@ export function BugReportDialog({ open, onOpenChange }: BugReportDialogProps) {
       })
       resetForm()
       onOpenChange(false)
-    } catch (err: any) {
+    } catch (err) {
       toast({
         variant: "destructive",
         title: "Failed to submit bug report",
-        description: err.message || "Something went wrong",
+        description: errorMessage(err),
       })
     } finally {
       setSubmitting(false)

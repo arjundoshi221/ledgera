@@ -23,6 +23,8 @@ import {
   getBugMediaUrl,
 } from "@/lib/admin-api"
 import type { AdminBugReportDetail, PaginatedBugReportResponse } from "@/lib/admin-types"
+import type { BugReportStatus } from "@/lib/types"
+import { errorMessage } from "@/lib/errors"
 
 export default function AdminBugsPage() {
   const { toast } = useToast()
@@ -49,8 +51,8 @@ export default function AdminBugsPage() {
         limit,
       })
       setData(res)
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to load bug reports", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to load bug reports", description: errorMessage(err) })
     } finally {
       setLoading(false)
     }
@@ -82,8 +84,8 @@ export default function AdminBugsPage() {
           fetchMediaBlob(bugId, m.id)
         }
       }
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to load details", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to load details", description: errorMessage(err) })
       setDetailOpen(false)
     } finally {
       setDetailLoading(false)
@@ -108,8 +110,8 @@ export default function AdminBugsPage() {
       const blobUrl = URL.createObjectURL(blob)
       setMediaUrls((prev) => ({ ...prev, [mediaId]: blobUrl }))
       setMediaState((prev) => ({ ...prev, [mediaId]: "done" }))
-    } catch (err: any) {
-      const msg = err?.message || "Network error"
+    } catch (err) {
+      const msg = errorMessage(err, "Network error")
       console.error(`Failed to fetch media ${mediaId}:`, err)
       setMediaError((prev) => ({ ...prev, [mediaId]: msg }))
       setMediaState((prev) => ({ ...prev, [mediaId]: "error" }))
@@ -134,8 +136,8 @@ export default function AdminBugsPage() {
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(blobUrl)
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Download failed", description: err?.message || "Network error" })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Download failed", description: errorMessage(err, "Network error") })
     }
   }
 
@@ -145,10 +147,10 @@ export default function AdminBugsPage() {
       toast({ title: `Status updated to ${newStatus}` })
       loadReports()
       if (detail && detail.id === bugId) {
-        setDetail({ ...detail, status: newStatus as any, media: newStatus === "resolved" ? [] : detail.media })
+        setDetail({ ...detail, status: newStatus as BugReportStatus, media: newStatus === "resolved" ? [] : detail.media })
       }
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to update status", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to update status", description: errorMessage(err) })
     }
   }
 
@@ -159,8 +161,8 @@ export default function AdminBugsPage() {
       toast({ title: "Bug report deleted" })
       loadReports()
       if (detailOpen && detail?.id === bugId) setDetailOpen(false)
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to delete", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to delete", description: errorMessage(err) })
     }
   }
 

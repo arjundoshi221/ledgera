@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
 import { getMe, completeProfile } from "@/lib/api"
+import { errorMessage } from "@/lib/errors"
 import { isLoggedIn, isProfileComplete, setProfileComplete } from "@/lib/auth"
 import { COUNTRIES, PHONE_CODES, searchCountries, getCountryName } from "@/lib/countries"
 import { CURRENCIES } from "@/lib/constants"
@@ -213,11 +214,11 @@ export default function OnboardingPage() {
       })
       setProfileComplete()
       router.push("/dashboard")
-    } catch (err: any) {
+    } catch (err) {
       toast({
         variant: "destructive",
         title: "Could not save profile",
-        description: err.message || "Please try again",
+        description: errorMessage(err, "Please try again"),
       })
     } finally {
       setLoading(false)

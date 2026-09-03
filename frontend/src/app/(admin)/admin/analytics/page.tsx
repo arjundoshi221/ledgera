@@ -12,6 +12,7 @@ import {
 import type {
   AuthProviderBreakdown, AgeBracket, RetentionCohort, ConversionFunnel, FeatureAdoption,
 } from "@/lib/admin-types"
+import { errorMessage } from "@/lib/errors"
 import {
   ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar,
   XAxis, YAxis, Tooltip, CartesianGrid, Legend,
@@ -51,8 +52,8 @@ export default function AdminAnalyticsPage() {
         setFunnel(fn)
         setAdoption(fa)
         setCohorts(co)
-      } catch (err: any) {
-        toast({ variant: "destructive", title: "Failed to load analytics", description: err.message })
+      } catch (err) {
+        toast({ variant: "destructive", title: "Failed to load analytics", description: errorMessage(err) })
       } finally {
         setLoading(false)
       }

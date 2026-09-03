@@ -37,6 +37,7 @@ import {
 import { useWorkspace, useMe, useAccounts, useCategories, useSubcategories, useFunds, useCards, usePaymentMethods, useWorkspaceMutations, useVerificationStatus } from "@/lib/hooks"
 import { invalidateWorkspace, invalidateAccounts, invalidateCategories, invalidateSubcategories, invalidateFunds, invalidateCards, invalidatePaymentMethods, clearCacheOnLogout } from "@/lib/cache"
 import { clearAuth } from "@/lib/auth"
+import { errorMessage } from "@/lib/errors"
 import { useRouter, useSearchParams } from "next/navigation"
 import { CURRENCIES, ACCOUNT_TYPES, CARD_TYPES, CARD_NETWORKS } from "@/lib/constants"
 import { PhoneVerification } from "@/components/phone-verification"
@@ -142,8 +143,8 @@ export default function SettingsPage() {
       await updateWorkspaceMutation.trigger({ name: wsName, base_currency: wsCurrency, min_wc_balance: minWcBalance })
       await invalidateWorkspace()
       toast({ title: "Settings saved" })
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed", description: errorMessage(err) })
     } finally {
       setSaving(false)
     }
@@ -157,8 +158,8 @@ export default function SettingsPage() {
       toast({ title: "Account deleted" })
       setDeleteAccountId(null)
       await invalidateAccounts()
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to delete account", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to delete account", description: errorMessage(err) })
     }
   }
 
@@ -201,8 +202,8 @@ export default function SettingsPage() {
       }
       setAccountDialogOpen(false)
       await invalidateAccounts()
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed", description: errorMessage(err) })
     }
   }
 
@@ -237,8 +238,8 @@ export default function SettingsPage() {
       }
       setCategoryDialogOpen(false)
       await invalidateCategories()
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed", description: errorMessage(err) })
     }
   }
 
@@ -248,8 +249,8 @@ export default function SettingsPage() {
       toast({ title: "Category deleted" })
       setDeletingCategoryId(null)
       await Promise.all([invalidateCategories(), invalidateSubcategories()])
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to delete", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to delete", description: errorMessage(err) })
     }
   }
 
@@ -282,8 +283,8 @@ export default function SettingsPage() {
       }
       setSubcategoryDialogOpen(false)
       await invalidateSubcategories()
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed", description: errorMessage(err) })
     }
   }
 
@@ -293,8 +294,8 @@ export default function SettingsPage() {
       toast({ title: "Subcategory deleted" })
       setDeletingSubcategoryId(null)
       await invalidateSubcategories()
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to delete", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to delete", description: errorMessage(err) })
     }
   }
 
@@ -341,8 +342,8 @@ export default function SettingsPage() {
       }
       setFundDialogOpen(false)
       await invalidateFunds()
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed", description: errorMessage(err) })
     }
   }
 
@@ -352,8 +353,8 @@ export default function SettingsPage() {
       toast({ title: "Fund deleted" })
       setDeletingFundId(null)
       await invalidateFunds()
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to delete", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to delete", description: errorMessage(err) })
     }
   }
 
@@ -407,8 +408,8 @@ export default function SettingsPage() {
       }
       setCardDialogOpen(false)
       await Promise.all([invalidateCards(), invalidatePaymentMethods()])
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed", description: errorMessage(err) })
     }
   }
 
@@ -418,8 +419,8 @@ export default function SettingsPage() {
       toast({ title: "Card deleted" })
       setDeletingCardId(null)
       await Promise.all([invalidateCards(), invalidatePaymentMethods()])
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to delete", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to delete", description: errorMessage(err) })
     }
   }
 
@@ -461,8 +462,8 @@ export default function SettingsPage() {
       }
       setPmDialogOpen(false)
       await invalidatePaymentMethods()
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed", description: errorMessage(err) })
     }
   }
 
@@ -472,8 +473,8 @@ export default function SettingsPage() {
       toast({ title: "Payment method deleted" })
       setDeletingPmId(null)
       await invalidatePaymentMethods()
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to delete", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to delete", description: errorMessage(err) })
     }
   }
 

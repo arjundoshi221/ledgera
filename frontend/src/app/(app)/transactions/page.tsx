@@ -16,7 +16,8 @@ import { useAccounts, useTransactions, useCategories, useSubcategories, useFunds
 import { invalidateTransactions, invalidateRecurring, invalidatePendingInstances } from "@/lib/cache"
 import { TRANSACTION_STATUSES, RECURRING_FREQUENCIES } from "@/lib/constants"
 import { useToast } from "@/components/ui/use-toast"
-import type { Account, Transaction, Posting, Category, Subcategory, Fund, PaymentMethod, RecurringTransaction, PendingInstance, RecurringFrequency, FileHeadersResponse, ParsedTransaction, FileParseResult, ColumnMapping } from "@/lib/types"
+import type { Account, Transaction, Posting, Category, Subcategory, Fund, PaymentMethod, RecurringTransaction, PendingInstance, RecurringFrequency, FileHeadersResponse, ParsedTransaction, FileParseResult, ColumnMapping, LinkedAccountSummary } from "@/lib/types"
+import { errorMessage } from "@/lib/errors"
 import { Upload, FileText, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -249,7 +250,7 @@ export default function TransactionsPage() {
 
   // Auto-detect fund for an account (returns fund id if exactly one link, else "")
   function autoDetectFund(accountId: string): string {
-    const linked = funds.filter((f) => f.linked_accounts?.some((la: any) => la.id === accountId))
+    const linked = funds.filter((f) => f.linked_accounts?.some((la: LinkedAccountSummary) => la.id === accountId))
     return linked.length === 1 ? linked[0].id : ""
   }
 
@@ -358,8 +359,8 @@ export default function TransactionsPage() {
         setShowForm(false)
         resetForm()
         await invalidateTransactions()
-      } catch (err: any) {
-        toast({ variant: "destructive", title: "Failed", description: err.message })
+      } catch (err) {
+        toast({ variant: "destructive", title: "Failed", description: errorMessage(err) })
       } finally {
         setCreating(false)
       }
@@ -383,8 +384,8 @@ export default function TransactionsPage() {
       setShowForm(false)
       resetForm()
       await invalidateTransactions()
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed", description: errorMessage(err) })
     } finally {
       setCreating(false)
     }
@@ -526,8 +527,8 @@ export default function TransactionsPage() {
       setEditingTransaction(null)
       resetForm()
       await invalidateTransactions()
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed", description: errorMessage(err) })
     } finally {
       setUpdating(false)
     }
@@ -539,8 +540,8 @@ export default function TransactionsPage() {
       toast({ title: "Transaction deleted" })
       setDeletingTxId(null)
       await invalidateTransactions()
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to delete", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to delete", description: errorMessage(err) })
     }
   }
 
@@ -638,8 +639,8 @@ export default function TransactionsPage() {
       setShowRecurringForm(false)
       resetRecurringForm()
       await Promise.all([invalidateRecurring(), invalidatePendingInstances()])
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed", description: errorMessage(err) })
     } finally {
       setCreatingRecurring(false)
     }
@@ -650,8 +651,8 @@ export default function TransactionsPage() {
       await confirmRecurring(inst.recurring_id, { occurrence_date: inst.occurrence_date })
       toast({ title: `Confirmed: ${inst.name}` })
       await Promise.all([invalidateRecurring(), invalidatePendingInstances(), invalidateTransactions()])
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to confirm", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to confirm", description: errorMessage(err) })
     }
   }
 
@@ -660,8 +661,8 @@ export default function TransactionsPage() {
       await skipRecurring(inst.recurring_id, { occurrence_date: inst.occurrence_date })
       toast({ title: `Skipped: ${inst.name}` })
       await Promise.all([invalidateRecurring(), invalidatePendingInstances()])
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to skip", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to skip", description: errorMessage(err) })
     }
   }
 
@@ -670,8 +671,8 @@ export default function TransactionsPage() {
       await updateRecurringTransaction(t.id, { is_active: !t.is_active })
       toast({ title: t.is_active ? "Paused" : "Resumed" })
       await invalidateRecurring()
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed", description: errorMessage(err) })
     }
   }
 
@@ -681,8 +682,8 @@ export default function TransactionsPage() {
       toast({ title: "Recurring transaction deleted" })
       setDeletingRecId(null)
       await Promise.all([invalidateRecurring(), invalidatePendingInstances()])
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to delete", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to delete", description: errorMessage(err) })
     }
   }
 
@@ -701,8 +702,8 @@ export default function TransactionsPage() {
       setFileType(result.file_type)
       setSheetName(result.sheet_name)
       setColumnMapping(result.suggested_mapping)
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to read file", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to read file", description: errorMessage(err) })
       setSelectedFile(null)
     } finally {
       setLoadingHeaders(false)
@@ -724,8 +725,8 @@ export default function TransactionsPage() {
       )
       setParsedTransactions(result.parsed_transactions)
       setImportStep(3)
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to parse file", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to parse file", description: errorMessage(err) })
     } finally {
       setParsingFile(false)
     }
@@ -788,8 +789,8 @@ export default function TransactionsPage() {
       setCreatedTx(prev => new Set(prev).add(rowNumber))
       toast({ title: "Transaction created successfully" })
       await invalidateTransactions()
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to create transaction", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to create transaction", description: errorMessage(err) })
     } finally {
       setCreatingImportTx(prev => {
         const next = new Set(prev)

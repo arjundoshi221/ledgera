@@ -4,6 +4,7 @@ import { useState, useCallback } from "react"
 import { RecaptchaVerifier, PhoneAuthProvider, linkWithCredential } from "firebase/auth"
 import { firebaseAuth } from "@/lib/firebase"
 import { updateVerification } from "@/lib/api"
+import { errorCode, errorMessage } from "@/lib/errors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -33,11 +34,11 @@ export function PhoneVerification({ phoneNumber, onVerified }: PhoneVerification
       setVerificationId(vId)
       setCodeSent(true)
       toast({ title: "Code sent", description: `Verification code sent to ${phoneNumber}` })
-    } catch (err: any) {
+    } catch (err) {
       toast({
         variant: "destructive",
         title: "Failed to send code",
-        description: err.message || "Could not send verification code",
+        description: errorMessage(err, "Could not send verification code"),
       })
     } finally {
       setLoading(false)
@@ -58,10 +59,10 @@ export function PhoneVerification({ phoneNumber, onVerified }: PhoneVerification
       }
       toast({ title: "Phone verified", description: "Your phone number has been verified." })
       onVerified()
-    } catch (err: any) {
-      const message = err.code === "auth/invalid-verification-code"
+    } catch (err) {
+      const message = errorCode(err) === "auth/invalid-verification-code"
         ? "Invalid code. Please try again."
-        : err.message || "Verification failed"
+        : errorMessage(err, "Verification failed")
       toast({
         variant: "destructive",
         title: "Verification failed",

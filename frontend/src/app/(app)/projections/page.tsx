@@ -27,11 +27,13 @@ import type {
   Fund,
   Account,
   CategoryBudget,
+  SubcategoryBudget,
   OneTimeCost,
   ScenarioListItem,
   CreateRecurringTransactionRequest,
   PaymentMethod,
 } from "@/lib/types"
+import { errorMessage } from "@/lib/errors"
 import { CategoryBudgetEditor } from "./_components/category-budget-editor"
 import { OneTimeCostEditor } from "./_components/one-time-cost-editor"
 import { FundAllocationEditor } from "./_components/fund-allocation-editor"
@@ -198,11 +200,11 @@ export default function ProjectionsPage() {
       if (a.category_budgets && a.category_budgets.length > 0) {
         setUseCategoryBudgets(true)
         // Ensure numeric values (old scenarios may have Decimal-as-string in JSON)
-        setCategoryBudgets(a.category_budgets.map((b: any) => ({
+        setCategoryBudgets(a.category_budgets.map((b: CategoryBudget) => ({
           ...b,
           monthly_amount: Number(b.monthly_amount) || 0,
           inflation_override: b.inflation_override != null ? Number(b.inflation_override) : undefined,
-          subcategory_budgets: (b.subcategory_budgets || []).map((sb: any) => ({
+          subcategory_budgets: (b.subcategory_budgets || []).map((sb: SubcategoryBudget) => ({
             subcategory_id: sb.subcategory_id,
             monthly_amount: Number(sb.monthly_amount) || 0,
             inflation_override: sb.inflation_override != null ? Number(sb.inflation_override) : undefined,
@@ -215,7 +217,7 @@ export default function ProjectionsPage() {
       }
 
       if (a.one_time_costs) {
-        setOneTimeCosts(a.one_time_costs.map((c: any) => ({
+        setOneTimeCosts(a.one_time_costs.map((c: OneTimeCost) => ({
           ...c,
           amount: Number(c.amount) || 0,
           month_index: Number(c.month_index) || 0,
@@ -239,8 +241,8 @@ export default function ProjectionsPage() {
       setIsDirty(false)
       setYearlyData(null)
       toast({ title: `Loaded "${scenario.name}"` })
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to load scenario", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to load scenario", description: errorMessage(err) })
     }
   }
 
@@ -264,8 +266,8 @@ export default function ProjectionsPage() {
         parseFloat(inflation)
       )
       setYearlyData(yearly)
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Projection failed", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Projection failed", description: errorMessage(err) })
     } finally {
       setLoading(false)
     }
@@ -286,8 +288,8 @@ export default function ProjectionsPage() {
       setIsDirty(false)
       setShowSaveDialog(false)
       // Note: scenarios will auto-refresh via SWR
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to save", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to save", description: errorMessage(err) })
     } finally {
       setSaving(false)
     }
@@ -303,8 +305,8 @@ export default function ProjectionsPage() {
       }
       // Note: scenarios will auto-refresh via SWR
       toast({ title: "Simulation deleted" })
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to delete", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to delete", description: errorMessage(err) })
     }
   }
 
@@ -313,8 +315,8 @@ export default function ProjectionsPage() {
       await activateScenario(scenarioId)
       // Note: scenarios will auto-refresh via SWR
       toast({ title: "Budget benchmark updated" })
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed", description: errorMessage(err) })
     }
   }
 
@@ -413,8 +415,8 @@ export default function ProjectionsPage() {
       toast({ title: `Created recurring "${recurringPrefill.name}"` })
       setRecurringDialogOpen(false)
       setRecurringPrefill(null)
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to create recurring", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to create recurring", description: errorMessage(err) })
     } finally {
       setCreatingRecurring(false)
     }

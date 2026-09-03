@@ -48,14 +48,16 @@ function FundCategoryChart({ fund, currency }: { fund: FundDashboardAnalysis; cu
   const greenLabel = fund.is_working_capital ? "Budget" : "Balance"
   const greenTotal = fund.is_working_capital ? fund.total_budget : fund.fund_balance
 
-  const catData = fund.categories.map(c => ({
+  type ChartRow = { name: string; "Amount Spent": number; [key: string]: string | number | undefined }
+
+  const catData: ChartRow[] = fund.categories.map(c => ({
     name: `${c.category_emoji} ${c.category_name}`.trim(),
     "Amount Spent": c.amount_spent,
     ...(hasBudget ? { [greenLabel]: c.budget_allocated } : {}),
   }))
 
   // Add total row
-  const chartData = [
+  const chartData: ChartRow[] = [
     ...catData,
     {
       name: "Total",
@@ -65,7 +67,7 @@ function FundCategoryChart({ fund, currency }: { fund: FundDashboardAnalysis; cu
   ]
 
   const maxValue = Math.max(
-    ...chartData.map(d => Math.max(d["Amount Spent"], (d as any)[greenLabel] ?? 0)),
+    ...chartData.map(d => Math.max(d["Amount Spent"], Number(d[greenLabel] ?? 0))),
     1,
   )
 
@@ -155,10 +157,10 @@ function FundExtractionDonut({
             ))}
           </Pie>
           <Tooltip
-            formatter={(value, _name, props: any) => [
-              fmt(Number(value), currency),
-              props.payload.name,
-            ]}
+            formatter={(value, _name, props) => {
+              const payload = (props as { payload?: { name?: string } } | undefined)?.payload
+              return [fmt(Number(value), currency), payload?.name ?? ""]
+            }}
             contentStyle={tooltipStyle}
           />
         </PieChart>

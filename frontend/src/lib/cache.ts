@@ -397,11 +397,8 @@ export function getCacheStats() {
 export function enableCacheLogging() {
   if (typeof window === 'undefined') return
 
-  // Store original console.log
-  const originalLog = console.log
-
   // Intercept SWR cache activity (this is hacky and for dev only)
-  ;(window as any).__SWR_CACHE_LOGGING__ = true
+  ;(window as Window & { __SWR_CACHE_LOGGING__?: boolean }).__SWR_CACHE_LOGGING__ = true
 
   console.log('[Cache] Logging enabled')
 }

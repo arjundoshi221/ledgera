@@ -7,6 +7,7 @@ import { sendEmailVerification, signInWithCustomToken, onAuthStateChanged } from
 import type { User } from "firebase/auth"
 import { firebaseAuth } from "@/lib/firebase"
 import { updateVerification, provisionFirebase } from "@/lib/api"
+import { errorMessage } from "@/lib/errors"
 import { useVerificationStatus } from "@/lib/hooks"
 import { AlertTriangle, CheckCircle2, Mail, Phone } from "lucide-react"
 
@@ -58,11 +59,11 @@ export function VerificationBanner() {
       }
       await sendEmailVerification(user)
       toast({ title: "Email sent", description: "Verification email has been sent." })
-    } catch (err: any) {
+    } catch (err) {
       toast({
         variant: "destructive",
         title: "Could not send email",
-        description: err.message || "Please try again later.",
+        description: errorMessage(err, "Please try again later."),
       })
     } finally {
       setResending(false)

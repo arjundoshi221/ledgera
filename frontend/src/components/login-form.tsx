@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { login, firebaseLogin } from "@/lib/api"
 import { setAuth } from "@/lib/auth"
+import { errorCode, errorMessage } from "@/lib/errors"
 import { useToast } from "@/components/ui/use-toast"
 import { signInWithEmailAndPassword } from "firebase/auth"
 import { firebaseAuth } from "@/lib/firebase"
@@ -29,9 +30,9 @@ export function LoginForm() {
         const cred = await signInWithEmailAndPassword(firebaseAuth, email, password)
         const idToken = await cred.user.getIdToken()
         res = await firebaseLogin({ id_token: idToken })
-      } catch (fbErr: any) {
+      } catch (fbErr) {
         // If Firebase fails (user not in Firebase), fall back to legacy login
-        console.log("[Login] Firebase login failed, falling back to legacy:", fbErr.code)
+        console.log("[Login] Firebase login failed, falling back to legacy:", errorCode(fbErr))
         res = await login({ email, password })
       }
 
@@ -42,11 +43,11 @@ export function LoginForm() {
       } else {
         router.push("/onboarding")
       }
-    } catch (err: any) {
+    } catch (err) {
       toast({
         variant: "destructive",
         title: "Login failed",
-        description: err.message || "Invalid credentials",
+        description: errorMessage(err, "Invalid credentials"),
       })
     } finally {
       setLoading(false)

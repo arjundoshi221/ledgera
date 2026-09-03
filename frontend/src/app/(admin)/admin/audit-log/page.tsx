@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useToast } from "@/components/ui/use-toast"
 import { getAuditLogs } from "@/lib/admin-api"
-import type { AuditLogEntry, PaginatedAuditLogResponse } from "@/lib/admin-types"
+import type { PaginatedAuditLogResponse } from "@/lib/admin-types"
+import { errorMessage } from "@/lib/errors"
 
 export default function AdminAuditLogPage() {
   const { toast } = useToast()
@@ -22,7 +23,7 @@ export default function AdminAuditLogPage() {
   const loadLogs = useCallback(async () => {
     try {
       setLoading(true)
-      const params: any = {
+      const params: Parameters<typeof getAuditLogs>[0] = {
         offset: page * limit,
         limit,
         days: parseInt(daysFilter),
@@ -30,8 +31,8 @@ export default function AdminAuditLogPage() {
       if (actionFilter !== "all") params.action_prefix = actionFilter
       const res = await getAuditLogs(params)
       setData(res)
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Failed to load audit logs", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to load audit logs", description: errorMessage(err) })
     } finally {
       setLoading(false)
     }

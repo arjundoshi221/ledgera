@@ -14,6 +14,7 @@ import { getPrice } from "@/lib/api"
 import { useToast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
 import type { TransferSuggestion } from "@/lib/types"
+import { errorMessage } from "@/lib/errors"
 import { useChartTheme, CHART_COLORS } from "@/lib/chart-theme"
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
@@ -99,8 +100,8 @@ export default function FundTrackerPage() {
       })
       toast({ title: "Transfer executed", description: `${s.from_currency} ${s.amount.toFixed(2)} transferred to ${s.to_account_name}` })
       await Promise.all([invalidateTransactions(), invalidateFunds()])
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Transfer failed", description: err.message })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Transfer failed", description: errorMessage(err) })
     } finally {
       setExecutingTransfer(null)
     }
