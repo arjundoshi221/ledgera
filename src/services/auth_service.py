@@ -4,11 +4,11 @@ import hashlib
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHash, VerifyMismatchError
 from jwt import ExpiredSignatureError, InvalidTokenError, decode, encode
-from passlib.context import CryptContext
 
-# Password hashing
-pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+_password_hasher = PasswordHasher()
 
 
 class AuthService:
@@ -29,11 +29,15 @@ class AuthService:
 
     def hash_password(self, password: str) -> str:
         """Hash a password using Argon2"""
-        return pwd_context.hash(password)
+        return _password_hasher.hash(password)
 
     def verify_password(self, plain: str, hashed: str) -> bool:
         """Verify plain text password against hash"""
-        return pwd_context.verify(plain, hashed)
+        try:
+            _password_hasher.verify(hashed, plain)
+        except (VerifyMismatchError, InvalidHash):
+            return False
+        return True
 
     def create_access_token(self, user_id: UUID, workspace_id: UUID) -> str:
         """
