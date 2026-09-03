@@ -33,7 +33,7 @@
     "tailwind-merge": "^2.2.0"
   },
   "devDependencies": {
-    "@sentry/nextjs": "^8.0.0",
+    "@sentry/nextjs": "^10.0.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^20.11.0",
