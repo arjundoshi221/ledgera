@@ -56,6 +56,15 @@ When narrowing `except Exception:` to a specific class, when calling a function 
 
 The narrow-catch lesson generalizes: any code change that *references a name* — an exception class, a function, an attribute, a config field — needs runtime verification, not just "grep found something that looks right."
 
+## 3b.1 Lockfile discipline
+
+Any change to `frontend/package.json` **must** update `frontend/package-lock.json` in the same commit. Same for `pyproject.toml` + `uv.lock` on the backend. `npm ci` and equivalent tools refuse when they're out of sync — hard build failure in CI/Railway.
+
+- If you have `npm` / `uv` available: run `npm install` / `uv lock` after editing the manifest, verify the lock file changed, commit both.
+- If the shell can't run the package manager: STOP. Do NOT commit only the manifest. Ask the caller to regenerate the lock file locally and commit both together. Committing manifest without lock is a guaranteed broken build.
+
+Real prior incident: B22 and B20 added devDependencies to `frontend/package.json` without regenerating `package-lock.json`. Railway's next frontend deploy died on `npm ci` with `EUSAGE — Missing: ... from lock file`. One broken deploy + user-visible outage window.
+
 ## 3c. Docker / infrastructure changes you cannot verify locally
 
 If Docker daemon is not running in the shell, or you cannot run the actual deploy target, do NOT claim the change "works." State clearly:
