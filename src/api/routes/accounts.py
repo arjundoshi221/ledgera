@@ -1,6 +1,6 @@
 """Account endpoints"""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -56,7 +56,7 @@ def get_account(
     account = repo.read_for_workspace(account_id, workspace_id)
 
     if not account:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise NotFound("Account not found", account_id=account_id)
 
     return {
         "id": account.id,
@@ -106,7 +106,7 @@ def update_account(
     account = repo.read_for_workspace(account_id, workspace_id)
 
     if not account:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise NotFound("Account not found", account_id=account_id)
 
     account.name = account_data.name
     account.type = account_data.account_type

@@ -3,10 +3,11 @@
 import json
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_workspace_id
+from src.api.errors import NotFound
 from src.api.schemas import (
     ProjectionAssumptions as ProjectionAssumptionsSchema,
 )
@@ -216,7 +217,7 @@ def get_active_scenario(
     repo = ScenarioRepository(session)
     scenario = repo.read_active(workspace_id)
     if not scenario:
-        raise HTTPException(status_code=404, detail="No active simulation")
+        raise NotFound("No active simulation", workspace_id=workspace_id)
     return {
         "id": scenario.id,
         "name": scenario.name,
@@ -239,7 +240,7 @@ def get_scenario(
     repo = ScenarioRepository(session)
     scenario = repo.read(scenario_id)
     if not scenario or scenario.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Scenario not found")
+        raise NotFound("Scenario not found", scenario_id=scenario_id)
     return {
         "id": scenario.id,
         "name": scenario.name,
@@ -263,7 +264,7 @@ def update_scenario(
     repo = ScenarioRepository(session)
     scenario = repo.read(scenario_id)
     if not scenario or scenario.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Scenario not found")
+        raise NotFound("Scenario not found", scenario_id=scenario_id)
 
     if data.is_active and not scenario.is_active:
         repo.deactivate_all(workspace_id)
@@ -297,7 +298,7 @@ def activate_scenario(
     repo = ScenarioRepository(session)
     scenario = repo.read(scenario_id)
     if not scenario or scenario.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Scenario not found")
+        raise NotFound("Scenario not found", scenario_id=scenario_id)
 
     if scenario.is_active:
         # Deactivate it
@@ -328,6 +329,6 @@ def delete_scenario(
     repo = ScenarioRepository(session)
     scenario = repo.read(scenario_id)
     if not scenario or scenario.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Scenario not found")
+        raise NotFound("Scenario not found", scenario_id=scenario_id)
     repo.delete(scenario_id)
     return {"message": "Scenario deleted"}

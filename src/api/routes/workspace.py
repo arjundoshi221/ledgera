@@ -1,11 +1,12 @@
 """Workspace endpoints"""
 
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_workspace_id
+from src.api.errors import NotFound
 from src.data.database import get_session
 from src.data.repositories import WorkspaceRepository
 
@@ -36,10 +37,7 @@ def read_workspace(
     workspace = workspace_repo.read(workspace_id)
 
     if not workspace:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workspace not found"
-        )
+        raise NotFound("Workspace not found", workspace_id=workspace_id)
 
     return WorkspaceResponse(
         id=str(workspace.id),
@@ -61,10 +59,7 @@ def update_workspace(
     workspace = workspace_repo.read(workspace_id)
 
     if not workspace:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workspace not found"
-        )
+        raise NotFound("Workspace not found", workspace_id=workspace_id)
 
     if req.base_currency:
         workspace.base_currency = req.base_currency

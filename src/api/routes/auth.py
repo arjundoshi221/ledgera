@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from config.settings import settings
 from src.api.deps import get_user_id
+from src.api.errors import Forbidden, NotFound, Unauthorized
 from src.api.rate_limit import limiter
 from src.data.database import get_session
 from src.data.models import (
@@ -373,16 +374,10 @@ def login(
     user = user_repo.read_by_email(req.email)
 
     if not user or not user.hashed_password or not auth_service.verify_password(req.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password"
-        )
+        raise Unauthorized("Invalid email or password")
 
     if user.is_disabled:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is disabled. Contact support."
-        )
+        raise Forbidden("Account is disabled. Contact support.", user_id=str(user.id))
 
     workspace_repo = WorkspaceRepository(session)
     workspaces = workspace_repo.read_by_owner(user.id)
@@ -431,10 +426,7 @@ def google_login(
             raise ValueError("Invalid token")
         idinfo = resp.json()
     except (http_requests.RequestException, ValueError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Google token"
-        ) from exc
+        raise Unauthorized("Invalid Google token") from exc
 
     email = idinfo.get("email")
     if not email:
@@ -470,10 +462,7 @@ def google_login(
         workspace = _create_workspace_and_defaults(session, user.id)
 
     if user.is_disabled:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is disabled. Contact support."
-        )
+        raise Forbidden("Account is disabled. Contact support.", user_id=str(user.id))
 
     token = auth_service.create_access_token(user.id, workspace.id)
 
@@ -502,10 +491,7 @@ def complete_profile(
     user = user_repo.read(user_id)
 
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+        raise NotFound("User not found", user_id=user_id)
 
     _validate_age(req.date_of_birth)
     _validate_consent(req.tos_accepted, req.privacy_accepted)
@@ -559,10 +545,7 @@ def get_me(
     user = user_repo.read(user_id)
 
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+        raise NotFound("User not found", user_id=user_id)
 
     workspace_repo = WorkspaceRepository(session)
     workspaces = workspace_repo.read_by_owner(user.id)
@@ -586,10 +569,7 @@ def firebase_login(
     try:
         decoded = verify_firebase_token(req.id_token)
     except FirebaseError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Firebase token"
-        ) from exc
+        raise Unauthorized("Invalid Firebase token") from exc
 
     firebase_uid = decoded["uid"]
     email = decoded.get("email", "")
@@ -614,10 +594,7 @@ def firebase_login(
             user.phone_verified = True
 
         if user.is_disabled:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Account is disabled. Contact support."
-            )
+            raise Forbidden("Account is disabled. Contact support.", user_id=str(user.id))
 
         workspace_repo = WorkspaceRepository(session)
         workspaces = workspace_repo.read_by_owner(user.id)
@@ -668,7 +645,7 @@ def get_verification_status(
     user_repo = UserRepository(session)
     user = user_repo.read(user_id)
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise NotFound("User not found", user_id=user_id)
     return {
         "email_verified": user.email_verified if hasattr(user, 'email_verified') else False,
         "phone_verified": user.phone_verified if hasattr(user, 'phone_verified') else False,
@@ -691,15 +668,12 @@ def update_verification(
     try:
         decoded = verify_firebase_token(req.id_token)
     except FirebaseError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Firebase token"
-        ) from exc
+        raise Unauthorized("Invalid Firebase token") from exc
 
     user_repo = UserRepository(session)
     user = user_repo.read(user_id)
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise NotFound("User not found", user_id=user_id)
 
     if decoded.get("email_verified"):
         user.email_verified = True
@@ -729,7 +703,7 @@ def provision_firebase(
     user_repo = UserRepository(session)
     user = user_repo.read(user_id)
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise NotFound("User not found", user_id=user_id)
 
     if not user.firebase_uid:
         try:

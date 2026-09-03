@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_workspace_id
+from src.api.errors import Conflict, Forbidden, NotFound
 from src.api.schemas import (
     CategoryCreate,
     CategoryResponse,
@@ -78,7 +79,7 @@ def create_subcategory(
     category = cat_repo.read(subcategory.category_id)
 
     if not category or category.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Category not found")
+        raise NotFound("Category not found", category_id=subcategory.category_id)
 
     db_subcategory = SubcategoryModel(
         category_id=subcategory.category_id,
@@ -106,7 +107,7 @@ def list_subcategories(
         cat_repo = CategoryRepository(session)
         category = cat_repo.read(category_id)
         if not category or category.workspace_id != workspace_id:
-            raise HTTPException(status_code=404, detail="Category not found")
+            raise NotFound("Category not found", category_id=category_id)
 
         subcategories = repo.read_by_category(category_id)
     else:
@@ -132,13 +133,13 @@ def get_subcategory(
     subcategory = repo.read(subcategory_id)
 
     if not subcategory:
-        raise HTTPException(status_code=404, detail="Subcategory not found")
+        raise NotFound("Subcategory not found", subcategory_id=subcategory_id)
 
     # Verify category belongs to workspace
     cat_repo = CategoryRepository(session)
     category = cat_repo.read(subcategory.category_id)
     if not category or category.workspace_id != workspace_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise Forbidden("Access denied", subcategory_id=subcategory_id)
 
     return subcategory
 
@@ -155,18 +156,18 @@ def update_subcategory(
     subcategory = repo.read(subcategory_id)
 
     if not subcategory:
-        raise HTTPException(status_code=404, detail="Subcategory not found")
+        raise NotFound("Subcategory not found", subcategory_id=subcategory_id)
 
     # Verify old category belongs to workspace
     cat_repo = CategoryRepository(session)
     old_category = cat_repo.read(subcategory.category_id)
     if not old_category or old_category.workspace_id != workspace_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise Forbidden("Access denied", subcategory_id=subcategory_id)
 
     # Verify new category exists and belongs to workspace
     new_category = cat_repo.read(subcategory_data.category_id)
     if not new_category or new_category.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Category not found")
+        raise NotFound("Category not found", category_id=subcategory_data.category_id)
 
     subcategory.category_id = subcategory_data.category_id
     subcategory.name = subcategory_data.name
@@ -187,20 +188,20 @@ def delete_subcategory(
     subcategory = repo.read(subcategory_id)
 
     if not subcategory:
-        raise HTTPException(status_code=404, detail="Subcategory not found")
+        raise NotFound("Subcategory not found", subcategory_id=subcategory_id)
 
     # Verify category belongs to workspace
     cat_repo = CategoryRepository(session)
     category = cat_repo.read(subcategory.category_id)
     if not category or category.workspace_id != workspace_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise Forbidden("Access denied", subcategory_id=subcategory_id)
 
     try:
         repo.delete(subcategory_id)
     except IntegrityError as exc:
-        raise HTTPException(
-            status_code=409,
-            detail="Subcategory is still referenced by other records. Reassign them first.",
+        raise Conflict(
+            "Subcategory is still referenced by other records. Reassign them first.",
+            subcategory_id=subcategory_id,
         ) from exc
     return {"message": "Subcategory deleted"}
 
@@ -287,7 +288,7 @@ def get_fund(
     fund = repo.read(fund_id)
 
     if not fund or fund.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Fund not found")
+        raise NotFound("Fund not found", fund_id=fund_id)
 
     return _build_fund_response(fund)
 
@@ -304,7 +305,7 @@ def update_fund(
     fund = repo.read(fund_id)
 
     if not fund or fund.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Fund not found")
+        raise NotFound("Fund not found", fund_id=fund_id)
 
     fund.name = fund_data.name
     fund.emoji = fund_data.emoji
@@ -335,7 +336,7 @@ def delete_fund(
     fund = repo.read(fund_id)
 
     if not fund or fund.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Fund not found")
+        raise NotFound("Fund not found", fund_id=fund_id)
 
     if fund.is_system:
         raise HTTPException(status_code=400, detail="System funds cannot be deleted")
@@ -343,12 +344,10 @@ def delete_fund(
     try:
         repo.delete(fund_id)
     except IntegrityError as exc:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Fund has linked records that could not be removed. "
-                "Please contact support if this persists."
-            ),
+        raise Conflict(
+            "Fund has linked records that could not be removed. "
+            "Please contact support if this persists.",
+            fund_id=fund_id,
         ) from exc
     return {"message": "Fund deleted"}
 
@@ -368,7 +367,7 @@ def get_category(
     category = repo.read(category_id)
 
     if not category or category.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Category not found")
+        raise NotFound("Category not found", category_id=category_id)
 
     return category
 
@@ -385,7 +384,7 @@ def update_category(
     category = repo.read(category_id)
 
     if not category or category.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Category not found")
+        raise NotFound("Category not found", category_id=category_id)
 
     category.name = category_data.name
     category.emoji = category_data.emoji
@@ -407,7 +406,7 @@ def delete_category(
     category = repo.read(category_id)
 
     if not category or category.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Category not found")
+        raise NotFound("Category not found", category_id=category_id)
 
     if category.is_system:
         raise HTTPException(status_code=400, detail="System categories cannot be deleted")
@@ -415,8 +414,8 @@ def delete_category(
     try:
         repo.delete(category_id)
     except IntegrityError as exc:
-        raise HTTPException(
-            status_code=409,
-            detail="Category is still referenced by other records. Reassign them first.",
+        raise Conflict(
+            "Category is still referenced by other records. Reassign them first.",
+            category_id=category_id,
         ) from exc
     return {"message": "Category deleted"}

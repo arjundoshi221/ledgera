@@ -11,6 +11,7 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_workspace_id
+from src.api.errors import AppError, NotFound
 from src.api.schemas import (
     AccountLedgerResponse,
     AccountMonthlyLedgerRow,
@@ -841,7 +842,7 @@ def create_or_update_override(
     fund = fund_repo.read(override_data.fund_id)
 
     if not fund or fund.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Fund not found")
+        raise NotFound("Fund not found", fund_id=override_data.fund_id)
 
     # Validate mode if provided
     if override_data.mode and override_data.mode not in ["MODEL", "OPTIMIZE"]:
@@ -933,7 +934,7 @@ def delete_override(
     fund = fund_repo.read(fund_id)
 
     if not fund or fund.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Fund not found")
+        raise NotFound("Fund not found", fund_id=fund_id)
 
     override_repo = FundAllocationOverrideRepository(session)
     override_repo.delete_by_fund_and_period(workspace_id, fund_id, year, month)
@@ -1731,7 +1732,7 @@ def get_net_worth(
             WorkspaceModel.id == workspace_id
         ).first()
         if not workspace:
-            raise HTTPException(status_code=404, detail="Workspace not found")
+            raise NotFound("Workspace not found", workspace_id=workspace_id)
         base_currency = workspace.base_currency
 
         # Load all accounts (exclude External)
@@ -1913,7 +1914,7 @@ def get_net_worth(
             fx_rates_used=fx_rates_used,
         )
 
-    except HTTPException:
+    except (HTTPException, AppError):
         raise
     except Exception as e:  # noqa: BLE001  # top-level endpoint boundary -> 400
         raise HTTPException(status_code=400, detail=str(e)) from e

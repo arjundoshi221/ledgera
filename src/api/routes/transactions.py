@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_workspace_id
+from src.api.errors import NotFound
 from src.api.schemas import (
     FileHeadersResponse,
     FileParseResult,
@@ -96,9 +97,9 @@ def create_transaction(
     for posting in tx.postings:
         account = account_repo.read_for_workspace(str(posting.account_id), workspace_id)
         if not account:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Account {posting.account_id} not found in workspace"
+            raise NotFound(
+                f"Account {posting.account_id} not found in workspace",
+                account_id=str(posting.account_id),
             )
 
     # Create transaction
@@ -168,11 +169,17 @@ def create_transfer(
     # Validate accounts exist in workspace
     from_account = account_repo.read_for_workspace(transfer.from_account_id, workspace_id)
     if not from_account:
-        raise HTTPException(status_code=404, detail=f"From account {transfer.from_account_id} not found")
+        raise NotFound(
+            f"From account {transfer.from_account_id} not found",
+            account_id=transfer.from_account_id,
+        )
 
     to_account = account_repo.read_for_workspace(transfer.to_account_id, workspace_id)
     if not to_account:
-        raise HTTPException(status_code=404, detail=f"To account {transfer.to_account_id} not found")
+        raise NotFound(
+            f"To account {transfer.to_account_id} not found",
+            account_id=transfer.to_account_id,
+        )
 
     if transfer.from_account_id == transfer.to_account_id:
         raise HTTPException(status_code=400, detail="Cannot transfer to the same account")
@@ -308,7 +315,7 @@ def get_transaction(
     tx = repo.read(transaction_id)
 
     if not tx or tx.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Transaction not found")
+        raise NotFound("Transaction not found", transaction_id=transaction_id)
 
     return _serialize_tx(tx)
 
@@ -326,7 +333,7 @@ def update_transaction(
 
     # Verify transaction exists and belongs to workspace
     if not tx or tx.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Transaction not found")
+        raise NotFound("Transaction not found", transaction_id=transaction_id)
 
     account_repo = AccountRepository(session)
 
@@ -334,9 +341,9 @@ def update_transaction(
     for posting in tx_update.postings:
         account = account_repo.read_for_workspace(str(posting.account_id), workspace_id)
         if not account:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Account {posting.account_id} not found in workspace"
+            raise NotFound(
+                f"Account {posting.account_id} not found in workspace",
+                account_id=str(posting.account_id),
             )
 
     # Update transaction fields
@@ -389,7 +396,7 @@ def delete_transaction(
     tx = repo.read(transaction_id)
 
     if not tx or tx.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Transaction not found")
+        raise NotFound("Transaction not found", transaction_id=transaction_id)
 
     repo.delete(transaction_id)
     return {"message": "Transaction deleted"}
@@ -408,7 +415,7 @@ def get_account_transactions(
     account_repo = AccountRepository(session)
     account = account_repo.read_for_workspace(account_id, workspace_id)
     if not account:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise NotFound("Account not found", account_id=account_id)
 
     repo = TransactionRepository(session)
     txs = repo.read_by_account(account_id, start_date, end_date)
@@ -549,7 +556,7 @@ async def parse_file(
         account_repo = AccountRepository(session)
         account = account_repo.read_for_workspace(account_id, workspace_id)
         if not account:
-            raise HTTPException(status_code=404, detail="Account not found")
+            raise NotFound("Account not found", account_id=account_id)
 
         # Read file content
         content = await file.read()

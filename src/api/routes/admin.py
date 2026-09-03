@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from src.api.admin_deps import require_admin
+from src.api.errors import AppError, Forbidden, NotFound, Unauthorized
 from src.data.admin_repository import AdminRepository
 from src.data.audit_repository import AuditLogRepository
 from src.data.database import get_session
@@ -242,7 +243,7 @@ def get_user_detail(
     repo = AdminRepository(session)
     user = repo.get_user_detail(user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise NotFound("User not found", user_id=user_id)
 
     ws_stats = repo.get_user_workspace_stats(user_id)
 
@@ -285,7 +286,7 @@ def disable_user(
     repo = AdminRepository(session)
     user = repo.disable_user(user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise NotFound("User not found", user_id=user_id)
 
     audit = AuditLogRepository(session)
     audit.create(
@@ -310,7 +311,7 @@ def enable_user(
     repo = AdminRepository(session)
     user = repo.enable_user(user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise NotFound("User not found", user_id=user_id)
 
     audit = AuditLogRepository(session)
     audit.create(
@@ -335,7 +336,7 @@ def promote_user(
     repo = AdminRepository(session)
     user = repo.promote_to_admin(user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise NotFound("User not found", user_id=user_id)
 
     audit = AuditLogRepository(session)
     audit.create(
@@ -363,7 +364,7 @@ def demote_user(
     repo = AdminRepository(session)
     user = repo.demote_from_admin(user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise NotFound("User not found", user_id=user_id)
 
     audit = AuditLogRepository(session)
     audit.create(
@@ -391,7 +392,7 @@ def delete_user(
     repo = AdminRepository(session)
     user = repo.get_user_detail(user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise NotFound("User not found", user_id=user_id)
 
     email = user.email
     audit = AuditLogRepository(session)
@@ -638,7 +639,7 @@ def get_bug_report_detail(
     repo = BugReportRepository(session)
     report = repo.get_by_id(bug_id)
     if not report:
-        raise HTTPException(status_code=404, detail="Bug report not found")
+        raise NotFound("Bug report not found", bug_id=bug_id)
 
     user_repo = UserRepository(session)
     user = user_repo.read(report.user_id)
@@ -690,7 +691,7 @@ def update_bug_status(
     repo = BugReportRepository(session)
     report = repo.update_status(bug_id, body.status)
     if not report:
-        raise HTTPException(status_code=404, detail="Bug report not found")
+        raise NotFound("Bug report not found", bug_id=bug_id)
 
     # If resolved, delete media and send email
     if body.status == 'resolved':
@@ -754,19 +755,19 @@ def serve_bug_media(
                 user_id = str(result[0])
 
         if not user_id:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise Unauthorized("Not authenticated")
 
         # ── Authorise: must be a non-disabled admin ──
         user_repo = UserRepository(session)
         user = user_repo.read(user_id)
         if not user or not user.is_admin or user.is_disabled:
-            raise HTTPException(status_code=403, detail="Admin access required")
+            raise Forbidden("Admin access required", user_id=user_id)
 
         # ── Serve the file ──
         repo = BugReportRepository(session)
         media = repo.get_media(media_id)
         if not media or media.bug_report_id != bug_id:
-            raise HTTPException(status_code=404, detail="Media not found")
+            raise NotFound("Media not found", bug_id=bug_id, media_id=media_id)
 
         file_content = bytes(media.file_data) if media.file_data else b""
         # HTTP headers must be Latin-1 encodable; replace non-ASCII chars
@@ -782,7 +783,7 @@ def serve_bug_media(
                 "Cache-Control": "private, max-age=3600",
             },
         )
-    except HTTPException:
+    except (HTTPException, AppError):
         raise
     except Exception as e:  # noqa: BLE001  # top-level endpoint boundary -> 500
         logger.error("serve_bug_media error bug_id=%s media_id=%s: %s", bug_id, media_id, e, exc_info=True)
@@ -802,7 +803,7 @@ def delete_bug_report(
     repo = BugReportRepository(session)
     report = repo.get_by_id(bug_id)
     if not report:
-        raise HTTPException(status_code=404, detail="Bug report not found")
+        raise NotFound("Bug report not found", bug_id=bug_id)
 
     title = report.title
     repo.delete_report(bug_id)

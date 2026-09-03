@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_workspace_id
+from src.api.errors import NotFound
 from src.api.schemas import (
     ConfirmRecurringRequest,
     RecurringTransactionCreate,
@@ -258,7 +259,7 @@ def update_recurring(
     template = repo.read(recurring_id)
 
     if not template or template.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Recurring transaction not found")
+        raise NotFound("Recurring transaction not found", recurring_id=recurring_id)
 
     if data.frequency is not None and data.frequency not in VALID_FREQUENCIES:
         raise HTTPException(status_code=400, detail=f"frequency must be one of: {VALID_FREQUENCIES}")
@@ -294,7 +295,7 @@ def delete_recurring(
     template = repo.read(recurring_id)
 
     if not template or template.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Recurring transaction not found")
+        raise NotFound("Recurring transaction not found", recurring_id=recurring_id)
 
     template.is_active = False
     repo.update(template)
@@ -313,7 +314,7 @@ def confirm_recurring(
     template = repo.read(recurring_id)
 
     if not template or template.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Recurring transaction not found")
+        raise NotFound("Recurring transaction not found", recurring_id=recurring_id)
 
     if not template.is_active:
         raise HTTPException(status_code=400, detail="Recurring transaction is not active")
@@ -486,7 +487,7 @@ def skip_recurring(
     template = repo.read(recurring_id)
 
     if not template or template.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Recurring transaction not found")
+        raise NotFound("Recurring transaction not found", recurring_id=recurring_id)
 
     if not template.is_active:
         raise HTTPException(status_code=400, detail="Recurring transaction is not active")

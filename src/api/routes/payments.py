@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_workspace_id
+from src.api.errors import NotFound
 from src.api.schemas import CardCreate, PaymentMethodCreate
 from src.data.database import get_session
 from src.data.models import CardModel, PaymentMethodModel
@@ -72,7 +73,10 @@ def create_card(
     account_repo = AccountRepository(session)
     account = account_repo.read_for_workspace(card.account_id, workspace_id)
     if not account:
-        raise HTTPException(status_code=404, detail=f"Account {card.account_id} not found in workspace")
+        raise NotFound(
+            f"Account {card.account_id} not found in workspace",
+            account_id=card.account_id,
+        )
 
     # Validate card_type
     if card.card_type not in ("credit", "debit"):
@@ -123,13 +127,16 @@ def update_card(
     db_card = card_repo.read(card_id)
 
     if not db_card or db_card.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Card not found")
+        raise NotFound("Card not found", card_id=card_id)
 
     # Validate account
     account_repo = AccountRepository(session)
     account = account_repo.read_for_workspace(card.account_id, workspace_id)
     if not account:
-        raise HTTPException(status_code=404, detail=f"Account {card.account_id} not found in workspace")
+        raise NotFound(
+            f"Account {card.account_id} not found in workspace",
+            account_id=card.account_id,
+        )
 
     # Update card fields
     db_card.account_id = card.account_id
@@ -165,7 +172,7 @@ def delete_card(
     db_card = card_repo.read(card_id)
 
     if not db_card or db_card.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Card not found")
+        raise NotFound("Card not found", card_id=card_id)
 
     # Soft-delete associated payment method
     pm_repo = PaymentMethodRepository(session)
@@ -212,7 +219,10 @@ def create_payment_method(
         account_repo = AccountRepository(session)
         account = account_repo.read_for_workspace(pm.linked_account_id, workspace_id)
         if not account:
-            raise HTTPException(status_code=404, detail=f"Account {pm.linked_account_id} not found in workspace")
+            raise NotFound(
+                f"Account {pm.linked_account_id} not found in workspace",
+                account_id=pm.linked_account_id,
+            )
 
     repo = PaymentMethodRepository(session)
     db_pm = PaymentMethodModel(
@@ -239,7 +249,7 @@ def update_payment_method(
     db_pm = repo.read(method_id)
 
     if not db_pm or db_pm.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Payment method not found")
+        raise NotFound("Payment method not found", method_id=method_id)
 
     if db_pm.is_system:
         raise HTTPException(status_code=400, detail="Cannot modify system payment methods")
@@ -252,7 +262,10 @@ def update_payment_method(
         account_repo = AccountRepository(session)
         account = account_repo.read_for_workspace(pm.linked_account_id, workspace_id)
         if not account:
-            raise HTTPException(status_code=404, detail=f"Account {pm.linked_account_id} not found in workspace")
+            raise NotFound(
+                f"Account {pm.linked_account_id} not found in workspace",
+                account_id=pm.linked_account_id,
+            )
 
     db_pm.name = pm.name
     db_pm.method_type = pm.method_type
@@ -274,7 +287,7 @@ def delete_payment_method(
     db_pm = repo.read(method_id)
 
     if not db_pm or db_pm.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Payment method not found")
+        raise NotFound("Payment method not found", method_id=method_id)
 
     if db_pm.is_system:
         raise HTTPException(status_code=400, detail="Cannot delete system payment methods")

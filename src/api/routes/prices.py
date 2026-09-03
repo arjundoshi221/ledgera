@@ -2,9 +2,10 @@
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from src.api.errors import NotFound
 from src.api.schemas import PriceResponse
 from src.data.database import get_session
 from src.services.price_service import PriceService, YahooFinancePriceProvider
@@ -41,7 +42,7 @@ def get_stock_price(
     price = price_service.get_security_price(symbol)
 
     if not price:
-        raise HTTPException(status_code=404, detail=f"Unable to fetch price for {symbol}")
+        raise NotFound(f"Unable to fetch price for {symbol}", symbol=symbol)
 
     return {
         "symbol": symbol,
