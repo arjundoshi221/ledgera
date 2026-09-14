@@ -15,11 +15,17 @@ def init_db(database_url: str, echo: bool = False) -> None:
     """Initialize database connection"""
     global _SessionLocal
 
-    # Railway/Heroku may provide postgres:// but SQLAlchemy 2.0 requires postgresql://
+    # Normalize any Postgres URL to the explicit psycopg3 driver form.
+    # SQLAlchemy 2.x defaults bare postgresql:// to psycopg2 — which we no
+    # longer install — so we must spell the driver out (B40).
     if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
+        database_url = "postgresql+psycopg://" + database_url[len("postgres://"):]
+    elif database_url.startswith("postgresql+psycopg2://"):
+        database_url = "postgresql+psycopg://" + database_url[len("postgresql+psycopg2://"):]
+    elif database_url.startswith("postgresql://") and not database_url.startswith("postgresql+"):
+        database_url = "postgresql+psycopg://" + database_url[len("postgresql://"):]
 
-    if database_url.startswith("postgresql://"):
+    if database_url.startswith("postgresql+psycopg://"):
         engine = create_engine(
             database_url,
             echo=echo,
