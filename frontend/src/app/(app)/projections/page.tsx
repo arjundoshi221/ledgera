@@ -172,7 +172,7 @@ export default function ProjectionsPage() {
       ...(useCategoryBudgets && categoryBudgets.length > 0
         ? { category_budgets: categoryBudgets.filter((b) => b.monthly_amount > 0) }
         : { monthly_expenses: parseFloat(expenses) }),
-      one_time_costs: oneTimeCosts.length > 0 ? oneTimeCosts : undefined,
+      ...(oneTimeCosts.length > 0 ? { one_time_costs: oneTimeCosts } : {}),
       allocation_weights: Object.fromEntries(
         Object.entries(fundWeights).map(([k, v]) => [k, (Number(v) || 0) / 100])
       ),
@@ -203,11 +203,15 @@ export default function ProjectionsPage() {
         setCategoryBudgets(a.category_budgets.map((b: CategoryBudget) => ({
           ...b,
           monthly_amount: Number(b.monthly_amount) || 0,
-          inflation_override: b.inflation_override != null ? Number(b.inflation_override) : undefined,
+          ...(b.inflation_override != null
+            ? { inflation_override: Number(b.inflation_override) }
+            : {}),
           subcategory_budgets: (b.subcategory_budgets || []).map((sb: SubcategoryBudget) => ({
             subcategory_id: sb.subcategory_id,
             monthly_amount: Number(sb.monthly_amount) || 0,
-            inflation_override: sb.inflation_override != null ? Number(sb.inflation_override) : undefined,
+            ...(sb.inflation_override != null
+              ? { inflation_override: Number(sb.inflation_override) }
+              : {}),
           })),
         })))
         setExpenses("3000")
@@ -359,7 +363,7 @@ export default function ProjectionsPage() {
       currency: baseCurrency,
       frequency: "monthly",
       category_id: data.category_id,
-      subcategory_id: data.subcategory_id,
+      ...(data.subcategory_id !== undefined && { subcategory_id: data.subcategory_id }),
     })
     setRecurringAccountId("")
     setRecurringFundId("")

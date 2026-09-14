@@ -92,11 +92,11 @@ export default function FundTrackerPage() {
         to_account_id: s.to_account_id,
         amount: s.amount,
         from_currency: s.from_currency || s.currency,
-        to_currency: isCross ? s.to_currency : undefined,
-        fx_rate: isCross ? fxRate : undefined,
-        fee: fee && fee > 0 ? fee : undefined,
-        source_fund_id: s.source_fund_id || undefined,
-        dest_fund_id: s.dest_fund_id || undefined,
+        ...(isCross && s.to_currency ? { to_currency: s.to_currency } : {}),
+        ...(isCross && fxRate !== undefined ? { fx_rate: fxRate } : {}),
+        ...(fee && fee > 0 ? { fee } : {}),
+        ...(s.source_fund_id ? { source_fund_id: s.source_fund_id } : {}),
+        ...(s.dest_fund_id ? { dest_fund_id: s.dest_fund_id } : {}),
       })
       toast({ title: "Transfer executed", description: `${s.from_currency} ${s.amount.toFixed(2)} transferred to ${s.to_account_name}` })
       await Promise.all([invalidateTransactions(), invalidateFunds()])

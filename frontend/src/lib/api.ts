@@ -103,9 +103,9 @@ class ApiError extends Error {
     this.name = "ApiError"
     this.status = status
     this.body = body
-    this.code = code
-    this.extra = extra
-    this.requestId = requestId
+    if (code !== undefined) this.code = code
+    if (extra !== undefined) this.extra = extra
+    if (requestId !== undefined) this.requestId = requestId
   }
 }
 

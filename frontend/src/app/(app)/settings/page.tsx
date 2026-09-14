@@ -190,7 +190,7 @@ export default function SettingsPage() {
         name: accName,
         type: accType as AccountType,
         account_currency: accCurrency,
-        institution: accInstitution || undefined,
+        ...(accInstitution ? { institution: accInstitution } : {}),
         starting_balance: accStartingBalance ? parseFloat(accStartingBalance) : 0,
       }
       if (editingAccount) {
@@ -396,8 +396,8 @@ export default function SettingsPage() {
         account_id: cardAccountId,
         card_name: cardName,
         card_type: cardType,
-        card_network: resolvedNetwork || undefined,
-        last_four: cardLastFour || undefined,
+        ...(resolvedNetwork ? { card_network: resolvedNetwork } : {}),
+        ...(cardLastFour ? { last_four: cardLastFour } : {}),
       }
       if (editingCard) {
         await updateCard(editingCard.id, data)
@@ -450,8 +450,8 @@ export default function SettingsPage() {
       const data = {
         name: pmName,
         method_type: pmMethodType,
-        icon: pmIcon || undefined,
-        linked_account_id: pmLinkedAccountId || undefined,
+        ...(pmIcon ? { icon: pmIcon } : {}),
+        ...(pmLinkedAccountId ? { linked_account_id: pmLinkedAccountId } : {}),
       }
       if (editingPm) {
         await updatePaymentMethod(editingPm.id, data)

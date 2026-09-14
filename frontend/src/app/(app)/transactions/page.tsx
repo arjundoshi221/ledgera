@@ -340,6 +340,7 @@ export default function TransactionsPage() {
       setCreating(true)
       try {
         const effectiveToCurrency = isCrossCurrency ? (toAccount?.account_currency || transferCurrency) : transferCurrency
+        const transferFeeNum = parseFloat(transferFee)
         await createTransfer({
           timestamp: new Date(txTimestamp).toISOString(),
           payee: payee || "Transfer",
@@ -348,12 +349,13 @@ export default function TransactionsPage() {
           to_account_id: toAccountId,
           amount: amt,
           from_currency: transferCurrency,
-          to_currency: isCrossCurrency ? effectiveToCurrency : undefined,
-          fx_rate: isCrossCurrency ? parseFloat(fxRate) || 1 : undefined,
-          source_fund_id: sourceFundId || undefined,
-          dest_fund_id: destFundId || undefined,
-          payment_method_id: paymentMethodId || undefined,
-          fee: parseFloat(transferFee) || undefined,
+          ...(isCrossCurrency
+            ? { to_currency: effectiveToCurrency, fx_rate: parseFloat(fxRate) || 1 }
+            : {}),
+          ...(sourceFundId ? { source_fund_id: sourceFundId } : {}),
+          ...(destFundId ? { dest_fund_id: destFundId } : {}),
+          ...(paymentMethodId ? { payment_method_id: paymentMethodId } : {}),
+          ...(transferFeeNum ? { fee: transferFeeNum } : {}),
         })
         toast({ title: "Transfer created" })
         setShowForm(false)
@@ -374,10 +376,10 @@ export default function TransactionsPage() {
         payee,
         memo,
         status: txStatus,
-        category_id: categoryId || undefined,
-        subcategory_id: subcategoryId || undefined,
-        fund_id: fundId || undefined,
-        payment_method_id: paymentMethodId || undefined,
+        ...(categoryId ? { category_id: categoryId } : {}),
+        ...(subcategoryId ? { subcategory_id: subcategoryId } : {}),
+        ...(fundId ? { fund_id: fundId } : {}),
+        ...(paymentMethodId ? { payment_method_id: paymentMethodId } : {}),
         postings,
       })
       toast({ title: "Transaction created" })
@@ -516,10 +518,10 @@ export default function TransactionsPage() {
         payee,
         memo,
         status: txStatus,
-        category_id: categoryId || undefined,
-        subcategory_id: subcategoryId || undefined,
-        fund_id: fundId || undefined,
-        payment_method_id: paymentMethodId || undefined,
+        ...(categoryId ? { category_id: categoryId } : {}),
+        ...(subcategoryId ? { subcategory_id: subcategoryId } : {}),
+        ...(fundId ? { fund_id: fundId } : {}),
+        ...(paymentMethodId ? { payment_method_id: paymentMethodId } : {}),
         postings,
       })
       toast({ title: "Transaction updated" })
@@ -618,22 +620,22 @@ export default function TransactionsPage() {
       await createRecurringTransaction({
         name: recName,
         transaction_type: recTxType,
-        payee: recPayee || undefined,
-        memo: recMemo || undefined,
+        ...(recPayee ? { payee: recPayee } : {}),
+        ...(recMemo ? { memo: recMemo } : {}),
         amount: amt,
         currency: recCurrency,
-        category_id: recCategoryId || undefined,
-        subcategory_id: recSubcategoryId || undefined,
-        fund_id: recFundId || undefined,
-        payment_method_id: recPaymentMethodId || undefined,
-        account_id: recAccountId || undefined,
-        from_account_id: recFromAccountId || undefined,
-        to_account_id: recToAccountId || undefined,
-        source_fund_id: recSourceFundId || undefined,
-        dest_fund_id: recDestFundId || undefined,
+        ...(recCategoryId ? { category_id: recCategoryId } : {}),
+        ...(recSubcategoryId ? { subcategory_id: recSubcategoryId } : {}),
+        ...(recFundId ? { fund_id: recFundId } : {}),
+        ...(recPaymentMethodId ? { payment_method_id: recPaymentMethodId } : {}),
+        ...(recAccountId ? { account_id: recAccountId } : {}),
+        ...(recFromAccountId ? { from_account_id: recFromAccountId } : {}),
+        ...(recToAccountId ? { to_account_id: recToAccountId } : {}),
+        ...(recSourceFundId ? { source_fund_id: recSourceFundId } : {}),
+        ...(recDestFundId ? { dest_fund_id: recDestFundId } : {}),
         frequency: recFrequency,
         start_date: recStartDate,
-        end_date: recEndDate || undefined,
+        ...(recEndDate ? { end_date: recEndDate } : {}),
       })
       toast({ title: "Recurring transaction created" })
       setShowRecurringForm(false)
@@ -766,10 +768,10 @@ export default function TransactionsPage() {
         memo: finalTx.memo || "",
         status: "cleared",
         source: "csv_import",
-        category_id: finalTx.category_id || undefined,
-        subcategory_id: finalTx.subcategory_id || undefined,
-        fund_id: finalTx.fund_id || undefined,
-        payment_method_id: finalTx.payment_method_id || undefined,
+        ...(finalTx.category_id ? { category_id: finalTx.category_id } : {}),
+        ...(finalTx.subcategory_id ? { subcategory_id: finalTx.subcategory_id } : {}),
+        ...(finalTx.fund_id ? { fund_id: finalTx.fund_id } : {}),
+        ...(finalTx.payment_method_id ? { payment_method_id: finalTx.payment_method_id } : {}),
         postings: [
           {
             account_id: finalTx.account_id,
@@ -2227,7 +2229,10 @@ export default function TransactionsPage() {
                         <Label htmlFor="map-debit" className="text-sm">Debit Column (optional)</Label>
                         <Select
                           value={columnMapping.debit || "_none"}
-                          onValueChange={(v) => setColumnMapping({ ...columnMapping, debit: v === "_none" ? undefined : v })}
+                          onValueChange={(v) => {
+                            const { debit: _, ...rest } = columnMapping
+                            setColumnMapping(v === "_none" ? rest : { ...rest, debit: v })
+                          }}
                         >
                           <SelectTrigger id="map-debit">
                             <SelectValue placeholder="None" />
@@ -2245,7 +2250,10 @@ export default function TransactionsPage() {
                         <Label htmlFor="map-credit" className="text-sm">Credit Column (optional)</Label>
                         <Select
                           value={columnMapping.credit || "_none"}
-                          onValueChange={(v) => setColumnMapping({ ...columnMapping, credit: v === "_none" ? undefined : v })}
+                          onValueChange={(v) => {
+                            const { credit: _, ...rest } = columnMapping
+                            setColumnMapping(v === "_none" ? rest : { ...rest, credit: v })
+                          }}
                         >
                           <SelectTrigger id="map-credit">
                             <SelectValue placeholder="None" />
@@ -2263,7 +2271,10 @@ export default function TransactionsPage() {
                         <Label htmlFor="map-amount" className="text-sm">Amount Column (optional)</Label>
                         <Select
                           value={columnMapping.amount || "_none"}
-                          onValueChange={(v) => setColumnMapping({ ...columnMapping, amount: v === "_none" ? undefined : v })}
+                          onValueChange={(v) => {
+                            const { amount: _, ...rest } = columnMapping
+                            setColumnMapping(v === "_none" ? rest : { ...rest, amount: v })
+                          }}
                         >
                           <SelectTrigger id="map-amount">
                             <SelectValue placeholder="None" />
@@ -2281,7 +2292,10 @@ export default function TransactionsPage() {
                         <Label htmlFor="map-memo" className="text-sm">Memo/Reference (optional)</Label>
                         <Select
                           value={columnMapping.memo || "_none"}
-                          onValueChange={(v) => setColumnMapping({ ...columnMapping, memo: v === "_none" ? undefined : v })}
+                          onValueChange={(v) => {
+                            const { memo: _, ...rest } = columnMapping
+                            setColumnMapping(v === "_none" ? rest : { ...rest, memo: v })
+                          }}
                         >
                           <SelectTrigger id="map-memo">
                             <SelectValue placeholder="None" />
@@ -2397,12 +2411,11 @@ export default function TransactionsPage() {
                               value={currentTxType}
                               onValueChange={(v) => {
                                 const edited = new Map(editedTransactions)
+                                const prev = edited.get(tx.row_number) ?? {}
+                                const { category_id: _c, subcategory_id: _s, ...rest } = prev
                                 edited.set(tx.row_number, {
-                                  ...edited.get(tx.row_number),
+                                  ...rest,
                                   transaction_type: v as 'income' | 'expense' | 'transfer',
-                                  // Clear category/subcategory when switching types
-                                  category_id: undefined,
-                                  subcategory_id: undefined
                                 })
                                 setEditedTransactions(edited)
                               }}
@@ -2437,10 +2450,11 @@ export default function TransactionsPage() {
                                   value={currentCategoryId ?? "_none"}
                                   onValueChange={(v) => {
                                     const edited = new Map(editedTransactions)
+                                    const prev = edited.get(tx.row_number) ?? {}
+                                    const { category_id: _c, subcategory_id: _s, ...rest } = prev
                                     edited.set(tx.row_number, {
-                                      ...edited.get(tx.row_number),
-                                      category_id: v === "_none" ? undefined : v,
-                                      subcategory_id: undefined // Clear subcategory when category changes
+                                      ...rest,
+                                      ...(v !== "_none" && { category_id: v }),
                                     })
                                     setEditedTransactions(edited)
                                   }}
@@ -2468,7 +2482,9 @@ export default function TransactionsPage() {
                                   value={editedTransactions.get(tx.row_number)?.subcategory_id ?? tx.subcategory_id ?? "_none"}
                                   onValueChange={(v) => {
                                     const edited = new Map(editedTransactions)
-                                    edited.set(tx.row_number, { ...edited.get(tx.row_number), subcategory_id: v === "_none" ? undefined : v })
+                                    const prev = edited.get(tx.row_number) ?? {}
+                                    const { subcategory_id: _, ...rest } = prev
+                                    edited.set(tx.row_number, v === "_none" ? rest : { ...rest, subcategory_id: v })
                                     setEditedTransactions(edited)
                                   }}
                                   disabled={!currentCategoryId || createdTx.has(tx.row_number)}
@@ -2494,7 +2510,9 @@ export default function TransactionsPage() {
                                 value={editedTransactions.get(tx.row_number)?.transfer_account_id ?? tx.transfer_account_id ?? "_none"}
                                 onValueChange={(v) => {
                                   const edited = new Map(editedTransactions)
-                                  edited.set(tx.row_number, { ...edited.get(tx.row_number), transfer_account_id: v === "_none" ? undefined : v })
+                                  const prev = edited.get(tx.row_number) ?? {}
+                                  const { transfer_account_id: _, ...rest } = prev
+                                  edited.set(tx.row_number, v === "_none" ? rest : { ...rest, transfer_account_id: v })
                                   setEditedTransactions(edited)
                                 }}
                                 disabled={createdTx.has(tx.row_number)}
@@ -2520,7 +2538,9 @@ export default function TransactionsPage() {
                               value={editedTransactions.get(tx.row_number)?.fund_id ?? tx.fund_id ?? "_none"}
                               onValueChange={(v) => {
                                 const edited = new Map(editedTransactions)
-                                edited.set(tx.row_number, { ...edited.get(tx.row_number), fund_id: v === "_none" ? undefined : v })
+                                const prev = edited.get(tx.row_number) ?? {}
+                                const { fund_id: _, ...rest } = prev
+                                edited.set(tx.row_number, v === "_none" ? rest : { ...rest, fund_id: v })
                                 setEditedTransactions(edited)
                               }}
                               disabled={createdTx.has(tx.row_number)}
@@ -2545,7 +2565,9 @@ export default function TransactionsPage() {
                               value={editedTransactions.get(tx.row_number)?.payment_method_id ?? tx.payment_method_id ?? "_none"}
                               onValueChange={(v) => {
                                 const edited = new Map(editedTransactions)
-                                edited.set(tx.row_number, { ...edited.get(tx.row_number), payment_method_id: v === "_none" ? undefined : v })
+                                const prev = edited.get(tx.row_number) ?? {}
+                                const { payment_method_id: _, ...rest } = prev
+                                edited.set(tx.row_number, v === "_none" ? rest : { ...rest, payment_method_id: v })
                                 setEditedTransactions(edited)
                               }}
                               disabled={createdTx.has(tx.row_number)}

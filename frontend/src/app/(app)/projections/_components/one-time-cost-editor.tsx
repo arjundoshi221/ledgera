@@ -150,7 +150,11 @@ export function OneTimeCostEditor({
               <Label className="text-xs">Notes (optional)</Label>
               <Input
                 value={draft.notes ?? ""}
-                onChange={(e) => setDraft({ ...draft, notes: e.target.value || undefined })}
+                onChange={(e) => {
+                  const { notes: _, ...rest } = draft
+                  const next = e.target.value
+                  setDraft(next ? { ...rest, notes: next } : rest)
+                }}
                 placeholder="Any details"
               />
             </div>
@@ -159,9 +163,10 @@ export function OneTimeCostEditor({
                 <Label className="text-xs">Category (optional)</Label>
                 <Select
                   value={draft.category_id ?? "none"}
-                  onValueChange={(v) =>
-                    setDraft({ ...draft, category_id: v === "none" ? undefined : v })
-                  }
+                  onValueChange={(v) => {
+                    const { category_id: _, ...rest } = draft
+                    setDraft(v === "none" ? rest : { ...rest, category_id: v })
+                  }}
                 >
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue />

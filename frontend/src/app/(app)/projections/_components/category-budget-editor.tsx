@@ -61,9 +61,11 @@ export function CategoryBudgetEditor({
 
   function updateInflationOverride(categoryId: string, value: string) {
     const override = value === "" ? undefined : parseFloat(value) || 0
-    const updated = effectiveBudgets.map((b) =>
-      b.category_id === categoryId ? { ...b, inflation_override: override } : b
-    )
+    const updated = effectiveBudgets.map((b) => {
+      if (b.category_id !== categoryId) return b
+      const { inflation_override: _, ...rest } = b
+      return override === undefined ? rest : { ...rest, inflation_override: override }
+    })
     onChange(updated)
   }
 
@@ -93,7 +95,8 @@ export function CategoryBudgetEditor({
       const idx = subs.findIndex((sb) => sb.subcategory_id === subcategoryId)
       const existing = idx >= 0 ? subs[idx] : undefined
       if (existing) {
-        subs[idx] = { ...existing, inflation_override: override }
+        const { inflation_override: _, ...rest } = existing
+        subs[idx] = override === undefined ? rest : { ...rest, inflation_override: override }
       }
       return { ...b, subcategory_budgets: subs }
     })
