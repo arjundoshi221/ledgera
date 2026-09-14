@@ -148,8 +148,11 @@ export function YearlyResults({ data, usdRate, baseCurrency }: YearlyResultsProp
               {fundNames.map((fundName) => {
                 const rows = fundRows[fundName]
                 if (!rows || rows.length === 0) return null
-                const opening = rows[0].openingCapital
-                const closing = rows[rows.length - 1].closingCapital
+                const first = rows[0]
+                const last = rows[rows.length - 1]
+                if (!first || !last) return null
+                const opening = first.openingCapital
+                const closing = last.closingCapital
                 const growth = closing - opening
                 return (
                   <TableRow key={fundName}>

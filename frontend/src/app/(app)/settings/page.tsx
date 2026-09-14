@@ -1458,7 +1458,9 @@ export default function SettingsPage() {
                           value={alloc.allocation_percentage}
                           onChange={(e) => {
                             const updated = [...fundAccountAllocations]
-                            updated[idx] = { ...updated[idx], allocation_percentage: parseFloat(e.target.value) || 0 }
+                            const current = updated[idx]
+                            if (!current) return
+                            updated[idx] = { ...current, allocation_percentage: parseFloat(e.target.value) || 0 }
                             setFundAccountAllocations(updated)
                           }}
                           className="w-20 text-right"

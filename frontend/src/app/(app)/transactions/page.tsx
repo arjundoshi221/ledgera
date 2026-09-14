@@ -251,7 +251,7 @@ export default function TransactionsPage() {
   // Auto-detect fund for an account (returns fund id if exactly one link, else "")
   function autoDetectFund(accountId: string): string {
     const linked = funds.filter((f) => f.linked_accounts?.some((la: LinkedAccountSummary) => la.id === accountId))
-    return linked.length === 1 ? linked[0].id : ""
+    return linked.length === 1 && linked[0] ? linked[0].id : ""
   }
 
   // Detect if transfer is cross-currency

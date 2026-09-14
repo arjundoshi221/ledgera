@@ -46,7 +46,9 @@ export function OneTimeCostEditor({
   }
 
   function openEdit(index: number) {
-    setDraft({ ...costs[index] })
+    const target = costs[index]
+    if (!target) return
+    setDraft({ ...target })
     setEditingIndex(index)
     setDialogOpen(true)
   }

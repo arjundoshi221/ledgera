@@ -73,8 +73,9 @@ export function CategoryBudgetEditor({
       if (b.category_id !== categoryId) return b
       const subs = [...(b.subcategory_budgets || [])]
       const idx = subs.findIndex((sb) => sb.subcategory_id === subcategoryId)
-      if (idx >= 0) {
-        subs[idx] = { ...subs[idx], monthly_amount: amount }
+      const existing = idx >= 0 ? subs[idx] : undefined
+      if (existing) {
+        subs[idx] = { ...existing, monthly_amount: amount }
       } else {
         subs.push({ subcategory_id: subcategoryId, monthly_amount: amount })
       }
@@ -90,8 +91,9 @@ export function CategoryBudgetEditor({
       if (b.category_id !== categoryId) return b
       const subs = [...(b.subcategory_budgets || [])]
       const idx = subs.findIndex((sb) => sb.subcategory_id === subcategoryId)
-      if (idx >= 0) {
-        subs[idx] = { ...subs[idx], inflation_override: override }
+      const existing = idx >= 0 ? subs[idx] : undefined
+      if (existing) {
+        subs[idx] = { ...existing, inflation_override: override }
       }
       return { ...b, subcategory_budgets: subs }
     })

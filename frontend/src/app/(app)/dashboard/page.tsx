@@ -13,7 +13,7 @@ export default function DashboardPage() {
 
   // Use SWR hooks for automatic caching
   const { data: accounts = [], isLoading: accountsLoading } = useAccounts()
-  const firstAccountId = accounts.length > 0 ? accounts[0].id : undefined
+  const firstAccountId = accounts[0]?.id
   const { data: transactions = [], isLoading: txnsLoading } = useTransactions(firstAccountId)
   const recentTxns = transactions.slice(0, 5)
   const loading = accountsLoading || txnsLoading

@@ -16,6 +16,7 @@
     "isolatedModules": true,
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
     "jsx": "preserve",
     "incremental": true,
     "plugins": [
