@@ -14,6 +14,8 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
     "jsx": "preserve",
     "incremental": true,
     "plugins": [
