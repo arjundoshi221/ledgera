@@ -11,8 +11,10 @@ Backend:
 ```bash
 pip install -e ".[dev]"
 cp .env.example .env  # then fill in JWT_SECRET at minimum
-python -m src.api.main
+uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir src --reload-dir config
 ```
+
+The `--reload-dir` flags scope the file watcher to app code only — without them, uvicorn scans `.conda/`, `frontend/node_modules/`, etc. and crashes on transient files (e.g. `.firebase-*` npm tempdirs).
 
 Frontend:
 
