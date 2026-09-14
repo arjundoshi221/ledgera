@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -60,24 +60,8 @@ export default function SettingsPage() {
   const { data: cards = [] } = useCards()
   const { data: paymentMethods = [] } = usePaymentMethods()
   const { data: verificationStatus, mutate: mutateVerification } = useVerificationStatus()
-  const { update: updateWorkspaceMutation } = useWorkspaceMutations()
 
   const loading = workspaceLoading || userLoading
-
-  // Workspace form state
-  const [wsName, setWsName] = useState(workspace?.name ?? "")
-  const [wsCurrency, setWsCurrency] = useState(workspace?.base_currency ?? "SGD")
-  const [minWcBalance, setMinWcBalance] = useState(workspace?.min_wc_balance ?? 0)
-  const [saving, setSaving] = useState(false)
-
-  // Sync workspace state when data loads
-  useEffect(() => {
-    if (workspace) {
-      setWsName(workspace.name)
-      setWsCurrency(workspace.base_currency)
-      setMinWcBalance(workspace.min_wc_balance ?? 0)
-    }
-  }, [workspace])
 
   // Accounts
   const [deleteAccountId, setDeleteAccountId] = useState<string | null>(null)
@@ -134,22 +118,6 @@ export default function SettingsPage() {
   const [deletingPmId, setDeletingPmId] = useState<string | null>(null)
 
 
-  // ── Workspace ──
-
-  async function handleSaveWorkspace(e: React.FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    try {
-      await updateWorkspaceMutation.trigger({ name: wsName, base_currency: wsCurrency, min_wc_balance: minWcBalance })
-      await invalidateWorkspace()
-      toast({ title: "Settings saved" })
-    } catch (err) {
-      toast({ variant: "destructive", title: "Failed", description: errorMessage(err) })
-    } finally {
-      setSaving(false)
-    }
-  }
-
   // ── Accounts ──
 
   async function handleDeleteAccount(accountId: string) {
@@ -167,7 +135,7 @@ export default function SettingsPage() {
     setEditingAccount(null)
     setAccName("")
     setAccType("asset")
-    setAccCurrency(wsCurrency)
+    setAccCurrency(workspace?.base_currency ?? "SGD")
     setAccInstitution("")
     setAccStartingBalance("")
     setAccountDialogOpen(true)
@@ -625,43 +593,7 @@ export default function SettingsPage() {
                 <CardDescription>Configure your workspace</CardDescription>
               </CardHeader>
               <CardContent>
-                <form onSubmit={handleSaveWorkspace} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Workspace Name</Label>
-                    <Input value={wsName} onChange={(e) => setWsName(e.target.value)} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Base Currency</Label>
-                    <Select value={wsCurrency} onValueChange={setWsCurrency}>
-                      <SelectTrigger className="w-48">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {CURRENCIES.map((c) => (
-                          <SelectItem key={c} value={c}>
-                            {c}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Minimum Working Capital Balance</Label>
-                    <Input
-                      type="number"
-                      step="any"
-                      className="w-48"
-                      value={minWcBalance}
-                      onChange={(e) => setMinWcBalance(parseFloat(e.target.value) || 0)}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Optimize will never set WC below this amount
-                    </p>
-                  </div>
-                  <Button type="submit" disabled={saving}>
-                    {saving ? "Saving..." : "Save Changes"}
-                  </Button>
-                </form>
+                <WorkspaceForm workspace={workspace} />
               </CardContent>
             </Card>
 
@@ -1482,5 +1414,79 @@ export default function SettingsPage() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+// Workspace form is extracted so its useState initializers only run once the
+// workspace record is loaded. The parent SettingsPage renders a loading gate
+// before mounting this component, so `workspace` is guaranteed non-undefined
+// here — no fragile useState(record?.field ?? "") pattern needed.
+function WorkspaceForm({ workspace }: { workspace: Workspace | undefined }) {
+  const { toast } = useToast()
+  const { update: updateWorkspaceMutation } = useWorkspaceMutations()
+  const [wsName, setWsName] = useState(workspace?.name ?? "")
+  const [wsCurrency, setWsCurrency] = useState(workspace?.base_currency ?? "SGD")
+  const [minWcBalance, setMinWcBalance] = useState(workspace?.min_wc_balance ?? 0)
+  const [saving, setSaving] = useState(false)
+
+  // If parent renders this without a workspace (shouldn't happen given the
+  // loading gate), fall back to a placeholder rather than mount empty form
+  // state that could be silently submitted.
+  if (!workspace) {
+    return <p className="text-sm text-muted-foreground">Workspace unavailable</p>
+  }
+
+  async function handleSaveWorkspace(e: React.FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      await updateWorkspaceMutation.trigger({ name: wsName, base_currency: wsCurrency, min_wc_balance: minWcBalance })
+      await invalidateWorkspace()
+      toast({ title: "Settings saved" })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed", description: errorMessage(err) })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSaveWorkspace} className="space-y-4">
+      <div className="space-y-2">
+        <Label>Workspace Name</Label>
+        <Input value={wsName} onChange={(e) => setWsName(e.target.value)} />
+      </div>
+      <div className="space-y-2">
+        <Label>Base Currency</Label>
+        <Select value={wsCurrency} onValueChange={setWsCurrency}>
+          <SelectTrigger className="w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CURRENCIES.map((c) => (
+              <SelectItem key={c} value={c}>
+                {c}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label>Minimum Working Capital Balance</Label>
+        <Input
+          type="number"
+          step="any"
+          className="w-48"
+          value={minWcBalance}
+          onChange={(e) => setMinWcBalance(parseFloat(e.target.value) || 0)}
+        />
+        <p className="text-xs text-muted-foreground">
+          Optimize will never set WC below this amount
+        </p>
+      </div>
+      <Button type="submit" disabled={saving}>
+        {saving ? "Saving..." : "Save Changes"}
+      </Button>
+    </form>
   )
 }
