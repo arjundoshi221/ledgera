@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useTransition } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -13,30 +13,29 @@ import { errorMessage } from "@/lib/errors"
 
 export default function AdminAuditLogPage() {
   const { toast } = useToast()
-  const [loading, setLoading] = useState(true)
+  const [loading, startLoad] = useTransition()
   const [data, setData] = useState<PaginatedAuditLogResponse | null>(null)
   const [actionFilter, setActionFilter] = useState("all")
   const [daysFilter, setDaysFilter] = useState("30")
   const [page, setPage] = useState(0)
   const limit = 50
 
-  const loadLogs = useCallback(async () => {
-    try {
-      setLoading(true)
-      const params: Parameters<typeof getAuditLogs>[0] = {
-        offset: page * limit,
-        limit,
-        days: parseInt(daysFilter),
+  const loadLogs = useCallback(() => {
+    startLoad(async () => {
+      try {
+        const params: Parameters<typeof getAuditLogs>[0] = {
+          offset: page * limit,
+          limit,
+          days: parseInt(daysFilter),
+        }
+        if (actionFilter !== "all") params.action_prefix = actionFilter
+        const res = await getAuditLogs(params)
+        setData(res)
+      } catch (err) {
+        toast({ variant: "destructive", title: "Failed to load audit logs", description: errorMessage(err) })
       }
-      if (actionFilter !== "all") params.action_prefix = actionFilter
-      const res = await getAuditLogs(params)
-      setData(res)
-    } catch (err) {
-      toast({ variant: "destructive", title: "Failed to load audit logs", description: errorMessage(err) })
-    } finally {
-      setLoading(false)
-    }
-  }, [actionFilter, daysFilter, page])
+    })
+  }, [actionFilter, daysFilter, page, toast])
 
   useEffect(() => { loadLogs() }, [loadLogs])
 
@@ -88,9 +87,9 @@ export default function AdminAuditLogPage() {
       {/* Table */}
       <Card>
         <CardContent className="p-0">
-          {loading ? (
+          {loading || !data ? (
             <div className="p-8 text-center animate-pulse text-muted-foreground">Loading audit logs...</div>
-          ) : !data || data.logs.length === 0 ? (
+          ) : data.logs.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">No audit log entries found</div>
           ) : (
             <Table>

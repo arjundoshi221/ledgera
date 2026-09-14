@@ -1,6 +1,6 @@
 "use client"
 
-import { Fragment, useEffect, useState } from "react"
+import { Fragment, useEffect, useState, useTransition } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -35,7 +35,6 @@ export default function FundTrackerPage() {
   const [ledgerSub, setLedgerSub] = useState("funds")
   const [executingTransfer, setExecutingTransfer] = useState<number | null>(null)
   const [fxRateInput, setFxRateInput] = useState<{ index: number; rate: string; fee: string } | null>(null)
-  const [fetchingRate, setFetchingRate] = useState(false)
   const { toast } = useToast()
   const { tooltipStyle, gridStroke, tickStyle } = useChartTheme()
 
@@ -47,7 +46,10 @@ export default function FundTrackerPage() {
     return !!(s.from_currency && s.to_currency && s.from_currency !== s.to_currency)
   }
 
-  // Auto-fetch FX rate when FX input form opens (decoupled from click handler)
+  // Auto-fetch FX rate when FX input form opens (decoupled from click handler).
+  // useTransition provides the pending flag without a synchronous setState in
+  // the effect body.
+  const [fetchingRate, startRateFetch] = useTransition()
   useEffect(() => {
     if (!fxRateInput || !data) return
     const s = data.summary.transfer_suggestions[fxRateInput.index]
@@ -55,22 +57,23 @@ export default function FundTrackerPage() {
     if (fxRateInput.rate) return // Already has a rate, don't re-fetch
 
     let cancelled = false
-    setFetchingRate(true)
-    getPrice(s.from_currency, s.to_currency)
-      .then((res) => {
+    const index = fxRateInput.index
+    startRateFetch(async () => {
+      try {
+        const res = await getPrice(s.from_currency, s.to_currency)
         if (!cancelled) {
           setFxRateInput((prev) =>
-            prev && prev.index === fxRateInput.index
+            prev && prev.index === index
               ? { ...prev, rate: Number(res.rate).toFixed(6) }
               : prev
           )
         }
-      })
-      .catch(() => { /* keep manual entry if fetch fails */ })
-      .finally(() => {
-        if (!cancelled) setFetchingRate(false)
-      })
+      } catch {
+        // keep manual entry if fetch fails
+      }
+    })
     return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fxRateInput?.index])
 
   async function handleExecuteTransfer(s: TransferSuggestion, index: number, fxRate?: number, fee?: number) {

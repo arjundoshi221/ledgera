@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useTransition } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -18,27 +18,30 @@ export default function AdminUserDetailPage() {
   const { userId } = useParams<{ userId: string }>()
   const router = useRouter()
   const { toast } = useToast()
-  const [loading, setLoading] = useState(true)
+  const [loading, startLoad] = useTransition()
   const [user, setUser] = useState<AdminUserDetail | null>(null)
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([])
   const [confirmAction, setConfirmAction] = useState<string | null>(null)
+  const [loadedForUserId, setLoadedForUserId] = useState<string | null>(null)
 
-  async function load() {
-    try {
-      const [u, logs] = await Promise.all([
-        getUserDetail(userId),
-        getAuditLogs({ target_id: userId, target_type: "user", limit: 20 }),
-      ])
-      setUser(u)
-      setAuditLogs(logs.logs)
-    } catch (err) {
-      toast({ variant: "destructive", title: "Failed to load user", description: errorMessage(err) })
-    } finally {
-      setLoading(false)
-    }
+  function load() {
+    startLoad(async () => {
+      try {
+        const [u, logs] = await Promise.all([
+          getUserDetail(userId),
+          getAuditLogs({ target_id: userId, target_type: "user", limit: 20 }),
+        ])
+        setUser(u)
+        setAuditLogs(logs.logs)
+      } catch (err) {
+        toast({ variant: "destructive", title: "Failed to load user", description: errorMessage(err) })
+      } finally {
+        setLoadedForUserId(userId)
+      }
+    })
   }
 
-  useEffect(() => { load() }, [userId])
+  useEffect(() => { load() }, [userId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleAction() {
     if (!confirmAction || !user) return
@@ -61,7 +64,7 @@ export default function AdminUserDetailPage() {
     }
   }
 
-  if (loading) {
+  if (loading || loadedForUserId !== userId) {
     return <div className="animate-pulse text-muted-foreground">Loading user details...</div>
   }
 

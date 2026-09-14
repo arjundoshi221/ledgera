@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { isLoggedIn } from "@/lib/auth"
@@ -53,19 +53,33 @@ const comparisons = [
   { others: "Black-box recommendations", ledgera: "Transparent framework for thinking" },
 ]
 
+// SSR renders "checking" (localStorage unavailable); the client swaps to
+// "authed" or "guest" on the render right after hydration — no setState in effect.
+type LandingState = "checking" | "authed" | "guest"
+function subscribeLandingAuth(callback: () => void) {
+  window.addEventListener("storage", callback)
+  return () => window.removeEventListener("storage", callback)
+}
+function getLandingSnapshot(): LandingState {
+  return isLoggedIn() ? "authed" : "guest"
+}
+function getLandingServerSnapshot(): LandingState {
+  return "checking"
+}
+
 export default function Home() {
   const router = useRouter()
-  const [ready, setReady] = useState(false)
+  const landingState = useSyncExternalStore(
+    subscribeLandingAuth,
+    getLandingSnapshot,
+    getLandingServerSnapshot
+  )
 
   useEffect(() => {
-    if (isLoggedIn()) {
-      router.replace("/dashboard")
-    } else {
-      setReady(true)
-    }
-  }, [router])
+    if (landingState === "authed") router.replace("/dashboard")
+  }, [landingState, router])
 
-  if (!ready) {
+  if (landingState !== "guest") {
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="animate-pulse text-muted-foreground">Loading...</div>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useTransition } from "react"
 import Image from "next/image"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -28,7 +28,7 @@ import { errorMessage } from "@/lib/errors"
 
 export default function AdminBugsPage() {
   const { toast } = useToast()
-  const [loading, setLoading] = useState(true)
+  const [loading, startLoad] = useTransition()
   const [data, setData] = useState<PaginatedBugReportResponse | null>(null)
   const [statusFilter, setStatusFilter] = useState("all")
   const [page, setPage] = useState(0)
@@ -42,21 +42,20 @@ export default function AdminBugsPage() {
   const [mediaError, setMediaError] = useState<Record<string, string>>({})
   const [detailLoading, setDetailLoading] = useState(false)
 
-  const loadReports = useCallback(async () => {
-    try {
-      setLoading(true)
-      const res = await getAdminBugReports({
-        status: statusFilter,
-        offset: page * limit,
-        limit,
-      })
-      setData(res)
-    } catch (err) {
-      toast({ variant: "destructive", title: "Failed to load bug reports", description: errorMessage(err) })
-    } finally {
-      setLoading(false)
-    }
-  }, [statusFilter, page])
+  const loadReports = useCallback(() => {
+    startLoad(async () => {
+      try {
+        const res = await getAdminBugReports({
+          status: statusFilter,
+          offset: page * limit,
+          limit,
+        })
+        setData(res)
+      } catch (err) {
+        toast({ variant: "destructive", title: "Failed to load bug reports", description: errorMessage(err) })
+      }
+    })
+  }, [statusFilter, page, toast])
 
   useEffect(() => { loadReports() }, [loadReports])
 
@@ -212,9 +211,9 @@ export default function AdminBugsPage() {
       {/* Table */}
       <Card>
         <CardContent className="p-0">
-          {loading ? (
+          {loading || !data ? (
             <div className="p-8 text-center animate-pulse text-muted-foreground">Loading bug reports...</div>
-          ) : !data || data.reports.length === 0 ? (
+          ) : data.reports.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">No bug reports found</div>
           ) : (
             <Table>

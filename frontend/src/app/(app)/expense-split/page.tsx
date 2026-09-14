@@ -1,6 +1,6 @@
 "use client"
 
-import { Fragment, useEffect, useState } from "react"
+import { Fragment, useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -176,7 +176,10 @@ export default function ExpenseSplitPage() {
   const [year, setYear] = useState(new Date().getFullYear())
   const [month, setMonth] = useState(new Date().getMonth() + 1)
   const [tab, setTab] = useState("dashboard")
-  const [visibleFunds, setVisibleFunds] = useState<Set<string>>(new Set())
+  // hiddenFunds tracks user toggles; effective "visibleFunds" is all fund ids
+  // minus hidden ones. This inverts the previous storage so we don't need to
+  // reseed local state via setState-in-effect whenever the dashboard reloads.
+  const [hiddenFunds, setHiddenFunds] = useState<Set<string>>(new Set())
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
   const { toast } = useToast()
 
@@ -185,15 +188,13 @@ export default function ExpenseSplitPage() {
   const { data: categoryData, isLoading: categoryLoading } = useExpenseSplit(year, month)
   const loading = dashboardLoading || categoryLoading
 
-  // Set visible funds when dashboard data loads
-  useEffect(() => {
-    if (dashboardData) {
-      setVisibleFunds(new Set(dashboardData.fund_analyses.map(f => f.fund_id)))
-    }
-  }, [dashboardData])
+  const visibleFunds = useMemo(() => {
+    const allIds = dashboardData?.fund_analyses.map((f) => f.fund_id) ?? []
+    return new Set(allIds.filter((id) => !hiddenFunds.has(id)))
+  }, [dashboardData, hiddenFunds])
 
   function toggleFundVisibility(fundId: string) {
-    setVisibleFunds(prev => {
+    setHiddenFunds((prev) => {
       const next = new Set(prev)
       if (next.has(fundId)) next.delete(fundId)
       else next.add(fundId)

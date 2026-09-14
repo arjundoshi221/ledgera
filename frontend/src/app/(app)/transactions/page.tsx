@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState, useEffect, useTransition } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -60,13 +60,21 @@ export default function TransactionsPage() {
   // For income/expense (single account)
   const [accountId, setAccountId] = useState("")
   const [amount, setAmount] = useState("")
-  const [currency, setCurrency] = useState(baseCurrency)
+  // Currency inputs use an override-vs-workspace-default pattern: null means
+  // "follow the workspace base currency", any string is a user or edit-mode
+  // override. This avoids mirroring the async workspace fetch into local
+  // state via setState-in-effect.
+  const [currencyOverride, setCurrencyOverride] = useState<string | null>(null)
+  const currency = currencyOverride ?? baseCurrency
+  const setCurrency = setCurrencyOverride
 
   // For transfers (two accounts)
   const [fromAccountId, setFromAccountId] = useState("")
   const [toAccountId, setToAccountId] = useState("")
   const [transferAmount, setTransferAmount] = useState("")
-  const [transferCurrency, setTransferCurrency] = useState(baseCurrency)
+  const [transferCurrencyOverride, setTransferCurrencyOverride] = useState<string | null>(null)
+  const transferCurrency = transferCurrencyOverride ?? baseCurrency
+  const setTransferCurrency = setTransferCurrencyOverride
   const [sourceFundId, setSourceFundId] = useState("")
   const [destFundId, setDestFundId] = useState("")
   const [fxRate, setFxRate] = useState("1")
@@ -103,7 +111,9 @@ export default function TransactionsPage() {
   const [recPayee, setRecPayee] = useState("")
   const [recMemo, setRecMemo] = useState("")
   const [recAmount, setRecAmount] = useState("")
-  const [recCurrency, setRecCurrency] = useState(baseCurrency)
+  const [recCurrencyOverride, setRecCurrencyOverride] = useState<string | null>(null)
+  const recCurrency = recCurrencyOverride ?? baseCurrency
+  const setRecCurrency = setRecCurrencyOverride
   const [recCategoryId, setRecCategoryId] = useState("")
   const [recSubcategoryId, setRecSubcategoryId] = useState("")
   const [recFundId, setRecFundId] = useState("")
@@ -211,42 +221,37 @@ export default function TransactionsPage() {
     return regularAccounts.filter((a) => linkedAccountIds.includes(a.id))
   }, [recFundId, funds, regularAccounts])
 
-  // Sync currency defaults when workspace base currency loads
-  useEffect(() => {
-    setCurrency(baseCurrency)
-    setTransferCurrency(baseCurrency)
-    setRecCurrency(baseCurrency)
-  }, [baseCurrency])
-
-  // Reset subcategory when category changes
-  useEffect(() => {
+  // Reset dependent selections when their parent changes. The React 19 idiom
+  // for "reset state when a prop/state key changes" is to compare against a
+  // stashed previous value during render, not to setState inside an effect.
+  const [prevCategoryId, setPrevCategoryId] = useState(categoryId)
+  if (prevCategoryId !== categoryId) {
+    setPrevCategoryId(categoryId)
     setSubcategoryId("")
-  }, [categoryId])
+  }
 
-  // Reset recurring subcategory when recurring category changes
-  useEffect(() => {
+  const [prevRecCategoryId, setPrevRecCategoryId] = useState(recCategoryId)
+  if (prevRecCategoryId !== recCategoryId) {
+    setPrevRecCategoryId(recCategoryId)
     setRecSubcategoryId("")
-  }, [recCategoryId])
+  }
 
-  // Reset account when fund changes (if selected account is not in filtered list)
-  useEffect(() => {
-    if (accountId && fundId) {
-      const isAccountInFiltered = filteredAccounts.some((a) => a.id === accountId)
-      if (!isAccountInFiltered) {
-        setAccountId("")
-      }
+  // Clear the selected account when the current fund no longer includes it.
+  const [prevFundId, setPrevFundId] = useState(fundId)
+  if (prevFundId !== fundId) {
+    setPrevFundId(fundId)
+    if (accountId && fundId && !filteredAccounts.some((a) => a.id === accountId)) {
+      setAccountId("")
     }
-  }, [fundId, filteredAccounts, accountId])
+  }
 
-  // Reset recurring account when recurring fund changes
-  useEffect(() => {
-    if (recAccountId && recFundId) {
-      const isAccountInFiltered = recFilteredAccounts.some((a) => a.id === recAccountId)
-      if (!isAccountInFiltered) {
-        setRecAccountId("")
-      }
+  const [prevRecFundId, setPrevRecFundId] = useState(recFundId)
+  if (prevRecFundId !== recFundId) {
+    setPrevRecFundId(recFundId)
+    if (recAccountId && recFundId && !recFilteredAccounts.some((a) => a.id === recAccountId)) {
+      setRecAccountId("")
     }
-  }, [recFundId, recFilteredAccounts, recAccountId])
+  }
 
   // Auto-detect fund for an account (returns fund id if exactly one link, else "")
   function autoDetectFund(accountId: string): string {
@@ -259,26 +264,29 @@ export default function TransactionsPage() {
   const toAccount = accounts.find((a) => a.id === toAccountId)
   const isCrossCurrency = fromAccount && toAccount && fromAccount.account_currency !== toAccount.account_currency
 
-  // Auto-fetch FX rate when cross-currency transfer is detected
-  const [fetchingRate, setFetchingRate] = useState(false)
+  // Auto-fetch FX rate when cross-currency transfer is detected. useTransition
+  // provides the pending flag without a synchronous setState in the effect body.
+  const [fetchingRate, startRateFetch] = useTransition()
   useEffect(() => {
     if (!isCrossCurrency || !fromAccount || !toAccount) return
     let cancelled = false
-    setFetchingRate(true)
-    getPrice(fromAccount.account_currency, toAccount.account_currency)
-      .then((res) => {
+    const fromCurrency = fromAccount.account_currency
+    const toCurrency = toAccount.account_currency
+    startRateFetch(async () => {
+      try {
+        const res = await getPrice(fromCurrency, toCurrency)
         if (!cancelled) {
           setFxRate(Number(res.rate).toFixed(6))
-          setTransferCurrency(fromAccount.account_currency)
+          setTransferCurrency(fromCurrency)
         }
-      })
-      .catch(() => {
+      } catch {
         // Keep manual entry if fetch fails
-      })
-      .finally(() => {
-        if (!cancelled) setFetchingRate(false)
-      })
+      }
+    })
     return () => { cancelled = true }
+    // Only re-run when the selected accounts change. fromAccount/toAccount are
+    // derived from accountId + accounts and would otherwise cycle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromAccountId, toAccountId, accounts.length])
 
   // Find External account
@@ -403,11 +411,11 @@ export default function TransactionsPage() {
     setPaymentMethodId("")
     setAccountId("")
     setAmount("")
-    setCurrency(baseCurrency)
+    setCurrencyOverride(null)
     setFromAccountId("")
     setToAccountId("")
     setTransferAmount("")
-    setTransferCurrency(baseCurrency)
+    setTransferCurrencyOverride(null)
     setSourceFundId("")
     setDestFundId("")
     setFxRate("1")
@@ -578,7 +586,7 @@ export default function TransactionsPage() {
     setRecPayee("")
     setRecMemo("")
     setRecAmount("")
-    setRecCurrency(baseCurrency)
+    setRecCurrencyOverride(null)
     setRecCategoryId("")
     setRecSubcategoryId("")
     setRecFundId("")

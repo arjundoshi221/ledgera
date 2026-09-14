@@ -109,11 +109,13 @@ export default function ProjectionsPage() {
   const [recurringCategoryId, setRecurringCategoryId] = useState("")
   const [creatingRecurring, setCreatingRecurring] = useState(false)
 
-  // Filter categories by transaction type for recurring dialog
-  const projFilteredCategories = useMemo(() => {
-    if (!recurringPrefill?.transaction_type) return projAllCategories
-    return projAllCategories.filter((c) => c.type === recurringPrefill.transaction_type)
-  }, [projAllCategories, recurringPrefill?.transaction_type])
+  // Filter categories by transaction type for recurring dialog. React 19's
+  // compiler handles memoization automatically — a manual useMemo here trips
+  // preserve-manual-memoization because the inferred dep is the whole
+  // recurringPrefill object rather than just .transaction_type.
+  const projFilteredCategories = recurringPrefill?.transaction_type
+    ? projAllCategories.filter((c) => c.type === recurringPrefill.transaction_type)
+    : projAllCategories
 
   // Filter accounts by selected fund for recurring dialog
   const projFilteredAccounts = useMemo(() => {
@@ -126,19 +128,22 @@ export default function ProjectionsPage() {
     return projAccounts.filter((a) => linkedAccountIds.includes(a.id) && a.name !== "External")
   }, [recurringFundId, funds, projAccounts])
 
-  // Initialize fund weights and returns when funds load
-  useEffect(() => {
-    if (funds.length > 0 && Object.keys(fundWeights).length === 0) {
-      const weights: Record<string, number> = {}
-      const returns: Record<string, number> = {}
-      for (const f of funds) {
-        weights[f.name] = f.allocation_percentage ?? 0
-        returns[f.name] = 5
-      }
-      setFundWeights(weights)
-      setFundReturns(returns)
+  // Initialize fund weights and returns once, on the first render where the
+  // funds fetch has returned. Storing the seeded-key set avoids setState in
+  // an effect: the reset runs during render and only when funds first arrive.
+  const [seededFundsKey, setSeededFundsKey] = useState<string | null>(null)
+  const fundsKey = funds.map((f) => f.id).join(",")
+  if (funds.length > 0 && seededFundsKey !== fundsKey && Object.keys(fundWeights).length === 0) {
+    setSeededFundsKey(fundsKey)
+    const weights: Record<string, number> = {}
+    const returns: Record<string, number> = {}
+    for (const f of funds) {
+      weights[f.name] = f.allocation_percentage ?? 0
+      returns[f.name] = 5
     }
-  }, [funds, fundWeights])
+    setFundWeights(weights)
+    setFundReturns(returns)
+  }
 
   // Unsaved changes warning
   useEffect(() => {
@@ -150,15 +155,18 @@ export default function ProjectionsPage() {
     return () => window.removeEventListener("beforeunload", handler)
   }, [isDirty])
 
-  // Reset recurring account when recurring fund changes
-  useEffect(() => {
+  // Reset recurring account when recurring fund changes and the current
+  // account is not linked to the new fund. Compare-prev-during-render pattern
+  // avoids setState-in-effect.
+  const [prevRecurringFundId, setPrevRecurringFundId] = useState(recurringFundId)
+  if (prevRecurringFundId !== recurringFundId) {
+    setPrevRecurringFundId(recurringFundId)
     if (recurringAccountId && recurringFundId && recurringFundId !== "none") {
-      const isAccountInFiltered = projFilteredAccounts.some((a) => a.id === recurringAccountId)
-      if (!isAccountInFiltered) {
+      if (!projFilteredAccounts.some((a) => a.id === recurringAccountId)) {
         setRecurringAccountId("")
       }
     }
-  }, [recurringFundId, projFilteredAccounts, recurringAccountId])
+  }
 
   // Build current assumptions from form state
   const buildAssumptions = useCallback((): ProjectionAssumptions => {
