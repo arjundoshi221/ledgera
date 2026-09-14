@@ -33,6 +33,7 @@
     "tailwind-merge": "^2.2.0"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.2.0",
     "@sentry/nextjs": "^10.0.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
@@ -41,7 +42,7 @@
     "@types/react-dom": "19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
     "autoprefixer": "^10.4.0",
-    "eslint": "^8.56.0",
+    "eslint": "^9.0.0",
     "eslint-config-next": "15.5.0",
     "jsdom": "^29.1.1",
     "postcss": "^8.4.0",
