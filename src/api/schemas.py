@@ -22,13 +22,22 @@ class AccountCreate(BaseModel):
 
 
 class AccountResponse(BaseModel):
-    """Account response"""
+    """Account response.
+
+    `balance` = starting_balance + Σ(postings) computed at read time (B55).
+    `starting_balance` = the anchor (either user-typed at create, or derived
+    from bank_reported_balance on first CSV import via B55 L2).
+
+    Both are `float` on the wire because Pydantic v2 serializes Decimal as
+    a JSON string by default and the frontend has consumed these as numbers
+    since day one. Precision at cent-level is fine at float64.
+    """
     id: UUID
     name: str
     account_type: str
     currency: str
-    balance: Decimal
-    starting_balance: Decimal = Decimal(0)
+    balance: float
+    starting_balance: float = 0.0
     institution: str | None = None
     created_at: datetime
 

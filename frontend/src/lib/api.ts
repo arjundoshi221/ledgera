@@ -310,6 +310,52 @@ export async function createAccount(
   }
 }
 
+/** B55 L2: PATCH just the starting_balance without needing the full payload.
+ *  Used by the import review dialog to anchor an account to the bank-reported
+ *  balance − sum of imported transactions. */
+export async function setAccountOpeningBalance(
+  accountId: string,
+  startingBalance: number
+): Promise<{ id: string; balance: number; starting_balance: number }> {
+  return apiFetch<{ id: string; balance: number; starting_balance: number }>(
+    `/api/v1/accounts/${accountId}/opening-balance`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ starting_balance: startingBalance }),
+    }
+  )
+}
+
+/** B55 L3: record a bank-reported balance for reconciliation. */
+export async function createReconciliationCheckpoint(
+  accountId: string,
+  body: {
+    as_of_date: string
+    reported_balance: number
+    source?: "manual" | "csv_import"
+    notes?: string
+  }
+): Promise<{ id: string; as_of_date: string; reported_balance: number }> {
+  return apiFetch<{ id: string; as_of_date: string; reported_balance: number }>(
+    `/api/v1/accounts/${accountId}/reconciliation`,
+    { method: "POST", body: JSON.stringify(body) }
+  )
+}
+
+export async function getAccountReconciliation(
+  accountId: string
+): Promise<{
+  account_id: string
+  account_name: string
+  computed_balance: number
+  reported_balance: number | null
+  diff: number | null
+  is_reconciled: boolean
+  latest_checkpoint: { id: string; as_of_date: string; reported_balance: number; source: string } | null
+}> {
+  return apiFetch(`/api/v1/accounts/${accountId}/reconciliation`)
+}
+
 export async function updateAccount(
   accountId: string,
   data: CreateAccountRequest

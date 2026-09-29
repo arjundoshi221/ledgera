@@ -611,6 +611,36 @@ class BugReportMediaModel(Base):
     bug_report = relationship("BugReportModel", back_populates="media")
 
 
+# === Reconciliation checkpoints (B55) ===
+
+class AccountBalanceCheckpointModel(Base):
+    """User-recorded ground-truth balance for an account at a specific date.
+
+    Sourced either from a CSV import (auto-captured from statement preamble
+    via B50's bank_reported_balance) or entered manually. Ledgera's computed
+    balance = starting_balance + Σ(postings). A checkpoint lets us verify
+    the ledger against reality: if computed != checkpoint at the checkpoint's
+    date, something's off (missed import row, wrong sign, duplicate, etc.).
+
+    Never a source of truth for balance — always a diagnostic. Ledgera never
+    "adjusts" transactions to match a checkpoint.
+    """
+    __tablename__ = 'account_balance_checkpoints'
+
+    id = Column(String(36), primary_key=True, default=new_uuid)
+    workspace_id = Column(String(36), ForeignKey('workspaces.id'), nullable=False, index=True)
+    account_id = Column(String(36), ForeignKey('accounts.id', ondelete='CASCADE'), nullable=False)
+    as_of_date = Column(DateTime, nullable=False)
+    reported_balance = Column(Numeric(19, 4), nullable=False)
+    source = Column(String(20), nullable=False, default='manual')  # 'manual' | 'csv_import'
+    notes = Column(Text)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive)
+
+    __table_args__ = (
+        Index('idx_checkpoints_account_date', 'account_id', 'as_of_date'),
+    )
+
+
 # === Import automation (B53) ===
 
 class CategorizationRuleModel(Base):

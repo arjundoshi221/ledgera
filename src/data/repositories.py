@@ -2,8 +2,10 @@
 
 from abc import ABC, abstractmethod
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
@@ -185,6 +187,56 @@ class AccountRepository(BaseRepository):
             # can convert this into an actionable 409 instead of an opaque 500.
             self.session.rollback()
             raise
+
+    # ─── B55: balance computation ───
+
+    def compute_balance(self, account_id: str, as_of: datetime | None = None) -> Decimal:
+        """Return the account's current (or point-in-time) balance.
+
+        Balance = starting_balance + sum(posting.amount) across all postings on
+        this account (posting.amount is signed — money in is +, out is -). If
+        `as_of` is provided, only postings whose transaction timestamp is at or
+        before that instant are summed.
+
+        Pre-B55, every account read endpoint returned `starting_balance` verbatim
+        and ignored postings entirely, which meant importing 422 rows to an
+        account with starting_balance=0 still reported balance=0. This function
+        is the fix; callers should prefer it over reading .starting_balance
+        directly when they want a real balance.
+        """
+        account = self.read(account_id)
+        if not account:
+            return Decimal(0)
+        query = self.session.query(func.sum(PostingModel.amount)).filter(
+            PostingModel.account_id == str(account_id)
+        )
+        if as_of is not None:
+            query = query.join(
+                TransactionModel, TransactionModel.id == PostingModel.transaction_id
+            ).filter(TransactionModel.timestamp <= as_of)
+        posting_sum = query.scalar() or Decimal(0)
+        return Decimal(str(account.starting_balance or 0)) + Decimal(str(posting_sum))
+
+    def compute_balances_by_workspace(self, workspace_id: str) -> dict[str, Decimal]:
+        """Return {account_id: computed_balance} for every account in the workspace.
+
+        One aggregate SQL query instead of N per-account roundtrips — required
+        for the list_accounts endpoint which pages the whole workspace.
+        """
+        accounts = self.read_by_workspace(workspace_id)
+        if not accounts:
+            return {}
+        account_ids = [a.id for a in accounts]
+        rows = self.session.query(
+            PostingModel.account_id, func.sum(PostingModel.amount)
+        ).filter(
+            PostingModel.account_id.in_(account_ids)
+        ).group_by(PostingModel.account_id).all()
+        posting_sums = {acct_id: Decimal(str(total or 0)) for acct_id, total in rows}
+        return {
+            a.id: Decimal(str(a.starting_balance or 0)) + posting_sums.get(a.id, Decimal(0))
+            for a in accounts
+        }
 
 
 class TransactionRepository(BaseRepository):

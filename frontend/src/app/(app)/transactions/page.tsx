@@ -11,7 +11,7 @@ import { Separator } from "@/components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
-import { createTransaction, createTransfer, updateTransaction, deleteTransaction, getPrice, createRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, confirmRecurring, skipRecurring, readFileHeaders, parseTransactionsFile, createCategorizationRule } from "@/lib/api"
+import { createTransaction, createTransfer, updateTransaction, deleteTransaction, getPrice, createRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, confirmRecurring, skipRecurring, readFileHeaders, parseTransactionsFile, createCategorizationRule, setAccountOpeningBalance, createReconciliationCheckpoint } from "@/lib/api"
 import { useAccounts, useTransactions, useCategories, useSubcategories, useFunds, usePaymentMethods, useRecurringTransactions, usePendingInstances, useWorkspace, useTransactionMutations, useRecurringMutations } from "@/lib/hooks"
 import { invalidateTransactions, invalidateRecurring, invalidatePendingInstances, invalidateCategorizationRules } from "@/lib/cache"
 import { TRANSACTION_STATUSES, RECURRING_FREQUENCIES } from "@/lib/constants"
@@ -154,6 +154,11 @@ export default function TransactionsPage() {
   const [saveRuleCategoryId, setSaveRuleCategoryId] = useState("")
   const [saveRuleFundId, setSaveRuleFundId] = useState("")
   const [savingRule, setSavingRule] = useState(false)
+  // B55 L2: track whether the user has anchored the target account to the
+  // bank-reported balance during this import session. Dismisses the banner.
+  const [openingBalanceAnchored, setOpeningBalanceAnchored] = useState(false)
+  const [anchoringOpeningBalance, setAnchoringOpeningBalance] = useState(false)
+  const [openingBalanceDismissed, setOpeningBalanceDismissed] = useState(false)
   const [loadingHeaders, setLoadingHeaders] = useState(false)
   const [parsingFile, setParsingFile] = useState(false)
 
@@ -751,6 +756,8 @@ export default function TransactionsPage() {
       setCreatedTx(new Set())
       setCreatingImportTx(new Set())
       setEditedTransactions(new Map())
+      setOpeningBalanceAnchored(false)
+      setOpeningBalanceDismissed(false)
       setParsedTransactions(result.parsed_transactions)
       setImportStep(3)
     } catch (err) {
@@ -924,6 +931,68 @@ export default function TransactionsPage() {
     setCreatingImportTx(new Set())
     setCreatedTx(new Set())
     setOverrideDuplicates(new Set())
+    setOpeningBalanceAnchored(false)
+    setOpeningBalanceDismissed(false)
+  }
+
+  /** B55 L2: parse the bank-reported balance string (e.g. "SGD 8078.56") into
+   *  a numeric value. Returns null if the string can't be parsed. */
+  function parseBankReportedBalance(raw: string | null): number | null {
+    if (!raw) return null
+    const cleaned = raw.replace(/[^\d.\-]/g, "")
+    if (!cleaned) return null
+    const n = parseFloat(cleaned)
+    return isNaN(n) ? null : n
+  }
+
+  /** B55 L2: compute the opening-balance anchor. If the bank reports X as of
+   *  today and the imported transactions net to Σ, the true opening balance
+   *  (before the earliest imported transaction) is X − Σ. Duplicates are
+   *  excluded because they'll be skipped on commit. */
+  function computeDerivedOpeningBalance(): number | null {
+    const bankBal = parseBankReportedBalance(bankReportedBalance)
+    if (bankBal === null) return null
+    const netFromImport = parsedTransactions.reduce((acc, tx) => {
+      if (tx.has_errors) return acc
+      if (tx.is_duplicate && !overrideDuplicates.has(tx.row_number)) return acc
+      return acc + Number(tx.amount)
+    }, 0)
+    return Math.round((bankBal - netFromImport) * 100) / 100
+  }
+
+  async function handleAnchorOpeningBalance() {
+    if (!selectedAccountId) return
+    const derived = computeDerivedOpeningBalance()
+    if (derived === null) return
+    const bankBal = parseBankReportedBalance(bankReportedBalance)
+
+    setAnchoringOpeningBalance(true)
+    try {
+      await setAccountOpeningBalance(selectedAccountId, derived)
+      // Also save the bank-reported balance as a reconciliation checkpoint
+      // dated at the CSV statement date (approximated as now for MVP).
+      if (bankBal !== null) {
+        try {
+          await createReconciliationCheckpoint(selectedAccountId, {
+            as_of_date: new Date().toISOString(),
+            reported_balance: bankBal,
+            source: "csv_import",
+            notes: `Auto-captured from CSV: ${bankReportedBalance}`,
+          })
+        } catch {
+          // Checkpoint is best-effort — anchor already succeeded.
+        }
+      }
+      setOpeningBalanceAnchored(true)
+      toast({
+        title: "Opening balance anchored",
+        description: `Set to ${derived.toFixed(2)}. Once you import these transactions, computed balance will match bank-reported ${bankBal?.toFixed(2) ?? ""}.`,
+      })
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to anchor", description: errorMessage(err) })
+    } finally {
+      setAnchoringOpeningBalance(false)
+    }
   }
 
   if (loading) {
@@ -2439,6 +2508,51 @@ export default function TransactionsPage() {
           {/* Step 3: Review & Confirm */}
           {importStep === 3 && (
             <div className="space-y-4">
+              {/* B55 L2: Opening-balance anchor prompt. Shows when the CSV
+                  carried a bank-reported balance and the user hasn't dismissed
+                  or acted on it yet. */}
+              {bankReportedBalance && !openingBalanceAnchored && !openingBalanceDismissed && (() => {
+                const derived = computeDerivedOpeningBalance()
+                const bankBal = parseBankReportedBalance(bankReportedBalance)
+                if (derived === null || bankBal === null) return null
+                const selectedAccount = accounts.find(a => a.id === selectedAccountId)
+                return (
+                  <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 space-y-1">
+                        <div className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                          Anchor {selectedAccount?.name ?? "account"} to bank-reported balance?
+                        </div>
+                        <div className="text-xs text-blue-800/80 dark:text-blue-200/80">
+                          Bank reports <span className="font-mono">{bankReportedBalance}</span>. After importing these {parsedTransactions.length} rows, opening balance would be <span className="font-mono font-medium">{derived.toFixed(2)}</span>. Set it now and the computed balance will match the bank exactly — no more manual number-typing.
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          size="sm"
+                          onClick={handleAnchorOpeningBalance}
+                          disabled={anchoringOpeningBalance}
+                        >
+                          {anchoringOpeningBalance ? "Anchoring..." : "Set opening balance"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setOpeningBalanceDismissed(true)}
+                          className="text-blue-900/60 dark:text-blue-100/60"
+                        >
+                          Dismiss
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+              {openingBalanceAnchored && (
+                <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 p-3 text-xs text-emerald-900 dark:text-emerald-100">
+                  ✓ Opening balance anchored. Reconciliation checkpoint saved.
+                </div>
+              )}
               {/* Progress Summary Header */}
               <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                 <div className="flex items-center gap-3">
