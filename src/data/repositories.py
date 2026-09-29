@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 from .models import (
     AccountModel,
     CardModel,
+    CategorizationRuleModel,
     CategoryModel,
     FundAccountLinkModel,
     FundAllocationOverrideModel,
@@ -728,4 +729,53 @@ class RecurringTransactionRepository(BaseRepository):
         recurring = self.read(recurring_id)
         if recurring:
             self.session.delete(recurring)
+            self.session.commit()
+
+
+class CategorizationRuleRepository(BaseRepository):
+    """Repository for CategorizationRule entities (B53)."""
+
+    def create(self, rule: CategorizationRuleModel) -> CategorizationRuleModel:
+        self.session.add(rule)
+        self.session.commit()
+        return rule
+
+    def read(self, rule_id) -> CategorizationRuleModel | None:
+        return self.session.query(CategorizationRuleModel).filter(
+            CategorizationRuleModel.id == str(rule_id)
+        ).first()
+
+    def read_for_workspace(self, rule_id, workspace_id: str) -> CategorizationRuleModel | None:
+        return self.session.query(CategorizationRuleModel).filter(
+            CategorizationRuleModel.id == str(rule_id),
+            CategorizationRuleModel.workspace_id == workspace_id,
+        ).first()
+
+    def read_active_by_workspace(self, workspace_id: str) -> list[CategorizationRuleModel]:
+        """Return active rules ordered by priority (ascending — first match wins)."""
+        return self.session.query(CategorizationRuleModel).filter(
+            CategorizationRuleModel.workspace_id == workspace_id,
+            CategorizationRuleModel.is_active.is_(True),
+        ).order_by(
+            CategorizationRuleModel.priority.asc(),
+            CategorizationRuleModel.created_at.asc(),
+        ).all()
+
+    def read_all_by_workspace(self, workspace_id: str) -> list[CategorizationRuleModel]:
+        return self.session.query(CategorizationRuleModel).filter(
+            CategorizationRuleModel.workspace_id == workspace_id,
+        ).order_by(
+            CategorizationRuleModel.priority.asc(),
+            CategorizationRuleModel.created_at.asc(),
+        ).all()
+
+    def update(self, rule: CategorizationRuleModel) -> CategorizationRuleModel:
+        rule.updated_at = _utcnow_naive()
+        self.session.commit()
+        return rule
+
+    def delete(self, rule_id: str) -> None:
+        rule = self.read(rule_id)
+        if rule:
+            self.session.delete(rule)
             self.session.commit()

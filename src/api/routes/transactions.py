@@ -32,7 +32,12 @@ from src.data.models import (
     PostingModel,
     TransactionModel,
 )
-from src.data.repositories import AccountRepository, TransactionRepository
+from src.data.repositories import (
+    AccountRepository,
+    CategorizationRuleRepository,
+    TransactionRepository,
+)
+from src.services.categorization_service import apply_rules
 
 router = APIRouter()
 
@@ -787,6 +792,11 @@ async def parse_file(
         )
         seen_in_file: set[str] = set()
 
+        # B53: pre-fetch active categorization rules ordered by priority. Applied
+        # per row after fingerprinting. Empty list means no rules → parse behaves
+        # exactly as pre-B53.
+        rules = CategorizationRuleRepository(session).read_active_by_workspace(workspace_id)
+
         # Parse each row
         parsed_transactions = []
 
@@ -867,6 +877,28 @@ async def parse_file(
             # "positive=income, else expense" rule for known own-account transfer
             # patterns (PayLah top-ups, credit-card payments, etc.).
             transaction_type = _classify_row(payee, memo, amount)
+
+            # B53: apply user-authored categorization rules. Rules can rewrite
+            # the payee, pin category/subcategory/fund, and optionally override
+            # the type classification above. First matching rule wins.
+            applied_rule_id: str | None = None
+            original_payee: str | None = None
+            category_id_from_rule: str | None = None
+            subcategory_id_from_rule: str | None = None
+            fund_id_from_rule: str | None = None
+            if rules and payee and not has_errors:
+                match = apply_rules(rules, payee, memo)
+                if match:
+                    applied_rule_id = match.rule_id
+                    if match.normalized_payee and match.normalized_payee != payee:
+                        original_payee = payee
+                        payee = match.normalized_payee
+                    category_id_from_rule = match.category_id
+                    subcategory_id_from_rule = match.subcategory_id
+                    fund_id_from_rule = match.fund_id
+                    if match.transaction_type_override:
+                        transaction_type = match.transaction_type_override
+
             pending_transfer_destination = transaction_type == "transfer"
 
             # B51: fingerprint + duplicate flag. Skip if we couldn't parse the row.
@@ -904,6 +936,11 @@ async def parse_file(
                 is_duplicate=is_duplicate,
                 existing_transaction_id=existing_id,
                 pending_transfer_destination=pending_transfer_destination,
+                category_id=category_id_from_rule,
+                subcategory_id=subcategory_id_from_rule,
+                fund_id=fund_id_from_rule,
+                applied_rule_id=applied_rule_id,
+                original_payee=original_payee,
             )
 
             parsed_transactions.append(parsed_tx)

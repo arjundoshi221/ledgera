@@ -609,3 +609,40 @@ class BugReportMediaModel(Base):
 
     # Relationships
     bug_report = relationship("BugReportModel", back_populates="media")
+
+
+# === Import automation (B53) ===
+
+class CategorizationRuleModel(Base):
+    """User-authored rules that auto-categorize transactions at CSV import time.
+
+    Rules are ordered by `priority` (lower runs first); first match wins per row.
+    A rule can normalize the payee (rewrite the cryptic bank description to a
+    clean merchant name), pin category/subcategory/fund, and optionally override
+    the type classification from B52. All target FKs are nullable so a rule can
+    do just payee normalization without pinning a category.
+
+    Categories/subcategories/funds are ON DELETE SET NULL so deleting a target
+    doesn't destroy the rule — user just needs to re-pick.
+    """
+    __tablename__ = 'categorization_rules'
+
+    id = Column(String(36), primary_key=True, default=new_uuid)
+    workspace_id = Column(String(36), ForeignKey('workspaces.id'), nullable=False, index=True)
+    priority = Column(Integer, nullable=False, default=100)  # lower = evaluated first
+    match_type = Column(String(20), nullable=False, default='contains')  # contains|starts_with|equals|regex
+    match_field = Column(String(20), nullable=False, default='payee_or_memo')  # payee|memo|payee_or_memo
+    match_value = Column(String(500), nullable=False)  # case-insensitive
+    normalized_payee = Column(String(255), nullable=True)  # rewrite payee to this value if set
+    category_id = Column(String(36), ForeignKey('categories.id', ondelete='SET NULL'), nullable=True)
+    subcategory_id = Column(String(36), ForeignKey('subcategories.id', ondelete='SET NULL'), nullable=True)
+    fund_id = Column(String(36), ForeignKey('funds.id', ondelete='SET NULL'), nullable=True)
+    transaction_type_override = Column(String(20), nullable=True)  # income|expense|transfer|null
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, nullable=False, default=_utcnow_naive)
+    updated_at = Column(DateTime, nullable=False, default=_utcnow_naive)
+
+    __table_args__ = (
+        Index('idx_categorization_rules_workspace_priority', 'workspace_id', 'priority'),
+        Index('idx_categorization_rules_active', 'workspace_id', 'is_active', 'priority'),
+    )

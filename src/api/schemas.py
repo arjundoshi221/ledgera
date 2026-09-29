@@ -677,6 +677,9 @@ class ParsedTransaction(BaseModel):
     existing_transaction_id: str | None = None  # populated when matching a stored transaction
     # B52: classification metadata
     pending_transfer_destination: bool = False  # True when transaction_type=="transfer" — frontend must pick destination account before commit
+    # B53: applied categorization rule (if any)
+    applied_rule_id: str | None = None  # id of the rule that categorized this row
+    original_payee: str | None = None  # only set if a rule rewrote payee — for UX diff display
 
 
 class FileParseResult(BaseModel):
@@ -685,3 +688,61 @@ class FileParseResult(BaseModel):
     parsed_transactions: list[ParsedTransaction]
     account_id: str
     account_name: str
+
+
+# ─── Categorization rules (B53) ───
+
+class CategorizationRuleCreate(BaseModel):
+    """Create a categorization rule."""
+    priority: int = 100
+    match_type: str = "contains"  # contains|starts_with|equals|regex
+    match_field: str = "payee_or_memo"  # payee|memo|payee_or_memo
+    match_value: str
+    normalized_payee: str | None = None
+    category_id: str | None = None
+    subcategory_id: str | None = None
+    fund_id: str | None = None
+    transaction_type_override: str | None = None  # income|expense|transfer|null
+    is_active: bool = True
+
+
+class CategorizationRuleUpdate(BaseModel):
+    """Partial update — all fields optional."""
+    priority: int | None = None
+    match_type: str | None = None
+    match_field: str | None = None
+    match_value: str | None = None
+    normalized_payee: str | None = None
+    category_id: str | None = None
+    subcategory_id: str | None = None
+    fund_id: str | None = None
+    transaction_type_override: str | None = None
+    is_active: bool | None = None
+
+
+class CategorizationRuleResponse(BaseModel):
+    """Categorization rule row."""
+    id: str
+    workspace_id: str
+    priority: int
+    match_type: str
+    match_field: str
+    match_value: str
+    normalized_payee: str | None
+    category_id: str | None
+    subcategory_id: str | None
+    fund_id: str | None
+    transaction_type_override: str | None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ApplyRuleResult(BaseModel):
+    """Result of applying a rule to existing uncategorized transactions."""
+    rule_id: str
+    matched_count: int
+    updated_count: int

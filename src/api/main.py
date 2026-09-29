@@ -28,6 +28,7 @@ from .routes import (
     auth,
     bugs,
     categories,
+    categorization_rules,
     payments,
     prices,
     projections,
@@ -179,6 +180,7 @@ app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytic
 app.include_router(prices.router, prefix="/api/v1/prices", tags=["prices"])
 app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"])
 app.include_router(recurring.router, prefix="/api/v1/recurring", tags=["recurring"])
+app.include_router(categorization_rules.router, prefix="/api/v1/categorization-rules", tags=["categorization-rules"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(bugs.router, prefix="/api/v1/bugs", tags=["bugs"])
 
