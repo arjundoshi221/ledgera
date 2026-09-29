@@ -821,24 +821,31 @@ export default function TransactionsPage() {
     }
   }
 
+  /** True when a parsed row is ready to commit without user follow-up.
+   *  - No parse errors, not already committed.
+   *  - B51: duplicates skip unless user opted in.
+   *  - B52: transfers require a destination account to be picked.
+   */
+  function isImportable(tx: ParsedTransaction): boolean {
+    if (tx.has_errors || createdTx.has(tx.row_number)) return false
+    if (tx.is_duplicate && !overrideDuplicates.has(tx.row_number)) return false
+    const effectiveType = editedTransactions.get(tx.row_number)?.transaction_type ?? tx.transaction_type
+    if (effectiveType === "transfer") {
+      const dest = editedTransactions.get(tx.row_number)?.transfer_account_id ?? tx.transfer_account_id
+      if (!dest) return false
+    }
+    return true
+  }
+
   async function confirmAllValidTransactions() {
-    // B51: skip duplicates unless the user explicitly opted in per row.
-    const validTxs = parsedTransactions.filter(tx =>
-      !tx.has_errors
-      && !createdTx.has(tx.row_number)
-      && (!tx.is_duplicate || overrideDuplicates.has(tx.row_number))
-    )
+    const validTxs = parsedTransactions.filter(isImportable)
     for (const tx of validTxs) {
       await confirmImportTransaction(tx.row_number)
     }
   }
 
   function importableCount(): number {
-    return parsedTransactions.filter(tx =>
-      !tx.has_errors
-      && !createdTx.has(tx.row_number)
-      && (!tx.is_duplicate || overrideDuplicates.has(tx.row_number))
-    ).length
+    return parsedTransactions.filter(isImportable).length
   }
 
   function resetImportDialog() {
@@ -2417,6 +2424,9 @@ export default function TransactionsPage() {
 
                   const isOverridden = overrideDuplicates.has(tx.row_number)
                   const isDuplicateAndSkipped = tx.is_duplicate && !isOverridden && !createdTx.has(tx.row_number)
+                  // B52: transfers need a destination account picked before commit.
+                  const effectiveTransferDest = editedTransactions.get(tx.row_number)?.transfer_account_id ?? tx.transfer_account_id
+                  const needsTransferDest = currentTxType === "transfer" && !effectiveTransferDest
                   return (
                     <Card key={tx.row_number} className={cn(
                       "transition-all duration-200",
@@ -2436,6 +2446,11 @@ export default function TransactionsPage() {
                                 {tx.existing_transaction_id
                                   ? "Duplicate of existing"
                                   : "Second identical row in this file"}
+                              </Badge>
+                            )}
+                            {tx.pending_transfer_destination && !createdTx.has(tx.row_number) && (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-800">
+                                {needsTransferDest ? "Transfer — pick destination" : "Transfer"}
                               </Badge>
                             )}
                             {createdTx.has(tx.row_number) && <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">✓ Imported</Badge>}
@@ -2705,6 +2720,7 @@ export default function TransactionsPage() {
                               || creatingImportTx.has(tx.row_number)
                               || createdTx.has(tx.row_number)
                               || (tx.is_duplicate === true && !overrideDuplicates.has(tx.row_number))
+                              || needsTransferDest
                             }
                           >
                             {createdTx.has(tx.row_number)
@@ -2713,7 +2729,9 @@ export default function TransactionsPage() {
                                 ? "Creating..."
                                 : isDuplicateAndSkipped
                                   ? "Skipped (dup)"
-                                  : "Confirm"}
+                                  : needsTransferDest
+                                    ? "Pick destination"
+                                    : "Confirm"}
                           </Button>
                         </div>
                       </CardContent>

@@ -956,6 +956,8 @@ export interface ParsedTransaction {
   import_hash?: string | null  // SHA-256 fingerprint; pass back on create
   is_duplicate?: boolean  // True if row matches an existing tx or an earlier row in this file
   existing_transaction_id?: string | null
+  // B52: classification metadata
+  pending_transfer_destination?: boolean  // true when transaction_type=='transfer' — user must pick a destination account
 }
 
 export interface FileParseResult {
