@@ -94,6 +94,13 @@ export function invalidateCategories() {
 }
 
 /**
+ * Invalidate categorization rules cache. Call after create/update/delete.
+ */
+export function invalidateCategorizationRules() {
+  return invalidatePattern('/api/v1/categorization-rules')
+}
+
+/**
  * Invalidate subcategory-related caches
  * Call after: createSubcategory, updateSubcategory, deleteSubcategory
  */

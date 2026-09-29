@@ -30,6 +30,7 @@ import type {
   Scenario,
   PriceResponse,
   UserResponse,
+  CategorizationRule,
 } from './types'
 import type {
   SystemStats,
@@ -747,5 +748,17 @@ export function useMAU(months: number = 12, config?: SWRConfiguration) {
       ...swrStatic,
       ...config,
     }
+  )
+}
+
+// ============================================================
+// Categorization Rules (B53)
+// ============================================================
+
+export function useCategorizationRules(config?: SWRConfiguration) {
+  return useSWR<CategorizationRule[]>(
+    '/api/v1/categorization-rules',
+    () => api.listCategorizationRules(),
+    { ...swrStatic, ...config }
   )
 }

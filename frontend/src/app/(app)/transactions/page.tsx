@@ -11,9 +11,9 @@ import { Separator } from "@/components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
-import { createTransaction, createTransfer, updateTransaction, deleteTransaction, getPrice, createRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, confirmRecurring, skipRecurring, readFileHeaders, parseTransactionsFile } from "@/lib/api"
+import { createTransaction, createTransfer, updateTransaction, deleteTransaction, getPrice, createRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, confirmRecurring, skipRecurring, readFileHeaders, parseTransactionsFile, createCategorizationRule } from "@/lib/api"
 import { useAccounts, useTransactions, useCategories, useSubcategories, useFunds, usePaymentMethods, useRecurringTransactions, usePendingInstances, useWorkspace, useTransactionMutations, useRecurringMutations } from "@/lib/hooks"
-import { invalidateTransactions, invalidateRecurring, invalidatePendingInstances } from "@/lib/cache"
+import { invalidateTransactions, invalidateRecurring, invalidatePendingInstances, invalidateCategorizationRules } from "@/lib/cache"
 import { TRANSACTION_STATUSES, RECURRING_FREQUENCIES } from "@/lib/constants"
 import { useToast } from "@/components/ui/use-toast"
 import type { Account, Transaction, Posting, Category, Subcategory, Fund, PaymentMethod, RecurringTransaction, PendingInstance, RecurringFrequency, FileHeadersResponse, ParsedTransaction, FileParseResult, ColumnMapping, LinkedAccountSummary } from "@/lib/types"
@@ -146,6 +146,14 @@ export default function TransactionsPage() {
   const [createdTx, setCreatedTx] = useState<Set<number>>(new Set())
   // B51: rows flagged as duplicates skip by default; user can opt in per row.
   const [overrideDuplicates, setOverrideDuplicates] = useState<Set<number>>(new Set())
+  // B53: "Save rule from this row" quick-create dialog.
+  const [saveRuleDialogOpen, setSaveRuleDialogOpen] = useState(false)
+  const [saveRuleSeedRowNumber, setSaveRuleSeedRowNumber] = useState<number | null>(null)
+  const [saveRuleMatchValue, setSaveRuleMatchValue] = useState("")
+  const [saveRuleNormalizedPayee, setSaveRuleNormalizedPayee] = useState("")
+  const [saveRuleCategoryId, setSaveRuleCategoryId] = useState("")
+  const [saveRuleFundId, setSaveRuleFundId] = useState("")
+  const [savingRule, setSavingRule] = useState(false)
   const [loadingHeaders, setLoadingHeaders] = useState(false)
   const [parsingFile, setParsingFile] = useState(false)
 
@@ -846,6 +854,55 @@ export default function TransactionsPage() {
 
   function importableCount(): number {
     return parsedTransactions.filter(isImportable).length
+  }
+
+  /** B53: seed the "save rule from this row" dialog from a parsed row's data.
+   *  Match value defaults to a normalized substring of the raw payee; the user
+   *  edits before saving. */
+  function openSaveRuleDialog(rowNumber: number) {
+    const tx = parsedTransactions.find(t => t.row_number === rowNumber)
+    if (!tx) return
+    const rawPayee = tx.original_payee ?? tx.payee ?? ""
+    // Heuristic seed: take the first meaningful word (>= 4 chars, no digits) as
+    // the match value. User will edit — this is just a nudge.
+    const words = rawPayee.split(/\s+/).filter(w => w.length >= 4 && !/\d/.test(w))
+    setSaveRuleSeedRowNumber(rowNumber)
+    setSaveRuleMatchValue(words[1] ?? words[0] ?? rawPayee.slice(0, 20))
+    setSaveRuleNormalizedPayee("")
+    setSaveRuleCategoryId(editedTransactions.get(rowNumber)?.category_id ?? tx.category_id ?? "")
+    setSaveRuleFundId(editedTransactions.get(rowNumber)?.fund_id ?? tx.fund_id ?? "")
+    setSaveRuleDialogOpen(true)
+  }
+
+  async function handleSaveRuleFromRow(e: React.FormEvent) {
+    e.preventDefault()
+    if (!saveRuleMatchValue.trim()) {
+      toast({ variant: "destructive", title: "Match value is required" })
+      return
+    }
+    setSavingRule(true)
+    try {
+      await createCategorizationRule({
+        match_value: saveRuleMatchValue.trim(),
+        match_type: "contains",
+        match_field: "payee_or_memo",
+        normalized_payee: saveRuleNormalizedPayee.trim() || null,
+        category_id: saveRuleCategoryId || null,
+        fund_id: saveRuleFundId || null,
+        priority: 100,
+        is_active: true,
+      })
+      toast({
+        title: "Rule saved",
+        description: "Re-parse the file to apply it to remaining rows, or manage in Settings → Rules.",
+      })
+      setSaveRuleDialogOpen(false)
+      await invalidateCategorizationRules()
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to save rule", description: errorMessage(err) })
+    } finally {
+      setSavingRule(false)
+    }
   }
 
   function resetImportDialog() {
@@ -2453,9 +2510,29 @@ export default function TransactionsPage() {
                                 {needsTransferDest ? "Transfer — pick destination" : "Transfer"}
                               </Badge>
                             )}
+                            {tx.applied_rule_id && !createdTx.has(tx.row_number) && (
+                              <Badge
+                                variant="outline"
+                                className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-800"
+                                title={tx.original_payee ? `Rewrote payee from: ${tx.original_payee}` : "Auto-categorized by a rule"}
+                              >
+                                Auto-categorized
+                              </Badge>
+                            )}
                             {createdTx.has(tx.row_number) && <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">✓ Imported</Badge>}
                           </div>
                           <div className="flex items-center gap-3">
+                            {!tx.applied_rule_id && !createdTx.has(tx.row_number) && !tx.has_errors && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={() => openSaveRuleDialog(tx.row_number)}
+                                title="Create a rule that auto-categorizes rows like this"
+                              >
+                                Save rule from this
+                              </Button>
+                            )}
                             {tx.is_duplicate && !createdTx.has(tx.row_number) && (
                               <Button
                                 variant="ghost"
@@ -2750,6 +2827,85 @@ export default function TransactionsPage() {
               </DialogFooter>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* B53: quick "Save rule from this row" dialog opened from the import review */}
+      <Dialog open={saveRuleDialogOpen} onOpenChange={setSaveRuleDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Save rule from this row</DialogTitle>
+          </DialogHeader>
+          {(() => {
+            const tx = saveRuleSeedRowNumber !== null
+              ? parsedTransactions.find(t => t.row_number === saveRuleSeedRowNumber)
+              : null
+            const raw = tx?.original_payee ?? tx?.payee ?? ""
+            return (
+              <form onSubmit={handleSaveRuleFromRow} className="space-y-3">
+                {raw && (
+                  <div className="text-xs bg-muted/50 rounded px-2 py-1.5 font-mono break-all">
+                    {raw}
+                  </div>
+                )}
+                <div>
+                  <Label>Match value *</Label>
+                  <Input
+                    value={saveRuleMatchValue}
+                    onChange={e => setSaveRuleMatchValue(e.target.value)}
+                    placeholder="e.g. GRAB"
+                    required
+                    autoFocus
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Case-insensitive substring. Everything containing this in payee or memo will match.
+                  </p>
+                </div>
+                <div>
+                  <Label>Rewrite payee to (optional)</Label>
+                  <Input
+                    value={saveRuleNormalizedPayee}
+                    onChange={e => setSaveRuleNormalizedPayee(e.target.value)}
+                    placeholder="e.g. Grab"
+                  />
+                </div>
+                <div>
+                  <Label>Category</Label>
+                  <Select
+                    value={saveRuleCategoryId || "_none"}
+                    onValueChange={v => setSaveRuleCategoryId(v === "_none" ? "" : v)}
+                  >
+                    <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_none">— None —</SelectItem>
+                      {categories.map(c => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Fund</Label>
+                  <Select
+                    value={saveRuleFundId || "_none"}
+                    onValueChange={v => setSaveRuleFundId(v === "_none" ? "" : v)}
+                  >
+                    <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_none">— None —</SelectItem>
+                      {funds.map(f => (
+                        <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setSaveRuleDialogOpen(false)}>Cancel</Button>
+                  <Button type="submit" disabled={savingRule}>{savingRule ? "Saving..." : "Save rule"}</Button>
+                </DialogFooter>
+              </form>
+            )
+          })()}
         </DialogContent>
       </Dialog>
     </div>

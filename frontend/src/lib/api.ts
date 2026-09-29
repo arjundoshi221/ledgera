@@ -55,6 +55,9 @@ import type {
   ParsedTransaction,
   FileParseResult,
   ColumnMapping,
+  CategorizationRule,
+  CategorizationRuleCreate,
+  ApplyRuleResult,
 } from "./types"
 
 const BASE_URL =
@@ -835,4 +838,44 @@ export async function parseTransactionsFile(
     formData.append("sheet_name", sheetName)
   }
   return apiUpload<FileParseResult>("/api/v1/transactions/parse-file", formData)
+}
+
+// ---------------------
+// Categorization rules (B53)
+// ---------------------
+
+export async function listCategorizationRules(): Promise<CategorizationRule[]> {
+  return apiFetch<CategorizationRule[]>("/api/v1/categorization-rules")
+}
+
+export async function createCategorizationRule(
+  data: CategorizationRuleCreate
+): Promise<CategorizationRule> {
+  return apiFetch<CategorizationRule>("/api/v1/categorization-rules", {
+    method: "POST",
+    body: JSON.stringify(data),
+  })
+}
+
+export async function updateCategorizationRule(
+  ruleId: string,
+  patch: Partial<CategorizationRuleCreate>
+): Promise<CategorizationRule> {
+  return apiFetch<CategorizationRule>(`/api/v1/categorization-rules/${ruleId}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  })
+}
+
+export async function deleteCategorizationRule(ruleId: string): Promise<void> {
+  await apiFetch(`/api/v1/categorization-rules/${ruleId}`, { method: "DELETE" })
+}
+
+export async function applyCategorizationRuleToExisting(
+  ruleId: string
+): Promise<ApplyRuleResult> {
+  return apiFetch<ApplyRuleResult>(
+    `/api/v1/categorization-rules/${ruleId}/apply-to-existing`,
+    { method: "POST" }
+  )
 }

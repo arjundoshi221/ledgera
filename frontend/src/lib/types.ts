@@ -958,6 +958,51 @@ export interface ParsedTransaction {
   existing_transaction_id?: string | null
   // B52: classification metadata
   pending_transfer_destination?: boolean  // true when transaction_type=='transfer' — user must pick a destination account
+  // B53: rules-engine attribution
+  applied_rule_id?: string | null
+  original_payee?: string | null  // set when a rule rewrote payee — the raw bank description
+}
+
+// ─── B53: Categorization rules ───
+
+export type RuleMatchType = 'contains' | 'starts_with' | 'equals' | 'regex'
+export type RuleMatchField = 'payee' | 'memo' | 'payee_or_memo'
+export type RuleTypeOverride = 'income' | 'expense' | 'transfer'
+
+export interface CategorizationRule {
+  id: string
+  workspace_id: string
+  priority: number
+  match_type: RuleMatchType
+  match_field: RuleMatchField
+  match_value: string
+  normalized_payee?: string | null
+  category_id?: string | null
+  subcategory_id?: string | null
+  fund_id?: string | null
+  transaction_type_override?: RuleTypeOverride | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface CategorizationRuleCreate {
+  priority?: number
+  match_type?: RuleMatchType
+  match_field?: RuleMatchField
+  match_value: string
+  normalized_payee?: string | null
+  category_id?: string | null
+  subcategory_id?: string | null
+  fund_id?: string | null
+  transaction_type_override?: RuleTypeOverride | null
+  is_active?: boolean
+}
+
+export interface ApplyRuleResult {
+  rule_id: string
+  matched_count: number
+  updated_count: number
 }
 
 export interface FileParseResult {

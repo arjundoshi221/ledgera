@@ -41,6 +41,7 @@ import { errorMessage } from "@/lib/errors"
 import { useRouter, useSearchParams } from "next/navigation"
 import { CURRENCIES, ACCOUNT_TYPES, CARD_TYPES, CARD_NETWORKS } from "@/lib/constants"
 import { PhoneVerification } from "@/components/phone-verification"
+import { RulesTab } from "@/components/rules-tab"
 import { CheckCircle2, XCircle } from "lucide-react"
 import type { Workspace, UserResponse, Account, AccountType, Category, Subcategory, Fund, Card as CardType, PaymentMethod } from "@/lib/types"
 
@@ -582,6 +583,7 @@ export default function SettingsPage() {
           <TabsTrigger value="payment-methods">Payment Methods</TabsTrigger>
           <TabsTrigger value="categories">Categories</TabsTrigger>
           <TabsTrigger value="funds">Funds</TabsTrigger>
+          <TabsTrigger value="rules">Rules</TabsTrigger>
         </TabsList>
 
         {/* Workspace Tab */}
@@ -1076,6 +1078,11 @@ export default function SettingsPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Rules Tab (B53) */}
+        <TabsContent value="rules">
+          <RulesTab />
         </TabsContent>
       </Tabs>
 
