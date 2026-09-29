@@ -7,7 +7,7 @@ before the actual column-header row. The importer must:
 - keep working on "clean" files where headers are already on row 0
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
@@ -376,7 +376,7 @@ class TestImportDedup:
         stable across exports."""
         from src.api.routes.transactions import _compute_import_fingerprint
 
-        ts = datetime(2026, 9, 28, 12, 0, 0)
+        ts = datetime(2026, 9, 28, 12, 0, 0, tzinfo=UTC)
         fp_a = _compute_import_fingerprint(
             "ws-1", "acct-1", ts, Decimal("-8.10"),
             "BAT Grab* A-9SJ45PDWW3OAAV Si SGP 25SEP 4628-4502-2367-6322 000003154583254",
@@ -532,7 +532,7 @@ class TestImportDedup:
         the numeric tail bytes are identical."""
         from src.api.routes.transactions import _compute_import_fingerprint
 
-        ts = datetime(2026, 9, 28, 12, 0, 0)
+        ts = datetime(2026, 9, 28, 12, 0, 0, tzinfo=UTC)
         fp_grab = _compute_import_fingerprint(
             "ws-1", "acct-1", ts, Decimal("-8.10"),
             "BAT Grab* Si SGP 25SEP 000003154583254",
@@ -547,7 +547,7 @@ class TestImportDedup:
         """Same everything except amount → distinct fingerprints (sanity)."""
         from src.api.routes.transactions import _compute_import_fingerprint
 
-        ts = datetime(2026, 9, 28, 12, 0, 0)
+        ts = datetime(2026, 9, 28, 12, 0, 0, tzinfo=UTC)
         fp_a = _compute_import_fingerprint("ws-1", "acct-1", ts, Decimal("-8.10"), "Grab")
         fp_b = _compute_import_fingerprint("ws-1", "acct-1", ts, Decimal("-8.20"), "Grab")
         assert fp_a != fp_b

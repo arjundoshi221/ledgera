@@ -777,14 +777,14 @@ async def parse_file(
 
         # B51: pre-fetch fingerprints of existing transactions in this workspace
         # so dedup detection is a dict lookup per row instead of a query per row.
-        existing_fps: dict[str, str] = {
-            fp: tid for fp, tid in session.query(
+        existing_fps: dict[str, str] = dict(
+            session.query(
                 TransactionModel.import_hash, TransactionModel.id
             ).filter(
                 TransactionModel.workspace_id == workspace_id,
                 TransactionModel.import_hash.isnot(None),
             ).all()
-        }
+        )
         seen_in_file: set[str] = set()
 
         # Parse each row
