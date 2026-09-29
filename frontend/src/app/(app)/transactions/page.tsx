@@ -138,11 +138,14 @@ export default function TransactionsPage() {
   const [filePreview, setFilePreview] = useState<Record<string, string>[]>([])
   const [fileType, setFileType] = useState<'csv' | 'xlsx'>('csv')
   const [sheetName, setSheetName] = useState<string | undefined>(undefined)
+  const [bankReportedBalance, setBankReportedBalance] = useState<string | null>(null)
   const [columnMapping, setColumnMapping] = useState<ColumnMapping>({})
   const [parsedTransactions, setParsedTransactions] = useState<ParsedTransaction[]>([])
   const [editedTransactions, setEditedTransactions] = useState<Map<number, Partial<ParsedTransaction>>>(new Map())
   const [creatingImportTx, setCreatingImportTx] = useState<Set<number>>(new Set())
   const [createdTx, setCreatedTx] = useState<Set<number>>(new Set())
+  // B51: rows flagged as duplicates skip by default; user can opt in per row.
+  const [overrideDuplicates, setOverrideDuplicates] = useState<Set<number>>(new Set())
   const [loadingHeaders, setLoadingHeaders] = useState(false)
   const [parsingFile, setParsingFile] = useState(false)
 
@@ -712,6 +715,7 @@ export default function TransactionsPage() {
       setFileType(result.file_type)
       setSheetName(result.sheet_name)
       setColumnMapping(result.suggested_mapping)
+      setBankReportedBalance(result.bank_reported_balance ?? null)
     } catch (err) {
       toast({ variant: "destructive", title: "Failed to read file", description: errorMessage(err) })
       setSelectedFile(null)
@@ -733,6 +737,12 @@ export default function TransactionsPage() {
         fileType,
         sheetName || undefined
       )
+      // Reset per-parse state so a re-parse or back-then-forward doesn't leak
+      // overrides / created-tx flags from a previous file into fresh row_numbers.
+      setOverrideDuplicates(new Set())
+      setCreatedTx(new Set())
+      setCreatingImportTx(new Set())
+      setEditedTransactions(new Map())
       setParsedTransactions(result.parsed_transactions)
       setImportStep(3)
     } catch (err) {
@@ -780,6 +790,7 @@ export default function TransactionsPage() {
         ...(finalTx.subcategory_id ? { subcategory_id: finalTx.subcategory_id } : {}),
         ...(finalTx.fund_id ? { fund_id: finalTx.fund_id } : {}),
         ...(finalTx.payment_method_id ? { payment_method_id: finalTx.payment_method_id } : {}),
+        ...(finalTx.import_hash ? { import_hash: finalTx.import_hash } : {}),
         postings: [
           {
             account_id: finalTx.account_id,
@@ -811,10 +822,23 @@ export default function TransactionsPage() {
   }
 
   async function confirmAllValidTransactions() {
-    const validTxs = parsedTransactions.filter(tx => !tx.has_errors && !createdTx.has(tx.row_number))
+    // B51: skip duplicates unless the user explicitly opted in per row.
+    const validTxs = parsedTransactions.filter(tx =>
+      !tx.has_errors
+      && !createdTx.has(tx.row_number)
+      && (!tx.is_duplicate || overrideDuplicates.has(tx.row_number))
+    )
     for (const tx of validTxs) {
       await confirmImportTransaction(tx.row_number)
     }
+  }
+
+  function importableCount(): number {
+    return parsedTransactions.filter(tx =>
+      !tx.has_errors
+      && !createdTx.has(tx.row_number)
+      && (!tx.is_duplicate || overrideDuplicates.has(tx.row_number))
+    ).length
   }
 
   function resetImportDialog() {
@@ -824,11 +848,13 @@ export default function TransactionsPage() {
     setSelectedFile(null)
     setFileHeaders([])
     setFilePreview([])
+    setBankReportedBalance(null)
     setColumnMapping({})
     setParsedTransactions([])
     setEditedTransactions(new Map())
     setCreatingImportTx(new Set())
     setCreatedTx(new Set())
+    setOverrideDuplicates(new Set())
   }
 
   if (loading) {
@@ -2164,6 +2190,12 @@ export default function TransactionsPage() {
                 </div>
               )}
 
+              {bankReportedBalance && (
+                <div className="text-xs text-muted-foreground border rounded-md px-3 py-2 bg-muted/30">
+                  Bank-reported balance detected in file: <span className="font-mono font-medium text-foreground">{bankReportedBalance}</span>
+                </div>
+              )}
+
               {loadingHeaders && (
                 <div className="text-sm text-muted-foreground">Reading file...</div>
               )}
@@ -2352,13 +2384,27 @@ export default function TransactionsPage() {
                       {parsedTransactions.filter(tx => tx.has_errors).length} error{parsedTransactions.filter(tx => tx.has_errors).length !== 1 ? 's' : ''}
                     </Badge>
                   )}
+                  {(() => {
+                    const dupTotal = parsedTransactions.filter(tx => tx.is_duplicate).length
+                    if (dupTotal === 0) return null
+                    const dupSkipped = parsedTransactions.filter(
+                      tx => tx.is_duplicate && !overrideDuplicates.has(tx.row_number)
+                    ).length
+                    const dupOverridden = dupTotal - dupSkipped
+                    return (
+                      <Badge variant="secondary" className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-800">
+                        {dupTotal} duplicate{dupTotal !== 1 ? 's' : ''}
+                        {dupOverridden > 0 ? ` (${dupSkipped} skipped, ${dupOverridden} kept)` : " (skipped)"}
+                      </Badge>
+                    )
+                  })()}
                 </div>
                 <Button
                   size="sm"
                   onClick={confirmAllValidTransactions}
-                  disabled={parsedTransactions.filter(tx => !tx.has_errors && !createdTx.has(tx.row_number)).length === 0}
+                  disabled={importableCount() === 0}
                 >
-                  Confirm Valid ({parsedTransactions.filter(tx => !tx.has_errors && !createdTx.has(tx.row_number)).length})
+                  Confirm Valid ({importableCount()})
                 </Button>
               </div>
 
@@ -2369,10 +2415,13 @@ export default function TransactionsPage() {
                   const selectedCategory = categories.find(c => c.id === currentCategoryId)
                   const availableSubcategories = subcategories.filter(sc => sc.category_id === currentCategoryId)
 
+                  const isOverridden = overrideDuplicates.has(tx.row_number)
+                  const isDuplicateAndSkipped = tx.is_duplicate && !isOverridden && !createdTx.has(tx.row_number)
                   return (
                     <Card key={tx.row_number} className={cn(
                       "transition-all duration-200",
                       createdTx.has(tx.row_number) && "opacity-50 bg-muted",
+                      isDuplicateAndSkipped && "opacity-60 bg-amber-50/40 dark:bg-amber-950/10 border-amber-200",
                       tx.has_errors && "border-destructive"
                     )}>
                       <CardHeader className="pb-3">
@@ -2382,10 +2431,34 @@ export default function TransactionsPage() {
                               Row {tx.row_number}
                             </Badge>
                             {tx.has_errors && <Badge variant="destructive">Has Errors</Badge>}
+                            {tx.is_duplicate && !createdTx.has(tx.row_number) && (
+                              <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-800">
+                                {tx.existing_transaction_id
+                                  ? "Duplicate of existing"
+                                  : "Second identical row in this file"}
+                              </Badge>
+                            )}
                             {createdTx.has(tx.row_number) && <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">✓ Imported</Badge>}
                           </div>
-                          <div className="text-sm font-semibold">
-                            {Math.abs(tx.amount).toFixed(2)} {tx.currency}
+                          <div className="flex items-center gap-3">
+                            {tx.is_duplicate && !createdTx.has(tx.row_number) && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={() => {
+                                  const next = new Set(overrideDuplicates)
+                                  if (next.has(tx.row_number)) next.delete(tx.row_number)
+                                  else next.add(tx.row_number)
+                                  setOverrideDuplicates(next)
+                                }}
+                              >
+                                {isOverridden ? "Skip this row" : "Import anyway"}
+                              </Button>
+                            )}
+                            <div className="text-sm font-semibold">
+                              {Math.abs(tx.amount).toFixed(2)} {tx.currency}
+                            </div>
                           </div>
                         </div>
                       </CardHeader>
@@ -2627,9 +2700,20 @@ export default function TransactionsPage() {
                           <Button
                             size="sm"
                             onClick={() => confirmImportTransaction(tx.row_number)}
-                            disabled={tx.has_errors || creatingImportTx.has(tx.row_number) || createdTx.has(tx.row_number)}
+                            disabled={
+                              tx.has_errors
+                              || creatingImportTx.has(tx.row_number)
+                              || createdTx.has(tx.row_number)
+                              || (tx.is_duplicate === true && !overrideDuplicates.has(tx.row_number))
+                            }
                           >
-                            {createdTx.has(tx.row_number) ? "✓ Created" : creatingImportTx.has(tx.row_number) ? "Creating..." : "Confirm"}
+                            {createdTx.has(tx.row_number)
+                              ? "✓ Created"
+                              : creatingImportTx.has(tx.row_number)
+                                ? "Creating..."
+                                : isDuplicateAndSkipped
+                                  ? "Skipped (dup)"
+                                  : "Confirm"}
                           </Button>
                         </div>
                       </CardContent>

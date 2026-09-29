@@ -170,6 +170,7 @@ export interface CreateTransactionRequest {
   fund_id?: string
   payment_method_id?: string
   postings: Posting[]
+  import_hash?: string | null  // B51: passed back from parse-file for dedup
 }
 
 // ---------------------
@@ -927,6 +928,8 @@ export interface FileHeadersResponse {
   total_rows: number
   file_type: 'csv' | 'xlsx'
   sheet_name?: string
+  header_row_index?: number
+  bank_reported_balance?: string | null
 }
 
 export interface ParsedTransaction {
@@ -949,6 +952,10 @@ export interface ParsedTransaction {
   transfer_account_id?: string  // For transfers: the other account
   warnings: string[]
   has_errors: boolean
+  // B51: dedup metadata
+  import_hash?: string | null  // SHA-256 fingerprint; pass back on create
+  is_duplicate?: boolean  // True if row matches an existing tx or an earlier row in this file
+  existing_transaction_id?: string | null
 }
 
 export interface FileParseResult {

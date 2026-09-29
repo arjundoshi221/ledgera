@@ -1,0 +1,16 @@
+"Account Details For:","DBS Multiplier Account 111-222333-4",,,,,,,,,,
+"Statement as at:","29 Sep 2026",,,,,,,,,,
+"",,,,,,,,,,,
+"Currency:","SGD - Singapore Dollar",,,,,,,,,,
+"",,,,,,,,,,,
+"Available Balance:","SGD 7839.05",,,,,,,,,,
+"Ledger Balance:","SGD 8078.56",,,,,,,,,,
+"",,,,,,,,,,,
+"Transaction Date","Value Date","Statement Code","Description","Supplementary Code","Supplementary Code Description","Client Reference","Additional Reference","Status","Currency","Debit Amount","Credit Amount"
+"28 Sep 2026","","POS","BAT Grab* AAA111 Si SGP 25SEP 0000-0000-0000-0000 000000000000001","BAT Grab* AAA111 Si SGP 25SEP","Point-of-Sale Transaction","0000-0000-0000-0000","000000000000001","Settled","SGD",8.10,""
+"28 Sep 2026","","POS","BAT GRAB Singapore SGP 26SEP 0000-0000-0000-0000 000000000000002","BAT GRAB Singapore SGP            26SEP","Point-of-Sale Transaction","0000-0000-0000-0000","000000000000002","Settled","SGD",15.70,""
+"28 Sep 2026","","GR","PAY EXAMPLE EMPLOYER PTE LTD. Sep 2026 Salary 000000000000000AP0000000","PAY EXAMPLE EMPLOYER PTE LTD.","Payments or Collections via GIRO","Sep 2026 Salary","000000000000000AP0000000","Settled","SGD","",6991.00
+"27 Sep 2026","","ADV","TRF TOP-UP TO PAYLAH! : 00000000 TF000000000000000000","TRF TOP-UP TO PAYLAH! :","Advice","00000000","TF000000000000000000","Settled","SGD",11.00,""
+"26 Sep 2026","","POS","BAT Salad Stop Pte Ltd Si SGP 24SEP 0000-0000-0000-0000 000000000000003","BAT Salad Stop Pte Ltd     Si SGP 24SEP","Point-of-Sale Transaction","0000-0000-0000-0000","000000000000003","Settled","SGD",16.40,""
+"25 Sep 2026","","ADV","ICT PayNow Transfer 0000000 To: SP SERVICES LTD OTHR MQR-000000000000-U","ICT PayNow Transfer 0000000","Advice","To: SP SERVICES LTD","OTHR MQR-000000000000-U","Settled","SGD",17.26,""
+"24 Sep 2026","","POS","BAT NTUC FairPrice App Pay SI SGP 21SEP 0000-0000-0000-0000 000000000000004","BAT NTUC FairPrice App Pay SI SGP 21SEP","Point-of-Sale Transaction","0000-0000-0000-0000","000000000000004","Settled","SGD",2.80,""

@@ -1,6 +1,8 @@
 """Transaction endpoints"""
 
+import hashlib
 import io
+import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
@@ -113,7 +115,8 @@ def create_transaction(
         category_id=tx.category_id,
         subcategory_id=tx.subcategory_id,
         fund_id=tx.fund_id,
-        payment_method_id=tx.payment_method_id
+        payment_method_id=tx.payment_method_id,
+        import_hash=tx.import_hash,  # B51: persisted for future dedup checks
     )
 
     # Create postings
@@ -423,6 +426,85 @@ def get_account_transactions(
     return [_serialize_tx(tx) for tx in txs]
 
 
+# ─── Row classification helpers (B52) ───
+
+# Bank-statement text patterns that (with high confidence) indicate a transfer
+# between the user's own accounts — money moves out of the imported account,
+# but not out of their overall net worth. These MUST NOT be counted as expenses
+# or cost-tracking overstates spend.
+#
+# Only high-confidence patterns live here. `ICT PayNow Transfer` is deliberately
+# excluded because it's just as often a bill payment (SP Services, IRAS) as a
+# self-transfer. Classify those as expense by default; the user overrides in
+# the review UI if they mean it as a transfer.
+_TRANSFER_HIGH_CONFIDENCE_PATTERNS = (
+    "TOP-UP TO PAYLAH",
+    "TOP-UP TO GRABPAY",
+    "TOP-UP TO SINGTEL DASH",
+    "TRF TO SAV",
+    "TRF TO CUR",
+    "TRF TO MULTIPLIER",
+    "TRF TO ESAVINGS",
+    "CARD PAYMENT",     # paying off own credit card
+    "CREDIT CARD PMT",
+    "TRANSFER TO OWN",
+)
+
+
+def _classify_row(payee: str, memo: str | None, amount: Decimal) -> str:
+    """Determine the transaction type from parsed row text.
+
+    Returns one of "income", "expense", "transfer". Transfer rows require the
+    user to pick a destination account in the review UI before commit — the
+    parse step can't know which of the user's accounts is the counterparty.
+    """
+    text = f"{payee or ''} {memo or ''}".upper()
+
+    if any(p in text for p in _TRANSFER_HIGH_CONFIDENCE_PATTERNS):
+        return "transfer"
+
+    return "income" if amount > 0 else "expense"
+
+
+# ─── Import dedup helpers (B51) ───
+
+# Payee normalization strips volatile bits (transaction IDs, card numbers, dates
+# embedded in DBS descriptions) so re-imports of the same underlying transaction
+# hash to the same value even if the bank rewrites the tail bytes.
+_PAYEE_STRIP_RE = re.compile(r"[\d\-*]+")
+
+
+def _normalize_payee(payee: str) -> str:
+    """Lowercase, strip digits/dashes/asterisks, collapse whitespace."""
+    stripped = _PAYEE_STRIP_RE.sub(" ", payee or "")
+    return " ".join(stripped.split()).lower()
+
+
+def _compute_import_fingerprint(
+    workspace_id: str, account_id: str,
+    timestamp: datetime, amount: Decimal, payee: str,
+) -> str:
+    """SHA-256 fingerprint for near-duplicate detection at import.
+
+    Keyed by workspace + account + date (day granularity) + amount (quantized to
+    2 decimal places) + normalized payee. Deterministic — re-running on the same
+    row yields the same hash.
+
+    NOT keyed by memo (bank exports rewrite memos across snapshots) or by
+    transaction_id (obviously). Two legitimate identical transactions (e.g. two
+    $3.20 MRT trips same day) will collide and get flagged; the user can
+    override with "Import anyway."
+    """
+    normalized_amount = f"{Decimal(amount).quantize(Decimal('0.01')):.2f}"
+    key = "|".join([
+        workspace_id, account_id,
+        timestamp.date().isoformat(),
+        normalized_amount,
+        _normalize_payee(payee),
+    ])
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
 # ─── Bank Statement Import endpoints ───
 
 # Column name patterns for auto-detection (case-insensitive)
@@ -433,37 +515,170 @@ CREDIT_PATTERNS = ["credit", "deposit", "cr", "credit amount", "deposits"]
 AMOUNT_PATTERNS = ["amount", "value", "transaction amount", "amt"]
 MEMO_PATTERNS = ["memo", "reference", "ref", "remarks", "notes", "comment"]
 
+# Keywords that identify a real header row anywhere in the first 30 rows of a file.
+# Union of all column-name patterns above plus a few generic bank statement columns.
+_HEADER_KEYWORDS = (
+    "date", "amount", "debit", "credit", "description", "payee", "memo",
+    "reference", "transaction", "particulars", "narration", "details",
+    "value", "type", "status", "currency", "balance", "remarks", "posting",
+)
+
+# Preamble lines DBS/OCBC/UOB use for the account's current balance.
+# Ordered by preference: "ledger" (posted) wins over "available" (may include pending).
+_BALANCE_LABEL_KEYWORDS = ("ledger balance", "closing balance", "current balance", "available balance")
+
+
+def _looks_like_number(s: str) -> bool:
+    """Return True if s parses cleanly as a number. Used to reject data rows during header search."""
+    s = s.strip().replace(",", "").replace("(", "-").replace(")", "")
+    if not s:
+        return False
+    try:
+        float(s)
+    except ValueError:
+        return False
+    return True
+
+
+def _detect_header_and_balance(df_raw) -> tuple[int, str | None]:
+    """Scan a header-less DataFrame for the real header row and any bank-reported balance.
+
+    Bank exports (DBS, OCBC, UOB, etc.) prefix their CSVs with a metadata preamble
+    ("Account Details For:", balance lines, blank rows) before the actual column
+    header. Naive `pd.read_csv` treats row 0 as the header and mis-parses everything.
+
+    Returns (header_row_idx, bank_reported_balance). If no plausible header is found,
+    returns (0, None) so callers get the pre-B50 behavior as a safe fallback.
+    """
+    import pandas as pd  # lazy: see B4
+
+    # Pass 1: pick the best-looking header row.
+    header_idx = 0
+    best_score = 0
+    for i in range(len(df_raw)):
+        row = df_raw.iloc[i]
+        cells = [str(c).strip() for c in row if pd.notna(c) and str(c).strip()]
+        if len(cells) < 3:
+            continue
+        # Header rows are all-text — reject the row if any non-empty cell parses as a number.
+        if any(_looks_like_number(c) for c in cells):
+            continue
+        lower_cells = [c.lower() for c in cells]
+        score = sum(1 for c in lower_cells if any(k in c for k in _HEADER_KEYWORDS))
+        if score > best_score:
+            best_score = score
+            header_idx = i
+
+    # If nothing scored, keep header_idx=0 (no preamble file — original behavior).
+
+    # Pass 2: scan preamble rows only for a bank-reported balance.
+    # Prefer earlier keywords in _BALANCE_LABEL_KEYWORDS (ledger > closing > current > available).
+    bank_balance: str | None = None
+    best_pref = len(_BALANCE_LABEL_KEYWORDS)  # lower is better
+    for i in range(header_idx):
+        row = df_raw.iloc[i]
+        cells = [str(c).strip() for c in row if pd.notna(c) and str(c).strip()]
+        if len(cells) < 2:
+            continue
+        label = cells[0].lower().rstrip(":").strip()
+        for pref_idx, kw in enumerate(_BALANCE_LABEL_KEYWORDS):
+            if kw in label and pref_idx < best_pref:
+                bank_balance = cells[1]
+                best_pref = pref_idx
+                break
+
+    return header_idx, bank_balance
+
+
+def _load_transaction_file(
+    content: bytes, file_type: str, sheet_name: str | None = None
+) -> tuple["object", int, str | None]:
+    """Load a bank statement file, auto-detecting the header row and any bank-reported balance.
+
+    Returns (dataframe, header_row_idx, bank_reported_balance). The dataframe has
+    the real header applied, all-empty rows dropped, and rows below the header
+    intact. Blank rows in the preamble do not shift indices.
+    """
+    import pandas as pd  # lazy: see B4
+
+    if file_type == "csv":
+        df_raw = pd.read_csv(
+            io.BytesIO(content), header=None, nrows=30, dtype=str, skip_blank_lines=False
+        )
+    elif file_type == "xlsx":
+        df_raw = pd.read_excel(
+            io.BytesIO(content), sheet_name=sheet_name, header=None, nrows=30, dtype=str,
+            engine="openpyxl",
+        )
+    else:
+        raise ValueError(f"Unsupported file type: {file_type}")
+
+    header_idx, bank_balance = _detect_header_and_balance(df_raw)
+
+    # Re-read with the detected header row. skiprows drops preamble; header=0 then
+    # takes the first surviving row as the header. skip_blank_lines=False keeps
+    # index math predictable; we drop all-NaN rows after the fact.
+    if file_type == "csv":
+        df = pd.read_csv(
+            io.BytesIO(content),
+            skiprows=header_idx,
+            header=0,
+            skip_blank_lines=False,
+        )
+    else:
+        df = pd.read_excel(
+            io.BytesIO(content),
+            sheet_name=sheet_name,
+            skiprows=header_idx,
+            header=0,
+            engine="openpyxl",
+        )
+
+    df = df.dropna(how="all").reset_index(drop=True)
+    return df, header_idx, bank_balance
+
+
+def _matches_pattern(header_lower: str, patterns: list[str]) -> bool:
+    """Match a header against any pattern using word-boundary semantics.
+
+    Substring matching gives false positives: `"cr" in "description"` is True,
+    causing `Description` to be picked as the credit column. Word-boundary
+    matching (via regex `\\b`) treats "cr" as a whole token — matches "Cr"
+    or "Credit" but not "desCRiption".
+    """
+    for pat in patterns:
+        pat = pat.strip().lower()
+        if not pat:
+            continue
+        if re.search(rf"\b{re.escape(pat)}\b", header_lower):
+            return True
+    return False
+
 
 def _suggest_column_mapping(headers: list[str]) -> dict[str, str]:
-    """Auto-suggest column mapping based on header names"""
-    mapping = {}
+    """Auto-suggest column mapping based on header names."""
+    mapping: dict[str, str] = {}
     headers_lower = [h.lower().strip() for h in headers]
 
     for i, header_lower in enumerate(headers_lower):
         header_original = headers[i]
 
-        # Date column
-        if not mapping.get("date") and any(pattern in header_lower for pattern in DATE_PATTERNS):
+        if not mapping.get("date") and _matches_pattern(header_lower, DATE_PATTERNS):
             mapping["date"] = header_original
 
-        # Payee/Description column
-        if not mapping.get("payee") and any(pattern in header_lower for pattern in PAYEE_PATTERNS):
+        if not mapping.get("payee") and _matches_pattern(header_lower, PAYEE_PATTERNS):
             mapping["payee"] = header_original
 
-        # Debit column
-        if not mapping.get("debit") and any(pattern in header_lower for pattern in DEBIT_PATTERNS):
+        if not mapping.get("debit") and _matches_pattern(header_lower, DEBIT_PATTERNS):
             mapping["debit"] = header_original
 
-        # Credit column
-        if not mapping.get("credit") and any(pattern in header_lower for pattern in CREDIT_PATTERNS):
+        if not mapping.get("credit") and _matches_pattern(header_lower, CREDIT_PATTERNS):
             mapping["credit"] = header_original
 
-        # Amount column (if no debit/credit found)
-        if not mapping.get("amount") and any(pattern in header_lower for pattern in AMOUNT_PATTERNS):
+        if not mapping.get("amount") and _matches_pattern(header_lower, AMOUNT_PATTERNS):
             mapping["amount"] = header_original
 
-        # Memo column
-        if not mapping.get("memo") and any(pattern in header_lower for pattern in MEMO_PATTERNS):
+        if not mapping.get("memo") and _matches_pattern(header_lower, MEMO_PATTERNS):
             mapping["memo"] = header_original
 
     return mapping
@@ -476,24 +691,21 @@ async def read_file_headers(
 ):
     """
     Read CSV or XLSX file headers and return preview for column mapping.
+
+    Auto-detects the header row (bank exports typically have a metadata preamble
+    before the real column header) and captures any bank-reported balance line
+    from the preamble for reconciliation (see B50, B55).
     """
     import pandas as pd  # lazy: see B4
     try:
-        # Read file content
         content = await file.read()
 
-        # Detect file type from extension
         filename = file.filename.lower()
         if filename.endswith('.csv'):
             file_type = "csv"
-            # Parse CSV
-            df = pd.read_csv(io.BytesIO(content))
             sheet_name = None
         elif filename.endswith('.xlsx') or filename.endswith('.xls'):
             file_type = "xlsx"
-            # Parse XLSX (first sheet by default)
-            df = pd.read_excel(io.BytesIO(content), engine='openpyxl')
-            # Get sheet name (first sheet)
             xls = pd.ExcelFile(io.BytesIO(content), engine='openpyxl')
             sheet_name = xls.sheet_names[0] if xls.sheet_names else None
         else:
@@ -502,27 +714,25 @@ async def read_file_headers(
                 detail="Unsupported file type. Please upload a CSV or XLSX file."
             )
 
-        # Get headers
+        df, header_idx, bank_balance = _load_transaction_file(content, file_type, sheet_name)
+
         headers = df.columns.tolist()
 
-        # Get preview rows (first 5)
         preview_rows = []
         for _, row in df.head(5).iterrows():
             preview_rows.append({str(k): str(v) for k, v in row.items()})
 
-        # Auto-suggest column mapping
         suggested_mapping = _suggest_column_mapping(headers)
-
-        # Total rows
-        total_rows = len(df)
 
         return FileHeadersResponse(
             headers=headers,
             preview_rows=preview_rows,
             suggested_mapping=suggested_mapping,
-            total_rows=total_rows,
+            total_rows=len(df),
             file_type=file_type,
-            sheet_name=sheet_name
+            sheet_name=sheet_name,
+            header_row_index=header_idx,
+            bank_reported_balance=bank_balance,
         )
 
     except pd.errors.EmptyDataError as exc:
@@ -558,19 +768,24 @@ async def parse_file(
         if not account:
             raise NotFound("Account not found", account_id=account_id)
 
-        # Read file content
         content = await file.read()
 
-        # Parse file based on type
-        if file_type == "csv":
-            df = pd.read_csv(io.BytesIO(content))
-        elif file_type == "xlsx":
-            if sheet_name:
-                df = pd.read_excel(io.BytesIO(content), sheet_name=sheet_name, engine='openpyxl')
-            else:
-                df = pd.read_excel(io.BytesIO(content), engine='openpyxl')
-        else:
+        if file_type not in ("csv", "xlsx"):
             raise HTTPException(status_code=400, detail="Invalid file type")
+
+        df, _header_idx, _bank_balance = _load_transaction_file(content, file_type, sheet_name)
+
+        # B51: pre-fetch fingerprints of existing transactions in this workspace
+        # so dedup detection is a dict lookup per row instead of a query per row.
+        existing_fps: dict[str, str] = {
+            fp: tid for fp, tid in session.query(
+                TransactionModel.import_hash, TransactionModel.id
+            ).filter(
+                TransactionModel.workspace_id == workspace_id,
+                TransactionModel.import_hash.isnot(None),
+            ).all()
+        }
+        seen_in_file: set[str] = set()
 
         # Parse each row
         parsed_transactions = []
@@ -648,8 +863,27 @@ async def parse_file(
                 warnings.append("No amount or debit/credit columns mapped")
                 has_errors = True
 
-            # Determine transaction type
-            transaction_type = "income" if amount > 0 else "expense"
+            # B52: text-based classification. Overrides the naive
+            # "positive=income, else expense" rule for known own-account transfer
+            # patterns (PayLah top-ups, credit-card payments, etc.).
+            transaction_type = _classify_row(payee, memo, amount)
+            pending_transfer_destination = transaction_type == "transfer"
+
+            # B51: fingerprint + duplicate flag. Skip if we couldn't parse the row.
+            fingerprint: str | None = None
+            is_duplicate = False
+            existing_id: str | None = None
+            if timestamp is not None and not has_errors:
+                fingerprint = _compute_import_fingerprint(
+                    workspace_id, account_id, timestamp, amount, payee,
+                )
+                if fingerprint in existing_fps:
+                    is_duplicate = True
+                    existing_id = existing_fps[fingerprint]
+                elif fingerprint in seen_in_file:
+                    # Second occurrence of an identical row inside the same file.
+                    is_duplicate = True
+                seen_in_file.add(fingerprint)
 
             parsed_tx = ParsedTransaction(
                 row_number=row_number,
@@ -665,7 +899,11 @@ async def parse_file(
                 account_name=account.name,
                 currency=account.account_currency,
                 warnings=warnings,
-                has_errors=has_errors
+                has_errors=has_errors,
+                import_hash=fingerprint,
+                is_duplicate=is_duplicate,
+                existing_transaction_id=existing_id,
+                pending_transfer_destination=pending_transfer_destination,
             )
 
             parsed_transactions.append(parsed_tx)

@@ -549,11 +549,37 @@ def get_income_allocation(
         current_year = now.year
         start_year = current_year - years + 1
 
+        # B54: workspace data floor = earliest transaction timestamp. Everything
+        # before this is pre-history — the app didn't observe it, so it can't
+        # signal on it. If the workspace has zero transactions, emit no rows
+        # (frontend will show its own empty state). Config alone (accounts,
+        # funds, budget scenarios, min-WC) must not produce a fake ledger.
+        first_txn_date = session.query(func.min(TransactionModel.timestamp)).filter(
+            TransactionModel.workspace_id == workspace_id
+        ).scalar()
+
         wc_running_balance = wc_opening_balance
         rows = []
+        if first_txn_date is None:
+            # No transactions anywhere in this workspace — nothing to allocate.
+            return IncomeAllocationResponse(
+                rows=[],
+                funds_meta=funds_meta,
+                active_scenario_name=active_scenario.name if active_scenario else None,
+                active_scenario_id=active_scenario.id if active_scenario else None,
+                budget_benchmark=float(budget_benchmark),
+                self_funding_warnings=self_funding_warnings,
+            )
+        floor_year, floor_month = first_txn_date.year, first_txn_date.month
+
         for y in range(start_year, current_year + 1):
             end_month = now.month if y == current_year else 12
             for m in range(1, end_month + 1):
+                # B54: skip pre-floor months. Pre-floor months have zero credits
+                # and debits, so skipping the whole iteration keeps running-
+                # balance math correct without emitting a row.
+                if (y, m) < (floor_year, floor_month):
+                    continue
                 # Current month's actual WC income (pure cash basis)
                 current_month_income = _get_income_for_month(session, workspace_id, y, m, fund_id=wc_fund_id)
 

@@ -56,6 +56,9 @@ class TransactionCreate(BaseModel):
     fund_id: str | None = None
     payment_method_id: str | None = None
     postings: list[PostingSchema]
+    # B51: fingerprint for import dedup. Set by the client on CSV-imported rows
+    # (returned by parse-file); NULL for manual entries.
+    import_hash: str | None = None
 
 
 class TransferCreate(BaseModel):
@@ -638,6 +641,8 @@ class FileHeadersResponse(BaseModel):
     total_rows: int
     file_type: str  # "csv" or "xlsx"
     sheet_name: str | None = None  # For XLSX files
+    header_row_index: int = 0  # 0-indexed file row where headers were found
+    bank_reported_balance: str | None = None  # Raw balance line from preamble (e.g. "SGD 8078.56")
 
 
 class ParsedTransaction(BaseModel):
@@ -666,6 +671,12 @@ class ParsedTransaction(BaseModel):
     # Validation
     warnings: list[str] = []  # ["Invalid date format", etc.]
     has_errors: bool = False
+    # B51: dedup metadata
+    import_hash: str | None = None  # SHA-256 fingerprint; client passes back on create
+    is_duplicate: bool = False  # True if this row matches an existing transaction OR an earlier row in the same file
+    existing_transaction_id: str | None = None  # populated when matching a stored transaction
+    # B52: classification metadata
+    pending_transfer_destination: bool = False  # True when transaction_type=="transfer" — frontend must pick destination account before commit
 
 
 class FileParseResult(BaseModel):

@@ -424,12 +424,17 @@ export default function IncomeAllocationPage() {
                   </thead>
                   <tbody>
                     {data.rows.map((row, idx) => {
-                      const optColor = Number(row.fixed_cost_optimization) >= 0
-                        ? "text-green-600 dark:text-green-400"
-                        : "text-red-600 dark:text-red-400"
-                      const savColor = Number(row.savings_remainder) >= 0
-                        ? "text-green-600 dark:text-green-400"
-                        : "text-red-600 dark:text-red-400"
+                      const hasActuals = Number(row.current_month_income) !== 0 || Number(row.actual_fixed_cost) !== 0
+                      const optColor = !hasActuals
+                        ? "text-muted-foreground/60"
+                        : Number(row.fixed_cost_optimization) >= 0
+                          ? "text-green-600 dark:text-green-400"
+                          : "text-red-600 dark:text-red-400"
+                      const savColor = !hasActuals
+                        ? "text-muted-foreground/60"
+                        : Number(row.savings_remainder) >= 0
+                          ? "text-green-600 dark:text-green-400"
+                          : "text-red-600 dark:text-red-400"
                       const rowAllocInvalid = !row.is_locked && Math.abs(Number(row.total_fund_allocation_pct) - 100) > 0.1
                       return (
                         <tr
@@ -454,12 +459,12 @@ export default function IncomeAllocationPage() {
                           <td className="px-3 py-2 text-right font-mono">{fmt(row.actual_fixed_cost)}</td>
                           <td className={`px-3 py-2 text-right font-mono ${optColor}`}>
                             <div>{fmt(row.fixed_cost_optimization)}</div>
-                            {!row.is_locked && Number(row.fixed_cost_optimization) > 0 && (
+                            {hasActuals && !row.is_locked && Number(row.fixed_cost_optimization) > 0 && (
                               <div className="text-[9px] text-green-600/70 dark:text-green-400/70 mt-0.5">
                                 Transfer surplus to savings
                               </div>
                             )}
-                            {!row.is_locked && Number(row.fixed_cost_optimization) < 0 && (
+                            {hasActuals && !row.is_locked && Number(row.fixed_cost_optimization) < 0 && (
                               <div className="text-[9px] text-red-600/70 dark:text-red-400/70 mt-0.5">
                                 Top up WC or cut costs
                               </div>
@@ -513,7 +518,7 @@ export default function IncomeAllocationPage() {
                                             : `${fmt(fa.self_funding_amount ?? 0)} stays in WC`}
                                         </div>
                                       )}
-                                      {isWc && (() => {
+                                      {isWc && hasActuals && (() => {
                                         const projected = Number(row.wc_prev_closing_balance) + Number(row.current_month_income) - Number(row.actual_fixed_cost)
                                         const shortfall = Math.max(0, minWcBalance - projected)
                                         return (

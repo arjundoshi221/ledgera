@@ -94,3 +94,6 @@ dist/
 
 # Tailwind CSS
 *.cache
+
+# B50: manual smoke test reads a user file with PII from ~/Downloads
+tests/smoke_dbs_real.py
