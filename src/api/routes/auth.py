@@ -199,8 +199,13 @@ def _validate_password(password: str):
         )
 
 
-def _create_workspace_and_defaults(session: Session, user_id: str, base_currency: str = "USD"):
-    """Create workspace + system resources (fund, category, external account) for a new user."""
+def _create_workspace_and_defaults(session: Session, user_id: str, base_currency: str = "SGD"):
+    """Create workspace + system resources (fund, category, external account) for a new user.
+
+    Default currency is SGD — this is a solo app for a Singapore-based user
+    (see PRODUCT_REVIEW_2026_09_30.md). Existing workspaces are untouched;
+    change via PATCH /workspace if needed.
+    """
     workspace_repo = WorkspaceRepository(session)
     workspace = WorkspaceModel(
         owner_user_id=user_id,

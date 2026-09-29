@@ -67,17 +67,11 @@ export default function DashboardPage() {
     return transactions.filter(t => !t.category_id && (t.type === null || t.type === undefined)).length
   }, [transactions])
 
-  // F3 drift: does the active scenario's assumed income differ from actuals?
-  const incomeDrift = useMemo(() => {
-    if (!activeScenario || !defaults || defaults.monthly_income.n_months_observed === 0) return null
-    // The scenario's monthly_income is stored on assumptions; expose the top-level
-    // budget benchmark as the "income" proxy via allocation.budget_benchmark for now.
-    const assumed = allocation?.budget_benchmark ?? 0  // best proxy without parsing scenario JSON
-    const actual = defaults.monthly_income.median
-    if (!assumed || !actual) return null
-    const rel = (actual - assumed) / assumed
-    return { assumed, actual, rel }
-  }, [activeScenario, defaults, allocation])
+  // F3 drift alert deferred: comparing actual income to `budget_benchmark`
+  // fires falsely because that field is `active_scenario.monthly_expenses_total`
+  // (analytics.py:477), NOT the assumed monthly income. Correct drift needs
+  // parsing scenario.assumptions_json for the income assumption. Punted to a
+  // follow-up so the "Needs your attention" band doesn't yell false positives.
 
   if (accountsLoading) {
     return <div className="animate-pulse text-muted-foreground">Loading dashboard...</div>
@@ -144,25 +138,17 @@ export default function DashboardPage() {
           </div>
 
           {/* Attention row */}
-          {(uncategorizedCount > 0 || (incomeDrift && Math.abs(incomeDrift.rel) > 0.10)) && (
+          {uncategorizedCount > 0 && (
             <Card className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20">
               <CardContent className="py-3 space-y-1.5">
                 <div className="flex items-center gap-2 font-medium text-amber-900 dark:text-amber-100 text-sm">
                   <AlertTriangle className="h-4 w-4" />
                   Needs your attention
                 </div>
-                {uncategorizedCount > 0 && (
-                  <div className="text-sm text-amber-900/90 dark:text-amber-100/90">
-                    <span className="font-medium">{uncategorizedCount}</span> uncategorized transaction{uncategorizedCount !== 1 ? "s" : ""}.{" "}
-                    <Link href="/transactions" className="underline">Categorize</Link>
-                  </div>
-                )}
-                {incomeDrift && Math.abs(incomeDrift.rel) > 0.10 && (
-                  <div className="text-sm text-amber-900/90 dark:text-amber-100/90">
-                    Your budget assumes {baseCurrency} {incomeDrift.assumed.toFixed(0)}/mo but actuals are {baseCurrency} {incomeDrift.actual.toFixed(0)} (last 3 months).{" "}
-                    <Link href="/projections" className="underline">Update scenario</Link>
-                  </div>
-                )}
+                <div className="text-sm text-amber-900/90 dark:text-amber-100/90">
+                  <span className="font-medium">{uncategorizedCount}</span> uncategorized transaction{uncategorizedCount !== 1 ? "s" : ""}.{" "}
+                  <Link href="/transactions" className="underline">Categorize</Link>
+                </div>
               </CardContent>
             </Card>
           )}

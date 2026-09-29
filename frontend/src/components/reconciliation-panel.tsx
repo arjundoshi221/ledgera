@@ -44,7 +44,10 @@ export function ReconciliationPanel({ accounts }: { accounts: Account[] }) {
   const [saving, setSaving] = useState(false)
   const { toast } = useToast()
 
-  const accountsSignature = accounts.map(a => a.id).sort().join(",")
+  const accountsSignature = useMemo(
+    () => accounts.map(a => a.id).sort().join(","),
+    [accounts]
+  )
 
   useEffect(() => {
     // Effect body only kicks off the fetch — it does NOT setState synchronously
@@ -158,7 +161,16 @@ export function ReconciliationPanel({ accounts }: { accounts: Account[] }) {
             <p className="text-sm text-muted-foreground py-4">No accounts to reconcile yet.</p>
           ) : (
             <div className="space-y-1.5">
-              {rows.map(row => (
+              {rows.map(row => {
+                const statusLabel = row.status === "reconciled"
+                  ? "reconciled"
+                  : row.status === "drifted"
+                    ? `drifted by ${row.diff?.toFixed(2) ?? 0} ${row.currency}`
+                    : row.status === "never_reconciled"
+                      ? "never reconciled"
+                      : "status unknown"
+                const ariaLabel = `${row.accountName}: ${row.computedBalance.toFixed(2)} ${row.currency}, ${statusLabel}. Click to record a bank-reported balance.`
+                return (
                 <button
                   key={row.accountId}
                   onClick={() => {
@@ -166,6 +178,7 @@ export function ReconciliationPanel({ accounts }: { accounts: Account[] }) {
                     setCheckpointBalance(row.computedBalance.toFixed(2))
                   }}
                   className="w-full flex items-center justify-between rounded-md px-2 py-1.5 hover:bg-muted/60 text-sm text-left"
+                  aria-label={ariaLabel}
                   title="Click to record a bank-reported balance"
                 >
                   <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -179,7 +192,8 @@ export function ReconciliationPanel({ accounts }: { accounts: Account[] }) {
                     <StatusText row={row} />
                   </div>
                 </button>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>
