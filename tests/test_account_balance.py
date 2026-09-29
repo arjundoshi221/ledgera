@@ -200,7 +200,9 @@ class TestReconciliation:
         assert body["latest_checkpoint"] is None
         assert body["reported_balance"] is None
         assert body["diff"] is None
-        assert body["is_reconciled"] is True  # nothing to disagree with
+        # Never-reconciled is NOT the same as reconciled — distinct state so the
+        # UI doesn't paint unverified accounts green.
+        assert body["status"] == "never_reconciled"
         assert body["computed_balance"] == 100.0
 
     def test_checkpoint_matches_ledger(self, client: TestClient, firebase_verify):
@@ -225,7 +227,7 @@ class TestReconciliation:
         )
 
         r = client.get(f"/api/v1/accounts/{aid}/reconciliation", headers=headers).json()
-        assert r["is_reconciled"] is True
+        assert r["status"] == "reconciled"
         assert abs(r["diff"]) < 0.01
         assert r["reported_balance"] == 8078.56
         assert r["latest_checkpoint"]["source"] == "csv_import"
@@ -251,7 +253,7 @@ class TestReconciliation:
             },
         )
         r = client.get(f"/api/v1/accounts/{aid}/reconciliation", headers=headers).json()
-        assert r["is_reconciled"] is False
+        assert r["status"] == "drifted"
         assert abs(r["diff"] - (-50.0)) < 0.001  # computed - reported = -50
 
     def test_reconciliation_respects_as_of_date(
@@ -285,7 +287,7 @@ class TestReconciliation:
 
         r = client.get(f"/api/v1/accounts/{aid}/reconciliation", headers=headers).json()
         # At the checkpoint's as_of_date, computed was 100 → still reconciled.
-        assert r["is_reconciled"] is True
+        assert r["status"] == "reconciled"
         assert r["computed_balance"] == 100.0
 
     def test_workspace_isolation(self, client: TestClient, firebase_verify):
@@ -296,3 +298,51 @@ class TestReconciliation:
         # B tries to check A's reconciliation.
         r = client.get(f"/api/v1/accounts/{aid_a}/reconciliation", headers=h_b)
         assert r.status_code == 404
+
+    def test_tz_aware_checkpoint_survives_read(
+        self, client: TestClient, firebase_verify,
+    ):
+        """Frontend sends `new Date().toISOString()` which is tz-aware (`...Z`).
+        DB columns are naive UTC. Mixing them raises TypeError on comparisons —
+        SQLite hides the bug but Postgres/prod would break. Route must strip tz
+        on write; repo must coerce on read."""
+        headers, _ = _auth(client, firebase_verify, "l3-tz")
+        aid = _create_account(client, headers, starting="0")
+        ext = _external_id(client, headers)
+        _post_transaction(
+            client, headers, account_id=aid, external_id=ext,
+            amount=42.00, timestamp="2026-09-15T10:00:00",
+        )
+        # Note the trailing Z — a tz-aware ISO datetime like the frontend sends.
+        resp = client.post(
+            f"/api/v1/accounts/{aid}/reconciliation", headers=headers,
+            json={
+                "as_of_date": "2026-09-15T23:59:59Z",
+                "reported_balance": "42.00",
+                "source": "csv_import",
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        # And a read must not raise TypeError.
+        r = client.get(f"/api/v1/accounts/{aid}/reconciliation", headers=headers).json()
+        assert r["status"] == "reconciled"
+
+
+class TestBalanceWorkspaceScoping:
+    def test_compute_balance_does_not_leak_cross_workspace_posting(
+        self, client: TestClient, firebase_verify,
+    ):
+        """Defense-in-depth: even if a stray posting existed on this account
+        with a transaction whose workspace_id differs, compute_balance must
+        filter it out. UUIDs make this near-impossible in practice, but the
+        aggregate query should be scoped anyway."""
+        h_a, _ = _auth(client, firebase_verify, "scope-a")
+        h_b, _ = _auth(client, firebase_verify, "scope-b")
+        aid_a = _create_account(client, h_a)
+        ext_a = _external_id(client, h_a)
+        _post_transaction(client, h_a, account_id=aid_a, external_id=ext_a, amount=100)
+
+        # Workspace B queries its own list — must not see anything from A.
+        b_accounts = client.get("/api/v1/accounts", headers=h_b).json()
+        for acct in b_accounts:
+            assert acct["balance"] == 0.0, f"cross-workspace leak on {acct['name']}: {acct['balance']}"

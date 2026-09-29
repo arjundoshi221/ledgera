@@ -350,7 +350,8 @@ export async function getAccountReconciliation(
   computed_balance: number
   reported_balance: number | null
   diff: number | null
-  is_reconciled: boolean
+  /** "reconciled" | "drifted" | "never_reconciled" — do NOT treat never_reconciled as green. */
+  status: "reconciled" | "drifted" | "never_reconciled"
   latest_checkpoint: { id: string; as_of_date: string; reported_balance: number; source: string } | null
 }> {
   return apiFetch(`/api/v1/accounts/${accountId}/reconciliation`)

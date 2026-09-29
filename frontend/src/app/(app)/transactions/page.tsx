@@ -945,19 +945,39 @@ export default function TransactionsPage() {
     return isNaN(n) ? null : n
   }
 
-  /** B55 L2: compute the opening-balance anchor. If the bank reports X as of
-   *  today and the imported transactions net to Σ, the true opening balance
-   *  (before the earliest imported transaction) is X − Σ. Duplicates are
-   *  excluded because they'll be skipped on commit. */
+  /** B55 L2: compute the opening-balance anchor. Correct math preserves the
+   *  invariant `starting_balance + Σ(all_postings) == bank_reported`, so:
+   *
+   *     new_starting = bank_reported − Σ(existing postings) − Σ(this import)
+   *                  = bank_reported − (current_balance − current_starting)
+   *                                  − Σ(this import)
+   *
+   *  Naive `bank_reported − Σ(this import)` is only right when the account
+   *  has zero prior postings. Users importing to accounts that already have
+   *  transactions (manual entry, earlier import) would silently get a wrong
+   *  anchor. Duplicates and editor amount overrides are excluded from Σ(this
+   *  import) because they'll be skipped or altered at commit time. */
   function computeDerivedOpeningBalance(): number | null {
     const bankBal = parseBankReportedBalance(bankReportedBalance)
     if (bankBal === null) return null
+    const account = accounts.find(a => a.id === selectedAccountId)
+    // If we can't find the account we can't compute — fail closed.
+    if (!account) return null
+
+    const existingDelta = ((account as unknown as { balance?: number }).balance
+      ?? (account as unknown as { starting_balance?: number }).starting_balance
+      ?? 0
+    ) - (Number(account.starting_balance) || 0)
+
     const netFromImport = parsedTransactions.reduce((acc, tx) => {
       if (tx.has_errors) return acc
       if (tx.is_duplicate && !overrideDuplicates.has(tx.row_number)) return acc
-      return acc + Number(tx.amount)
+      // Prefer the edited amount if the user tweaked it in the review UI.
+      const edited = editedTransactions.get(tx.row_number)?.amount
+      const amount = edited !== undefined ? Number(edited) : Number(tx.amount)
+      return acc + (isNaN(amount) ? 0 : amount)
     }, 0)
-    return Math.round((bankBal - netFromImport) * 100) / 100
+    return Math.round((bankBal - existingDelta - netFromImport) * 100) / 100
   }
 
   async function handleAnchorOpeningBalance() {
@@ -971,6 +991,11 @@ export default function TransactionsPage() {
       await setAccountOpeningBalance(selectedAccountId, derived)
       // Also save the bank-reported balance as a reconciliation checkpoint
       // dated at the CSV statement date (approximated as now for MVP).
+      // Best-effort: if it fails the anchor still succeeded, but surface the
+      // failure to the user (and console) instead of silently swallowing —
+      // silent failures here mean you never learn the checkpoint pipe is
+      // broken in prod.
+      let checkpointWarning: string | null = null
       if (bankBal !== null) {
         try {
           await createReconciliationCheckpoint(selectedAccountId, {
@@ -979,15 +1004,24 @@ export default function TransactionsPage() {
             source: "csv_import",
             notes: `Auto-captured from CSV: ${bankReportedBalance}`,
           })
-        } catch {
-          // Checkpoint is best-effort — anchor already succeeded.
+        } catch (err) {
+          console.error("checkpoint save failed", err)
+          checkpointWarning = "Anchor set, but the reconciliation checkpoint didn't save. You can add one manually later."
         }
       }
       setOpeningBalanceAnchored(true)
-      toast({
-        title: "Opening balance anchored",
-        description: `Set to ${derived.toFixed(2)}. Once you import these transactions, computed balance will match bank-reported ${bankBal?.toFixed(2) ?? ""}.`,
-      })
+      if (checkpointWarning) {
+        toast({
+          variant: "destructive",
+          title: "Anchor set (checkpoint failed)",
+          description: checkpointWarning,
+        })
+      } else {
+        toast({
+          title: "Opening balance anchored",
+          description: `Set to ${derived.toFixed(2)}. Once you import these transactions, computed balance will match bank-reported ${bankBal?.toFixed(2) ?? ""}.`,
+        })
+      }
     } catch (err) {
       toast({ variant: "destructive", title: "Failed to anchor", description: errorMessage(err) })
     } finally {

@@ -194,34 +194,35 @@ class AccountRepository(BaseRepository):
         """Return the account's current (or point-in-time) balance.
 
         Balance = starting_balance + sum(posting.amount) across all postings on
-        this account (posting.amount is signed — money in is +, out is -). If
-        `as_of` is provided, only postings whose transaction timestamp is at or
-        before that instant are summed.
-
-        Pre-B55, every account read endpoint returned `starting_balance` verbatim
-        and ignored postings entirely, which meant importing 422 rows to an
-        account with starting_balance=0 still reported balance=0. This function
-        is the fix; callers should prefer it over reading .starting_balance
-        directly when they want a real balance.
+        this account whose parent transaction is in the same workspace (defensive
+        join against data-corruption regressions where a stray cross-workspace
+        posting could otherwise land in the sum). If `as_of` is provided, only
+        postings whose transaction timestamp is at or before that instant are
+        summed. `as_of` is coerced to naive UTC to match the DB's naive column
+        semantics (see models._utcnow_naive) — mixing aware+naive raises TypeError
+        in Postgres path.
         """
         account = self.read(account_id)
         if not account:
             return Decimal(0)
-        query = self.session.query(func.sum(PostingModel.amount)).filter(
-            PostingModel.account_id == str(account_id)
+        query = self.session.query(func.sum(PostingModel.amount)).join(
+            TransactionModel, TransactionModel.id == PostingModel.transaction_id
+        ).filter(
+            PostingModel.account_id == str(account_id),
+            TransactionModel.workspace_id == account.workspace_id,
         )
         if as_of is not None:
-            query = query.join(
-                TransactionModel, TransactionModel.id == PostingModel.transaction_id
-            ).filter(TransactionModel.timestamp <= as_of)
+            as_of_naive = as_of.replace(tzinfo=None) if as_of.tzinfo is not None else as_of
+            query = query.filter(TransactionModel.timestamp <= as_of_naive)
         posting_sum = query.scalar() or Decimal(0)
         return Decimal(str(account.starting_balance or 0)) + Decimal(str(posting_sum))
 
     def compute_balances_by_workspace(self, workspace_id: str) -> dict[str, Decimal]:
         """Return {account_id: computed_balance} for every account in the workspace.
 
-        One aggregate SQL query instead of N per-account roundtrips — required
-        for the list_accounts endpoint which pages the whole workspace.
+        One aggregate SQL query instead of N per-account roundtrips. Joins to
+        TransactionModel and filters by workspace_id — belt-and-suspenders against
+        any cross-workspace posting that shouldn't exist but might.
         """
         accounts = self.read_by_workspace(workspace_id)
         if not accounts:
@@ -229,8 +230,11 @@ class AccountRepository(BaseRepository):
         account_ids = [a.id for a in accounts]
         rows = self.session.query(
             PostingModel.account_id, func.sum(PostingModel.amount)
+        ).join(
+            TransactionModel, TransactionModel.id == PostingModel.transaction_id
         ).filter(
-            PostingModel.account_id.in_(account_ids)
+            PostingModel.account_id.in_(account_ids),
+            TransactionModel.workspace_id == workspace_id,
         ).group_by(PostingModel.account_id).all()
         posting_sums = {acct_id: Decimal(str(total or 0)) for acct_id, total in rows}
         return {

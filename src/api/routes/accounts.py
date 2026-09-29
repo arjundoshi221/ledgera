@@ -16,6 +16,16 @@ from src.data.models import AccountBalanceCheckpointModel, AccountModel
 from src.data.repositories import AccountRepository, TransferPostingsExistError
 
 
+def _strip_tz(dt: datetime) -> datetime:
+    """DB columns are naive UTC (see models._utcnow_naive). Frontend sends
+    ISO strings with `Z` suffix (tz-aware). SQLite silently accepts either;
+    Postgres will raise or coerce, and mixing tz-aware with our naive columns
+    on read triggers `TypeError` in Python comparisons. Strip inbound."""
+    if dt.tzinfo is not None:
+        return dt.astimezone(tz=None).replace(tzinfo=None)
+    return dt
+
+
 class SetOpeningBalanceRequest(BaseModel):
     """B55 L2: PATCH just the starting_balance without requiring the full
     AccountCreate payload. Used by the import review dialog when we
@@ -33,10 +43,12 @@ class CreateCheckpointRequest(BaseModel):
 
 
 class CheckpointResponse(BaseModel):
+    """B55 L3 checkpoint row. `reported_balance` is `float` to match
+    AccountResponse — see the docstring there for the rationale."""
     id: str
     account_id: str
     as_of_date: datetime
-    reported_balance: Decimal
+    reported_balance: float
     source: str
     notes: str | None = None
     created_at: datetime
@@ -51,8 +63,10 @@ class ReconciliationResponse(BaseModel):
     `diff = computed - reported`. Non-zero means something drifted — the user
     should investigate. Ledgera never auto-corrects; this is diagnostic only.
 
-    Numeric fields are `float` for consistency with AccountResponse (see the
-    docstring there for the Decimal-vs-JSON-string tradeoff).
+    `status` is one of:
+    - `"reconciled"` — computed matches latest checkpoint within $0.01
+    - `"drifted"` — computed disagrees with latest checkpoint
+    - `"never_reconciled"` — no checkpoints exist yet; not a green light
     """
     account_id: str
     account_name: str
@@ -60,7 +74,7 @@ class ReconciliationResponse(BaseModel):
     computed_balance: float
     reported_balance: float | None = None
     diff: float | None = None
-    is_reconciled: bool
+    status: str  # "reconciled" | "drifted" | "never_reconciled"
 
 router = APIRouter()
 
@@ -247,7 +261,7 @@ def create_checkpoint(
     checkpoint = AccountBalanceCheckpointModel(
         workspace_id=workspace_id,
         account_id=account_id,
-        as_of_date=body.as_of_date,
+        as_of_date=_strip_tz(body.as_of_date),
         reported_balance=body.reported_balance,
         source=body.source,
         notes=body.notes,
@@ -292,7 +306,10 @@ def get_reconciliation(
             "computed_balance": float(computed),
             "reported_balance": None,
             "diff": None,
-            "is_reconciled": True,
+            # "never_reconciled" — do NOT treat as green. UI should render this
+            # distinctly from "reconciled" to prevent hiding drift on unverified
+            # accounts.
+            "status": "never_reconciled",
         }
 
     computed_at_checkpoint = repo.compute_balance(account_id, as_of=latest.as_of_date)
@@ -305,7 +322,7 @@ def get_reconciliation(
         "computed_balance": float(computed_at_checkpoint),
         "reported_balance": float(reported),
         "diff": float(diff),
-        "is_reconciled": abs(diff) < Decimal("0.01"),
+        "status": "reconciled" if abs(diff) < Decimal("0.01") else "drifted",
     }
 
 
