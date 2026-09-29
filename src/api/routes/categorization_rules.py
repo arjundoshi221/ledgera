@@ -17,9 +17,16 @@ from src.api.schemas import (
     CategorizationRuleUpdate,
 )
 from src.data.database import get_session
-from src.data.models import CategorizationRuleModel, TransactionModel
+from src.data.models import (
+    CategorizationRuleModel,
+    CategoryModel,
+    FundModel,
+    SubcategoryModel,
+    TransactionModel,
+    _utcnow_naive,
+)
 from src.data.repositories import CategorizationRuleRepository
-from src.services.categorization_service import _matches
+from src.services.categorization_service import rule_matches
 
 router = APIRouter()
 
@@ -43,6 +50,46 @@ def _validate_rule_fields(
         raise HTTPException(400, f"transaction_type_override must be one of {sorted(str(v) for v in _VALID_TYPE_OVERRIDES)}")
 
 
+def _validate_rule_fks_belong_to_workspace(
+    session: Session,
+    workspace_id: str,
+    category_id: str | None,
+    subcategory_id: str | None,
+    fund_id: str | None,
+) -> None:
+    """Cross-tenant guard: rejected 404s if any referenced id points at another
+    workspace's row. SQLite doesn't enforce FK scope at the DB level, so we
+    check here at the boundary the way create_transaction does for accounts."""
+    if category_id:
+        exists = session.query(CategoryModel).filter(
+            CategoryModel.id == category_id,
+            CategoryModel.workspace_id == workspace_id,
+        ).first()
+        if not exists:
+            raise HTTPException(404, f"Category {category_id} not found in workspace")
+    if subcategory_id:
+        # A subcategory's category must also live in this workspace — join to
+        # verify. Also blocks the "subcategory belongs to a different category
+        # than the one pinned" inconsistency.
+        row = session.query(SubcategoryModel).join(
+            CategoryModel, SubcategoryModel.category_id == CategoryModel.id
+        ).filter(
+            SubcategoryModel.id == subcategory_id,
+            CategoryModel.workspace_id == workspace_id,
+        ).first()
+        if not row:
+            raise HTTPException(404, f"Subcategory {subcategory_id} not found in workspace")
+        if category_id and row.category_id != category_id:
+            raise HTTPException(400, "subcategory_id does not belong to the pinned category_id")
+    if fund_id:
+        exists = session.query(FundModel).filter(
+            FundModel.id == fund_id,
+            FundModel.workspace_id == workspace_id,
+        ).first()
+        if not exists:
+            raise HTTPException(404, f"Fund {fund_id} not found in workspace")
+
+
 @router.get("", response_model=list[CategorizationRuleResponse])
 def list_rules(
     workspace_id: str = Depends(get_workspace_id),
@@ -63,6 +110,10 @@ def create_rule(
     if not rule.match_value or not rule.match_value.strip():
         raise HTTPException(400, "match_value must be non-empty")
     _validate_rule_fields(rule.match_type, rule.match_field, rule.transaction_type_override)
+    _validate_rule_fks_belong_to_workspace(
+        session, workspace_id,
+        rule.category_id, rule.subcategory_id, rule.fund_id,
+    )
 
     db_rule = CategorizationRuleModel(
         workspace_id=workspace_id,
@@ -95,9 +146,21 @@ def update_rule(
 
     _validate_rule_fields(patch.match_type, patch.match_field, patch.transaction_type_override)
 
+    # Validate FKs using the *post-patch* values so we catch both "just changed
+    # to an id from another workspace" and "was already pointing at a valid
+    # sibling, but the patched category makes the sibling inconsistent."
+    patched = patch.model_dump(exclude_unset=True)
+    effective_category = patched.get("category_id", rule.category_id) if "category_id" in patched else rule.category_id
+    effective_subcategory = patched.get("subcategory_id", rule.subcategory_id) if "subcategory_id" in patched else rule.subcategory_id
+    effective_fund = patched.get("fund_id", rule.fund_id) if "fund_id" in patched else rule.fund_id
+    _validate_rule_fks_belong_to_workspace(
+        session, workspace_id,
+        effective_category, effective_subcategory, effective_fund,
+    )
+
     # Apply provided fields only — Pydantic's model_dump(exclude_unset=True) is
     # exactly the "partial update" primitive we want.
-    for field, value in patch.model_dump(exclude_unset=True).items():
+    for field, value in patched.items():
         if field == "match_value" and (not value or not str(value).strip()):
             raise HTTPException(400, "match_value must be non-empty")
         setattr(rule, field, value.strip() if field == "match_value" else value)
@@ -145,7 +208,7 @@ def apply_rule_to_existing(
     matched = 0
     updated = 0
     for tx in candidates:
-        if not _matches(rule, tx.payee or "", tx.memo):
+        if not rule_matches(rule, tx.payee or "", tx.memo):
             continue
         matched += 1
         changed = False
@@ -165,6 +228,10 @@ def apply_rule_to_existing(
             tx.payee = rule.normalized_payee
             changed = True
         if changed:
+            # Match the invariant every TransactionRepository.update() upholds:
+            # updated_at reflects the last time the row's content changed. This
+            # endpoint bypasses the repo, so touch it explicitly.
+            tx.updated_at = _utcnow_naive()
             updated += 1
 
     if updated > 0:

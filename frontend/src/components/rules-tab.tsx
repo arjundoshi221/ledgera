@@ -73,12 +73,27 @@ export function RulesTab() {
     setMatchField(rule.match_field)
     setNormalizedPayee(rule.normalized_payee ?? "")
     setCategoryId(rule.category_id ?? "")
-    setSubcategoryId(rule.subcategory_id ?? "")
+    // Only keep subcategory if it actually belongs to the category being edited
+    // — protects against the stored rule pointing at an orphaned pair (created
+    // in an older UI, or by an API caller). Prevents saving orphan state back.
+    const storedSub = subcategories.find(sc => sc.id === rule.subcategory_id)
+    const subMatchesCategory = storedSub && storedSub.category_id === rule.category_id
+    setSubcategoryId(subMatchesCategory ? (rule.subcategory_id ?? "") : "")
     setFundId(rule.fund_id ?? "")
     setTypeOverride(rule.transaction_type_override ?? "")
     setPriority(String(rule.priority))
     setIsActive(rule.is_active)
     setDialogOpen(true)
+  }
+
+  /** Wrap the category setter so changing it always clears any stale
+   *  subcategory, even mid-edit. Mirror pattern used in transactions.page.tsx. */
+  function handleCategoryChange(newValue: string) {
+    const next = newValue === "_none" ? "" : newValue
+    if (next !== categoryId) {
+      setSubcategoryId("")
+    }
+    setCategoryId(next)
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -309,10 +324,7 @@ export function RulesTab() {
               </div>
               <div>
                 <Label>Category</Label>
-                <Select value={categoryId || "_none"} onValueChange={v => {
-                  setCategoryId(v === "_none" ? "" : v)
-                  setSubcategoryId("")
-                }}>
+                <Select value={categoryId || "_none"} onValueChange={handleCategoryChange}>
                   <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="_none">— None —</SelectItem>

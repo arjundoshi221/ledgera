@@ -863,11 +863,16 @@ export default function TransactionsPage() {
     const tx = parsedTransactions.find(t => t.row_number === rowNumber)
     if (!tx) return
     const rawPayee = tx.original_payee ?? tx.payee ?? ""
-    // Heuristic seed: take the first meaningful word (>= 4 chars, no digits) as
-    // the match value. User will edit — this is just a nudge.
-    const words = rawPayee.split(/\s+/).filter(w => w.length >= 4 && !/\d/.test(w))
+    // Heuristic seed: take the first meaningful token (>= 4 chars, no digits)
+    // as the match value. User will edit — this is just a nudge. Splits on
+    // whitespace *and* the common punctuation banks embed (/, *, -) so credit
+    // card lines like "AMAZON.COM*A1B2C3" surface "AMAZON.COM" as the first
+    // token instead of falling through to the raw-slice fallback.
+    const tokens = rawPayee
+      .split(/[\s/*\-]+/)
+      .filter(w => w.length >= 4 && !/\d/.test(w))
     setSaveRuleSeedRowNumber(rowNumber)
-    setSaveRuleMatchValue(words[1] ?? words[0] ?? rawPayee.slice(0, 20))
+    setSaveRuleMatchValue(tokens[0] ?? rawPayee.slice(0, 20))
     setSaveRuleNormalizedPayee("")
     setSaveRuleCategoryId(editedTransactions.get(rowNumber)?.category_id ?? tx.category_id ?? "")
     setSaveRuleFundId(editedTransactions.get(rowNumber)?.fund_id ?? tx.fund_id ?? "")

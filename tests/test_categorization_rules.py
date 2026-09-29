@@ -13,7 +13,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from src.data.models import CategorizationRuleModel
-from src.services.categorization_service import _matches, apply_rules
+from src.services.categorization_service import apply_rules, rule_matches
 from tests.conftest import firebase_signup
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -75,41 +75,41 @@ def _create_account(client: TestClient, headers: dict, name: str = "DBS") -> str
 class TestMatchesUnit:
     def test_contains_is_case_insensitive(self):
         rule = _make_rule(match_type="contains", match_value="GRAB")
-        assert _matches(rule, "BAT Grab* AAA111", None) is True
-        assert _matches(rule, "bat grab* aaa111", None) is True
+        assert rule_matches(rule, "BAT Grab* AAA111", None) is True
+        assert rule_matches(rule, "bat grab* aaa111", None) is True
 
     def test_starts_with(self):
         rule = _make_rule(match_type="starts_with", match_value="BAT NTUC")
-        assert _matches(rule, "BAT NTUC FairPrice", None) is True
-        assert _matches(rule, "Some BAT NTUC middle", None) is False
+        assert rule_matches(rule, "BAT NTUC FairPrice", None) is True
+        assert rule_matches(rule, "Some BAT NTUC middle", None) is False
 
     def test_equals(self):
         rule = _make_rule(match_type="equals", match_value="Salary")
-        assert _matches(rule, "Salary", None) is True
-        assert _matches(rule, "Monthly Salary", None) is False
+        assert rule_matches(rule, "Salary", None) is True
+        assert rule_matches(rule, "Monthly Salary", None) is False
 
     def test_regex_bad_pattern_never_matches(self):
         rule = _make_rule(match_type="regex", match_value="[invalid")
         # Invalid regex must not crash the parser — silently no-match.
-        assert _matches(rule, "anything", None) is False
+        assert rule_matches(rule, "anything", None) is False
 
     def test_regex_valid_pattern(self):
         rule = _make_rule(match_type="regex", match_value=r"^BAT\s+GRAB")
-        assert _matches(rule, "BAT GRAB Singapore", None) is True
-        assert _matches(rule, "BAT SALADSTOP", None) is False
+        assert rule_matches(rule, "BAT GRAB Singapore", None) is True
+        assert rule_matches(rule, "BAT SALADSTOP", None) is False
 
     def test_match_field_memo_only(self):
         rule = _make_rule(match_type="contains", match_field="memo", match_value="salary")
-        assert _matches(rule, "PAYROLL", "Sep 2026 Salary") is True
-        assert _matches(rule, "SALARY", None) is False
+        assert rule_matches(rule, "PAYROLL", "Sep 2026 Salary") is True
+        assert rule_matches(rule, "SALARY", None) is False
 
     def test_empty_match_value_never_matches(self):
         rule = _make_rule(match_value="")
-        assert _matches(rule, "anything at all", None) is False
+        assert rule_matches(rule, "anything at all", None) is False
 
     def test_unknown_match_type_never_matches(self):
         rule = _make_rule(match_type="fuzzy")
-        assert _matches(rule, "matches contains-ish", None) is False
+        assert rule_matches(rule, "matches contains-ish", None) is False
 
 
 class TestApplyRulesUnit:
@@ -238,6 +238,114 @@ class TestRulesAPI:
 
         assert len(client.get("/api/v1/categorization-rules", headers=h_a).json()) == 1
         assert client.get("/api/v1/categorization-rules", headers=h_b).json() == []
+
+    def test_cross_workspace_category_id_rejected(
+        self, client: TestClient, firebase_verify,
+    ):
+        """A user must not be able to pin a rule to a category from a
+        different workspace (cross-tenant data-shape leak)."""
+        h_a, _ = _auth(client, firebase_verify, "leak-a")
+        h_b, _ = _auth(client, firebase_verify, "leak-b")
+
+        # Workspace A creates a category.
+        cat_a = client.post(
+            "/api/v1/categories", headers=h_a,
+            json={"name": "SecretCat", "type": "expense"},
+        ).json()
+
+        # Workspace B tries to create a rule pinning that category.
+        resp = client.post(
+            "/api/v1/categorization-rules", headers=h_b,
+            json={"match_value": "grab", "category_id": cat_a["id"]},
+        )
+        assert resp.status_code == 404, (
+            "cross-workspace category id must be rejected — not silently accepted"
+        )
+
+    def test_subcategory_must_belong_to_pinned_category(
+        self, client: TestClient, firebase_verify,
+    ):
+        """If a rule pins both category and subcategory, they must be consistent."""
+        headers, _ = _auth(client, firebase_verify, "consistent")
+
+        cat_a = client.post(
+            "/api/v1/categories", headers=headers,
+            json={"name": "CatA", "type": "expense"},
+        ).json()
+        cat_b = client.post(
+            "/api/v1/categories", headers=headers,
+            json={"name": "CatB", "type": "expense"},
+        ).json()
+
+        # Subcategory of CatA.
+        sub_a = client.post(
+            "/api/v1/categories/subcategories", headers=headers,
+            json={"category_id": cat_a["id"], "name": "SubA1"},
+        ).json()
+
+        # Rule pins CatB but SubA1 → must reject.
+        resp = client.post(
+            "/api/v1/categorization-rules", headers=headers,
+            json={
+                "match_value": "grab",
+                "category_id": cat_b["id"],
+                "subcategory_id": sub_a["id"],
+            },
+        )
+        assert resp.status_code == 400
+
+
+class TestApplyToExistingBumpsUpdatedAt:
+    def test_updated_at_moves_forward(self, client: TestClient, firebase_verify):
+        """apply-to-existing bypasses the repo — must still touch tx.updated_at
+        so downstream audit/sync sees the change."""
+        headers, _ = _auth(client, firebase_verify, "ua-bump")
+        account_id = _create_account(client, headers)
+        ext_id = next(
+            a["id"] for a in client.get("/api/v1/accounts", headers=headers).json()
+            if a["name"] == "External"
+        )
+
+        # Manual tx with a noisy payee, no rule yet.
+        client.post(
+            "/api/v1/transactions", headers=headers,
+            json={
+                "timestamp": "2026-09-15T10:00:00",
+                "payee": "BAT Grab* AAA111",
+                "memo": "",
+                "status": "cleared",
+                "source": "manual",
+                "postings": [
+                    {"account_id": account_id, "amount": -10.0, "currency": "SGD", "fx_rate": 1},
+                    {"account_id": ext_id, "amount": 10.0, "currency": "SGD", "fx_rate": 1},
+                ],
+            },
+        )
+
+        # NB: transactions.list doesn't return updated_at — checking indirectly
+        # via a second write-then-read cycle would be circular. Instead, assert
+        # the endpoint touches the model attribute by querying the model directly.
+        from src.data.database import _SessionLocal
+        from src.data.models import TransactionModel
+        assert _SessionLocal is not None
+        with _SessionLocal() as sess:
+            tx_before = sess.query(TransactionModel).filter_by(payee="BAT Grab* AAA111").first()
+            assert tx_before is not None
+            original_updated_at = tx_before.updated_at
+
+        rule = client.post(
+            "/api/v1/categorization-rules", headers=headers,
+            json={"match_value": "Grab", "normalized_payee": "Grab"},
+        ).json()
+        client.post(
+            f"/api/v1/categorization-rules/{rule['id']}/apply-to-existing",
+            headers=headers,
+        )
+
+        with _SessionLocal() as sess:
+            tx_after = sess.query(TransactionModel).filter_by(payee="Grab").first()
+            assert tx_after is not None
+            assert tx_after.updated_at > original_updated_at
 
 
 # ─── Integration: rules applied at parse time ───

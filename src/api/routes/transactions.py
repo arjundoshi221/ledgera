@@ -881,12 +881,17 @@ async def parse_file(
             # B53: apply user-authored categorization rules. Rules can rewrite
             # the payee, pin category/subcategory/fund, and optionally override
             # the type classification above. First matching rule wins.
+            #
+            # Matching runs even when has_errors=True (e.g. bad date column) —
+            # rule application is pure and cheap, and the user's fix in the
+            # review UI won't re-trigger parse, so dropping the match here means
+            # a fixed row silently loses its auto-categorization.
             applied_rule_id: str | None = None
             original_payee: str | None = None
             category_id_from_rule: str | None = None
             subcategory_id_from_rule: str | None = None
             fund_id_from_rule: str | None = None
-            if rules and payee and not has_errors:
+            if rules and payee:
                 match = apply_rules(rules, payee, memo)
                 if match:
                     applied_rule_id = match.rule_id

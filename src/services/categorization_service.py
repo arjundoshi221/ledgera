@@ -27,8 +27,12 @@ class RuleMatch:
     transaction_type_override: str | None
 
 
-def _matches(rule: CategorizationRuleModel, payee: str, memo: str | None) -> bool:
-    """Return True if the rule matches this row's payee/memo."""
+def rule_matches(rule: CategorizationRuleModel, payee: str, memo: str | None) -> bool:
+    """Return True if the rule matches this row's payee/memo.
+
+    Public because routes reuse this in apply-to-existing without re-running
+    the full engine.
+    """
     # Choose the haystack based on match_field.
     if rule.match_field == "payee":
         haystack = payee or ""
@@ -77,7 +81,7 @@ def apply_rules(
     for rule in rules:
         if not rule.is_active:
             continue
-        if _matches(rule, payee, memo):
+        if rule_matches(rule, payee, memo):
             return RuleMatch(
                 rule_id=rule.id,
                 normalized_payee=rule.normalized_payee,
