@@ -710,6 +710,24 @@ export async function getNetWorth(years: number = 1): Promise<NetWorthResponse> 
 }
 
 // ---------------------
+// Scenario defaults (F3)
+// ---------------------
+
+export interface ScenarioDefaultsResponse {
+  lookback_months: number
+  currency: string
+  monthly_income: { median: number; mean: number; n_months_observed: number }
+  monthly_fixed_costs: { median: number; mean: number; n_months_observed: number }
+  monthly_savings_rate: number
+}
+
+export async function getScenarioDefaults(lookbackMonths: number = 3): Promise<ScenarioDefaultsResponse> {
+  return apiFetch<ScenarioDefaultsResponse>(
+    `/api/v1/analytics/scenario-defaults?lookback_months=${lookbackMonths}`
+  )
+}
+
+// ---------------------
 // Cards
 // ---------------------
 

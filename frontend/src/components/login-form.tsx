@@ -38,11 +38,10 @@ export function LoginForm() {
 
       setAuth(res.access_token, res.user_id, res.workspace_id, res.profile_completed, res.is_admin)
 
-      if (res.profile_completed) {
-        router.push("/dashboard")
-      } else {
-        router.push("/onboarding")
-      }
+      // F4 (partial): solo app — skip onboarding. Everyone straight to dashboard.
+      // Onboarding page remains reachable if you type the URL; can be deleted
+      // entirely once we're confident nothing else routes there.
+      router.push("/dashboard")
     } catch (err) {
       toast({
         variant: "destructive",

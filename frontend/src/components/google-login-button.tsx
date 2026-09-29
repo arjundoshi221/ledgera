@@ -22,11 +22,8 @@ export function GoogleLoginButton() {
       const res = await firebaseLogin({ id_token: idToken })
       setAuth(res.access_token, res.user_id, res.workspace_id, res.profile_completed, res.is_admin)
 
-      if (res.profile_completed) {
-        router.push("/dashboard")
-      } else {
-        router.push("/onboarding")
-      }
+      // F4 (partial): skip onboarding — see login-form.tsx for rationale.
+      router.push("/dashboard")
     } catch (err) {
       if (errorCode(err) !== "auth/popup-closed-by-user") {
         toast({

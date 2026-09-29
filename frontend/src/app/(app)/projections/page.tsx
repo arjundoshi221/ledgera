@@ -18,7 +18,7 @@ import {
   deleteScenario,
   createRecurringTransaction,
 } from "@/lib/api"
-import { useCategories, useSubcategories, useFunds, useAccounts, useScenarios, useWorkspace, usePaymentMethods } from "@/lib/hooks"
+import { useCategories, useSubcategories, useFunds, useAccounts, useScenarios, useWorkspace, usePaymentMethods, useScenarioDefaults } from "@/lib/hooks"
 import { useToast } from "@/components/ui/use-toast"
 import type {
   ProjectionAssumptions,
@@ -56,6 +56,9 @@ export default function ProjectionsPage() {
   const { data: projPaymentMethods = [] } = usePaymentMethods()
   const { data: projAllCategories = [] } = useCategories()
   const projAllSubcategories = allSubcategories
+  // F3: derive suggested defaults from actual transactions.
+  const { data: scenarioDefaults } = useScenarioDefaults(3)
+  const [defaultsDismissed, setDefaultsDismissed] = useState(false)
 
   const baseCurrency = workspace?.base_currency ?? "SGD"
   const loadingRef = categoriesLoading
@@ -538,6 +541,42 @@ export default function ProjectionsPage() {
             </Button>
           </CardHeader>
           <CardContent>
+            {/* F3: suggest defaults from actuals. Only shown when we have
+                observed months and the user hasn't dismissed for this session. */}
+            {scenarioDefaults && scenarioDefaults.monthly_income.n_months_observed > 0 && !defaultsDismissed && (
+              <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 p-3 space-y-2">
+                <div className="text-xs font-medium text-blue-900 dark:text-blue-100">
+                  From your last {scenarioDefaults.monthly_income.n_months_observed} month{scenarioDefaults.monthly_income.n_months_observed !== 1 ? "s" : ""}
+                </div>
+                <div className="text-[11px] text-blue-800/90 dark:text-blue-200/90 leading-relaxed">
+                  Salary (median): <span className="font-mono font-medium">{scenarioDefaults.monthly_income.median.toFixed(2)}</span> · Fixed costs: <span className="font-mono font-medium">{scenarioDefaults.monthly_fixed_costs.median.toFixed(2)}</span> · Savings: <span className="font-mono font-medium">{(scenarioDefaults.monthly_savings_rate * 100).toFixed(0)}%</span>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-6 text-[11px] px-2"
+                    onClick={() => {
+                      setSalary(String(scenarioDefaults.monthly_income.median))
+                      setExpenses(String(scenarioDefaults.monthly_fixed_costs.median))
+                      markDirty()
+                      setDefaultsDismissed(true)
+                    }}
+                  >
+                    Use these
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-[11px] px-2 text-blue-900/60 dark:text-blue-100/60"
+                    onClick={() => setDefaultsDismissed(true)}
+                  >
+                    Ignore
+                  </Button>
+                </div>
+              </div>
+            )}
             <form onSubmit={handleRun} className="space-y-3">
               {/* -- Income -- */}
               <div className="space-y-1">

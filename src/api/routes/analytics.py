@@ -2330,3 +2330,89 @@ def get_monthly_dashboard(
 
     except Exception as e:  # noqa: BLE001  # top-level endpoint boundary -> 400
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+# ─── F3: Scenario defaults from actuals ───
+
+class ScenarioDefaultStat(BaseModel):
+    """Statistics for a single scenario default derived from historical actuals."""
+    median: float
+    mean: float
+    n_months_observed: int
+
+
+class ScenarioDefaultsResponse(BaseModel):
+    """Suggested scenario defaults derived from last N months of actual
+    transactions. Median (not mean) is the recommended default because it
+    survives a bonus/anomaly month.
+    """
+    lookback_months: int
+    currency: str
+    monthly_income: ScenarioDefaultStat
+    monthly_fixed_costs: ScenarioDefaultStat
+    monthly_savings_rate: float  # (income − fixed_costs) / income, median-based
+
+
+@router.get("/scenario-defaults", response_model=ScenarioDefaultsResponse)
+def get_scenario_defaults(
+    lookback_months: int = Query(default=3, ge=1, le=24),
+    workspace_id: str = Depends(get_workspace_id),
+    session: Session = Depends(get_session),
+):
+    """Return suggested scenario assumption defaults, derived from the last
+    N months of actual income + fixed-cost transactions in the workspace.
+
+    Uses the same _get_income_for_month / _get_expenses_for_month helpers the
+    income-allocation endpoint uses — so defaults are consistent with what the
+    user sees on that page.
+    """
+    from statistics import mean, median
+
+    now = datetime.now(UTC)
+    workspace = session.query(WorkspaceModel).filter(
+        WorkspaceModel.id == workspace_id
+    ).first()
+    currency = workspace.base_currency if workspace else "SGD"
+
+    # Walk backward from the previous complete month (skip current — it's incomplete).
+    incomes: list[Decimal] = []
+    expenses: list[Decimal] = []
+    y, m = now.year, now.month
+    for _ in range(lookback_months):
+        # Step back one month.
+        m -= 1
+        if m == 0:
+            m = 12
+            y -= 1
+        inc = _get_income_for_month(session, workspace_id, y, m)
+        exp = _get_expenses_for_month(session, workspace_id, y, m)
+        # Only count a month as observed if there was any activity.
+        if inc > 0 or exp > 0:
+            incomes.append(inc)
+            expenses.append(exp)
+
+    def _stat(values: list[Decimal]) -> ScenarioDefaultStat:
+        if not values:
+            return ScenarioDefaultStat(median=0.0, mean=0.0, n_months_observed=0)
+        as_floats = [float(v) for v in values]
+        return ScenarioDefaultStat(
+            median=round(median(as_floats), 2),
+            mean=round(mean(as_floats), 2),
+            n_months_observed=len(values),
+        )
+
+    inc_stat = _stat(incomes)
+    exp_stat = _stat(expenses)
+    savings_rate = (
+        round(1.0 - (exp_stat.median / inc_stat.median), 4)
+        if inc_stat.median > 0
+        else 0.0
+    )
+
+    return ScenarioDefaultsResponse(
+        lookback_months=lookback_months,
+        currency=currency,
+        monthly_income=inc_stat,
+        monthly_fixed_costs=exp_stat,
+        monthly_savings_rate=savings_rate,
+    )

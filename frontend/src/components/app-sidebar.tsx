@@ -77,14 +77,10 @@ export function AppSidebar() {
           <BookOpenIcon className="h-4 w-4" />
           Guide
         </Link>
-        <Link
-          href="/learn"
-          onClick={() => setMobileOpen(false)}
-          className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-        >
-          <SparklesIcon className="h-4 w-4" />
-          Ledge&apos;s Story
-        </Link>
+        {/* F4 (partial): "Ledge's Story" removed from app sidebar — it's
+            marketing/onboarding content that solo users don't need to reach
+            from inside the app. Page still exists at /learn if reached
+            directly; will be deleted in the full F4 cull. */}
       </div>
       <Separator />
       <div className="space-y-1 p-3">

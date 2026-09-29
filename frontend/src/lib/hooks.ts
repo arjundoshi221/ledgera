@@ -762,3 +762,27 @@ export function useCategorizationRules(config?: SWRConfiguration) {
     { ...swrStatic, ...config }
   )
 }
+
+// ============================================================
+// Scenario defaults (F3) — derives assumptions from actuals
+// ============================================================
+
+export function useScenarioDefaults(lookbackMonths: number = 3, config?: SWRConfiguration) {
+  return useSWR<api.ScenarioDefaultsResponse>(
+    `/api/v1/analytics/scenario-defaults?lookback_months=${lookbackMonths}`,
+    () => api.getScenarioDefaults(lookbackMonths),
+    { ...swrStatic, ...config }
+  )
+}
+
+// ============================================================
+// Reconciliation (B55 L3) — batch fetch for dashboard
+// ============================================================
+
+export function useAccountReconciliation(accountId: string | null, config?: SWRConfiguration) {
+  return useSWR(
+    accountId ? `/api/v1/accounts/${accountId}/reconciliation` : null,
+    accountId ? () => api.getAccountReconciliation(accountId) : null,
+    { ...swrStatic, ...config }
+  )
+}
