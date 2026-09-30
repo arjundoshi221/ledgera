@@ -152,17 +152,9 @@ export function AppSidebar() {
           <BookOpenIcon className="h-4 w-4 shrink-0" />
           {!collapsed && "Guide"}
         </Link>
-        <Link
-          href="/learn"
-          title={collapsed ? "Ledge's Story" : undefined}
-          className={cn(
-            "flex items-center rounded-md text-sm font-medium transition-colors text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-            collapsed ? "justify-center p-2" : "gap-3 px-3 py-2"
-          )}
-        >
-          <SparklesIcon className="h-4 w-4 shrink-0" />
-          {!collapsed && "Ledge\u2019s Story"}
-        </Link>
+        {/* F4 (partial): "Ledge's Story" removed from desktop sidebar too.
+            The mobile version was already stripped. Marketing/onboarding
+            content that solo users don't need. Page still at /learn. */}
       </div>
       <Separator />
       <div className="space-y-1 p-2">

@@ -25,7 +25,12 @@ const MONTH_NAMES = [
  *  Replaces the pre-F2 database-summary page. Answers the daily questions:
  *  what did I earn/spend this month, am I on track vs plan, is my ledger
  *  reconciled with my banks, what needs my attention. See
- *  development/features/F2-projection-first-dashboard.md. */
+ *  development/features/F2-projection-first-dashboard.md.
+ *
+ *  Version marker: rendered as an HTML comment so we can grep the served
+ *  HTML for "F2-live-YYYYMMDD" to verify a Railway deploy actually landed
+ *  the new bundle vs. serving a stale build. */
+const F2_VERSION = "F2-live-20260930"
 export default function DashboardPage() {
   const router = useRouter()
   const { data: workspace } = useWorkspace()
@@ -82,7 +87,7 @@ export default function DashboardPage() {
   const hasAnyTxn = transactions.length > 0
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-dashboard-version={F2_VERSION}>
       <VerificationBanner />
 
       <div className="flex items-baseline justify-between">
